@@ -1,0 +1,7 @@
+# created by virtualenv automatically
+static_server/*
+EasyOCR/*
+huggingface/*
+huggingface_ntr/*
+test/*
+myfile.tar

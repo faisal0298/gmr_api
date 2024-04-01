@@ -16,7 +16,7 @@ timezone = read_timezone_from_file()
 tzInfo = pytz.timezone(timezone)
 service_id = os.environ.get("SERVICE_ID", "gmr")
 
-date = str(datetime.datetime.now().strftime("%d-%m-%Y"))
-if not os.path.exists(os.path.join(os.getcwd(), "static_server","gmr_ai",date)):
-    os.makedirs(os.path.join(os.getcwd(), "static_server","gmr_ai",date))
+file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+if not os.path.exists(os.path.join(os.getcwd(), "static_server","gmr_ai",file)):
+    os.makedirs(os.path.join(os.getcwd(), "static_server","gmr_ai",file))
 

@@ -115,17 +115,6 @@ def variable_initializer(data, *args, **kwargs):
     load_params(data)
 
 
-file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
-if not os.path.exists(os.path.join(os.getcwd(), "static_server","gmr_ai",file)):
-    os.makedirs(os.path.join(os.getcwd(), "static_server","gmr_ai",file))
-
-
-def foldermaker():
-    file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
-    if not os.path.exists(os.path.join(os.getcwd(), "static_server", "log",file)):
-        os.makedirs(os.path.join(os.getcwd(), "static_server", "log",file))
-    return
-
 
 # entry = UsecaseParameters.objects.filter(Parameters__gmr_api__exists=True).first()
 # testing_hr, testing_min = "00", "00"
@@ -528,8 +517,8 @@ def coal_test():
 @router.get("/coal_test_table", tags=["Coal Testing"])
 def coal_test_table(response:Response,currentPage: Optional[int] = None, perPage: Optional[int] = None,
                     search_text: Optional[str] = None,
-                    start_timestamp: Optional[datetime.datetime] = None,
-                    end_timestamp: Optional[datetime.datetime] = None,
+                    start_timestamp: Optional[str] = None,
+                    end_timestamp: Optional[str] = None,
                     type: Optional[str] = "display"):
     try:
         data={}
@@ -612,6 +601,11 @@ def coal_test_table(response:Response,currentPage: Optional[int] = None, perPage
 
         elif type and type == "download":
             del type
+
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.makedirs(target_directory, exist_ok=True, mode=511)
+
             if not start_timestamp:
                 from_date = (
                     datetime.datetime.utcnow().replace(
@@ -763,8 +757,8 @@ def coal_test_table(response:Response,currentPage: Optional[int] = None, perPage
 @router.get("/road_journey_table", tags=["Road Map Table"])
 def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Optional[int] = None,
                     search_text: Optional[str] = None,
-                    start_timestamp: Optional[datetime.datetime] = None,
-                    end_timestamp: Optional[datetime.datetime] = None,
+                    start_timestamp: Optional[str] = None,
+                    end_timestamp: Optional[str] = None,
                     type: Optional[str] = "display"):
     try:
         data={}
@@ -846,6 +840,10 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
 
         elif type and type == "download":
             del type
+
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.makedirs(target_directory, exist_ok=True,mode=511)
 
             if not start_timestamp:
                 from_date = (

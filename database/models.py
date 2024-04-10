@@ -135,6 +135,7 @@ class AlertLogs(Document):
 class Historian(Document):
     tagid = IntField()
     sum = StringField()
+    created_date =  DateTimeField()
     created_at = DateTimeField(default=datetime.datetime.utcnow())
     ID = IntField(min_value=1)
 
@@ -152,6 +153,7 @@ class CoalTesting(Document):
     location = StringField()
     rrNo = StringField()
     rR_Qty = StringField()
+    rake_no = StringField()
     supplier = StringField()
     parameters = ListField(DictField())
     receive_date = DateTimeField()
@@ -168,6 +170,43 @@ class CoalTesting(Document):
         payload_dict = {
             "Sr.No": self.ID,
             "Mine": self.location,
+            "Rake_No": self.rake_no,
+            "RR_No": self.rrNo,
+            "RR_Qty": self.rR_Qty,
+            "Supplier": self.supplier,
+            "Date": local_timestamp.strftime("%Y-%m-%d"),
+            "Time": local_timestamp.strftime("%H:%M:%S"),}
+
+        for param in self.parameters:
+            param_name = f"{param['parameter_Name']} {param['unit_Val'].replace(' ','')}"
+            payload_dict[param_name] = param["val1"]
+        
+        return payload_dict
+
+
+
+class CoalTestingTrain(Document):
+    location = StringField()
+    rrNo = StringField()
+    rR_Qty = StringField()
+    rake_no = StringField()
+    supplier = StringField()
+    parameters = ListField(DictField())
+    receive_date = DateTimeField()
+    ID = IntField(min_value=1)
+    created_at = DateTimeField(default=datetime.datetime.utcnow())
+
+    meta = {"db_alias" : "gmrDB-alias" , "collection" : "coaltestingtrain"}
+        
+    def payload(self):
+        local_timestamp = self.created_at.replace(
+            tzinfo=datetime.timezone.utc
+        ).astimezone(tz=None)
+        
+        payload_dict = {
+            "Sr.No": self.ID,
+            "Mine": self.location,
+            "Rake_No": self.rake_no,
             "RR_No": self.rrNo,
             "RR_Qty": self.rR_Qty,
             "Supplier": self.supplier,
@@ -194,7 +233,7 @@ class Gmrdata(Document):
     out_plate_image = StringField()
     vehicle_image = StringField()
     out_vehicle_image = StringField()
-    out_time = DateTimeField(null=True)
+    vehicle_out_time = DateTimeField(null=True)
 
     delivery_challan_number = StringField()
     arv_cum_do_number = StringField()
@@ -239,7 +278,7 @@ class Gmrdata(Document):
     created_at = DateTimeField(default=datetime.datetime.utcnow)
 
     gate_verified_time = DateTimeField(default=None)
-    vehicle_in_time = DateTimeField(default=None)
+    vehicle_in_time = DateTimeField(null=True)
     actual_gross_wt_time = DateTimeField(default=None)
     actual_tare_wt_time = DateTimeField(default=None)
     ID = IntField(min_value=1)
@@ -248,10 +287,6 @@ class Gmrdata(Document):
 
 
     def payload(self):
-        local_out_time = self.out_time.replace(
-            tzinfo=datetime.timezone.utc
-        ).astimezone(tz=None) if self.out_time else None
-
 
         return {"Sr.No.":self.ID,
                 "PO_No":self.po_no,
@@ -271,8 +306,6 @@ class Gmrdata(Document):
                 "Weightment_Date" : self.weightment_date,
                 "Weightment_Time" : self.weightment_time,
                 # "Out gate": self.out_camera_name if self.out_camera_name else None,
-                "Out_date": local_out_time.replace(microsecond=0).date().strftime("%Y-%m-%d") if local_out_time else None,
-                "Out_time": local_out_time.replace(microsecond=0).time().strftime("%H:%M:%S") if local_out_time else None,
                 "Gross_challan_Wt(MT)" : self.gross_qty,
                 "Tare_challan_Wt(MT)" : self.tare_qty,
                 "Net_challan_Wt(MT)" : self.net_qty,
@@ -287,10 +320,10 @@ class Gmrdata(Document):
                 "Eway_bill_No": self.e_way_bill_no,
                 "Gate_verified_time" : self.gate_verified_time.strftime("%Y-%m-%d:%H:%M:%S") if self.gate_verified_time else None,
                 "Vehicle_in_time" : self.vehicle_in_time.strftime("%Y-%m-%d:%H:%M:%S") if self.vehicle_in_time else None,
+                "Vehicle_out_time" : self.vehicle_out_time.strftime("%Y-%m-%d:%H:%M:%S") if self.vehicle_out_time else None,
                 "Actual_gross_wt_time" : self.actual_gross_wt_time.strftime("%Y-%m-%d:%H:%M:%S") if self.actual_gross_wt_time else None,
                 "Actual_tare_wt_time" : self.actual_tare_wt_time.strftime("%Y-%m-%d:%H:%M:%S") if self.actual_tare_wt_time else None, 
-                "Document_image" : [img for img in [self.challan_file] if img is not None] 
-                                        + [img for img in [self.fitness_file] if img is not None] 
-                                        + [img for img in [self.lr_file] if img is not None]
-                                        + [img for img in [self.fr_file] if img is not None]
+                "Challan_image" : self.challan_file if self.challan_file else None,
+                "Fitness_image": self.fitness_file if self.fitness_file else None,
+                "Face_image": self.fr_file if self.fr_file else None,
                 }

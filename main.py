@@ -74,7 +74,8 @@ tags_meta = [{"name":"Coal Consumption",
               {"name":"Road Map Table",
               "description": "Road Map for Truck Journey"}]
 
-router = FastAPI(title="GMR", openapi_tags=tags_meta)
+router = FastAPI(title="GMR API's", description="Contains GMR Testing, Consumption and Roadmap apis",
+                 openapi_tags=tags_meta)
 
 router.add_middleware(
     CORSMiddleware,
@@ -114,6 +115,7 @@ def add_camera(data, *args, **kwargs):
 def variable_initializer(data, *args, **kwargs):
     load_params(data)
 
+timezone = read_timezone_from_file()
 
 
 # entry = UsecaseParameters.objects.filter(Parameters__gmr_api__exists=True).first()
@@ -161,7 +163,7 @@ consumption_headers = {
 
 @router.get("/load_historian_data", tags=["Coal Consumption"])                                    # coal consumption
 def extract_historian_data():
-
+    
     # entry = UsecaseParameters.objects.filter(Parameters__gmr_api__exists=True).first()
     entry = UsecaseParameters.objects.first()
     historian_ip = entry.Parameters.get('gmr_api', {}).get('roi1', {}).get('Coal Consumption IP') if entry else None
@@ -173,7 +175,9 @@ def extract_historian_data():
     no_of_day = historian_timer.split(":")[0]
     end_date = datetime.date.today().__str__()                                                    # end_date will always be the current date
     start_date = (datetime.date.today()-timedelta(int(no_of_day))).__str__()
-    console_logger.debug(start_date)
+
+    console_logger.debug(f" --- Consumption Start Date --- {start_date}")
+    console_logger.debug(f" --- Consumption End Date --- {end_date}")
 
     payload = json.dumps({
                 "StartTime": start_date,
@@ -194,10 +198,12 @@ def extract_historian_data():
     for item in data["Data"]:
         tag_id = item["Data"]["TagID"]
         sum = item["Data"]["SUM"]
+        created_date = item["Data"]["CreatedDate"] 
 
         Historian(
             tagid = tag_id,
             sum = sum,
+            created_date = created_date,
             ID = Historian.objects.count() + 1).save()
 
     return {"message" : "Successful"}
@@ -235,7 +241,7 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
         basePipeline = [
             {
                 "$match": {
-                    "created_at": {
+                    "created_date": {
                         "$gte": None,
                     },
                 },
@@ -243,7 +249,7 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
             {
                 "$project": {
                     "ts": {
-                        "$hour": {"date": "$created_at", "timezone": timezone},
+                        "$hour": {"date": "$created_date", "timezone": timezone},
                     },
                     "tagid": "$tagid",
                     "sum": "$sum",
@@ -272,39 +278,39 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
             endd_date=datetime.datetime.strptime(end_date,format_data)
             startd_date=datetime.datetime.strptime(start_date,format_data)
 
-            basePipeline[0]["$match"]["created_at"]["$lte"] = (endd_date)
-            basePipeline[0]["$match"]["created_at"]["$gte"] = (startd_date)
+            basePipeline[0]["$match"]["created_date"]["$lte"] = (endd_date)
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (startd_date)
             
 
             result = {
                 "data": {
                     "labels": [str(i) for i in range(1, 25)],
                     "datasets": [
-                        {"label": "2", "data": [0 for i in range(1, 25)]},
-                        {"label": "3538", "data": [0 for i in range(1, 25)]},
+                        {"label": "Unit 1", "data": [0 for i in range(1, 25)]},             # unit 1 = tagid_2
+                        {"label": "Unit 2", "data": [0 for i in range(1, 25)]},             # unit 2 = tagid_3538
                     ],
                 }
             }
 
         elif type == "Week":
-            basePipeline[0]["$match"]["created_at"]["$gte"] = (
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (
                 datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
                 + UTC_OFFSET_TIMEDELTA
                 - datetime.timedelta(days=7)
             )
-            basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$created_at"}
+            basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$created_date"}
             result = {
                 "data": {
                     "labels": [
                         (
-                            basePipeline[0]["$match"]["created_at"]["$gte"]
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
                             + datetime.timedelta(days=i + 1)
                         ).strftime("%d")
                         for i in range(1, 8)
                     ],
                     "datasets": [
-                        {"label": "2", "data": [0 for i in range(1, 8)]},
-                        {"label": "3538", "data": [0 for i in range(1, 8)]},
+                        {"label": "Unit 1", "data": [0 for i in range(1, 8)]},              # unit 1 = tagid_2
+                        {"label": "Unit 2", "data": [0 for i in range(1, 8)]},              # unit 2 = tagid_3538
                     ],
                 }
             }
@@ -320,21 +326,21 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
             end_date = startd_date + relativedelta( day=31)
             end_label = (end_date).strftime("%d")
 
-            basePipeline[0]["$match"]["created_at"]["$lte"] = (end_date)
-            basePipeline[0]["$match"]["created_at"]["$gte"] = (startd_date)
-            basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$created_at"}
+            basePipeline[0]["$match"]["created_date"]["$lte"] = (end_date)
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (startd_date)
+            basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$created_date"}
             result = {
                 "data": {
                     "labels": [
                         (
-                            basePipeline[0]["$match"]["created_at"]["$gte"]
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
                             + datetime.timedelta(days=i + 1)
                         ).strftime("%d")
                         for i in range(-1, (int(end_label))-1)
                     ],
                     "datasets": [
-                        {"label": "2", "data": [0 for i in range(-1, (int(end_label))-1)]},
-                        {"label": "3538", "data": [0 for i in range(-1, (int(end_label))-1)]},
+                        {"label": "Unit 1", "data": [0 for i in range(-1, (int(end_label))-1)]},        # unit 1 = tagid_2
+                        {"label": "Unit 2", "data": [0 for i in range(-1, (int(end_label))-1)]},        # unit 2 = tagid_3538
                     ],
                 }
             }
@@ -342,32 +348,33 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
         elif type == "Year":
 
             date=Year
+            console_logger.debug(date)
             end_date =f'{date}-12-31 23:59:59'
             start_date = f'{date}-01-01 00:00:00'
             format_data = "%Y-%m-%d %H:%M:%S"
             endd_date=datetime.datetime.strptime(end_date,format_data)
             startd_date=datetime.datetime.strptime(start_date,format_data)
 
-            basePipeline[0]["$match"]["created_at"]["$lte"] = (
+            basePipeline[0]["$match"]["created_date"]["$lte"] = (
                 endd_date
             )
-            basePipeline[0]["$match"]["created_at"]["$gte"] = (
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (
                 startd_date          
             )
 
-            basePipeline[1]["$project"]["ts"] = {"$month": "$created_at"}
+            basePipeline[1]["$project"]["ts"] = {"$month": "$created_date"}
             result = {
                 "data": {
                     "labels": [
                         (
-                            basePipeline[0]["$match"]["created_at"]["$gte"]
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
                             + relativedelta(months=i)
                         ).strftime("%m")
                         for i in range(0, 12)
                     ],
                     "datasets": [
-                        {"label": "2", "data": [0 for i in range(0, 12)]},
-                        {"label": "3538", "data": [0 for i in range(0, 12)]},
+                        {"label": "Unit 1", "data": [0 for i in range(0, 12)]},                     # unit 1 = tagid_2
+                        {"label": "Unit 2", "data": [0 for i in range(0, 12)]},                     # unit 2 = tagid_3538
                     ],
                 }
             }
@@ -403,7 +410,7 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
             if type == "Week":
                 modified_labels = [
                     (
-                        basePipeline[0]["$match"]["created_at"]["$gte"]
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
                         + datetime.timedelta(days=i + 1)
                     ).strftime("%d-%m-%Y,%a")
                     for i in range(1, 8)
@@ -412,7 +419,7 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
             elif type == "Month":
                 modified_labels = [
                     (
-                        basePipeline[0]["$match"]["created_at"]["$gte"]
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
                         + datetime.timedelta(days=i + 1)
                     ).strftime("%d/%m")
                     for i in range(-1, (int(end_label))-1)
@@ -421,7 +428,7 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
             elif type == "Year":
                 modified_labels = [
                     (
-                        basePipeline[0]["$match"]["created_at"]["$gte"]
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
                         + relativedelta(months=i)
                     ).strftime("%b %y")
                     for i in range(0, 12)
@@ -448,8 +455,6 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
 #  x------------------------------    Coal Quality Testing Api's    ------------------------------------x
 
 
-timezone = read_timezone_from_file()
-
 @router.get("/coal_test", tags=["Coal Testing"])
 def coal_test():
     # entry = UsecaseParameters.objects.filter(Parameters__gmr_api__exists=True).first()
@@ -465,8 +470,8 @@ def coal_test():
     headers = {}
     end_date = datetime.date.today()                                      #  end_date will always be the current date
     start_date = (end_date-timedelta(int(no_of_day))).__str__()
-    console_logger.debug(start_date)
-    console_logger.debug(end_date)
+    console_logger.debug(f" --- Test Start Date --- {start_date}")
+    console_logger.debug(f" --- Test End Date --- {end_date}")
 
     coal_testing_url = f"http://{testing_ip}/limsapi/api/SampleDetails/GetSampleRecord/GetSampleRecord?Fromdate={start_date}&todate={end_date}"
     # coal_testing_url = f"http://172.21.96.145/limsapi/api/SampleDetails/GetSampleRecord/GetSampleRecord?Fromdate={start_date}&todate={end_date}"
@@ -474,22 +479,23 @@ def coal_test():
     response = requests.request("GET", url = coal_testing_url,headers=headers, data=payload)
     testing_data = json.loads(response.text)
 
-    extracted_data = []
+    wcl_extracted_data = []
+    secl_extracted_data = []
 
     for entry in testing_data["responseData"]:
-        if entry["rrNo"] != "" and entry["rrNo"] != "NA":
+        if entry["supplier"] == "WCL" and entry["rrNo"] != "" and entry["rrNo"] != "NA":
 
             data = {
                 "sample_Desc": entry["sample_Desc"],
                 "rrNo": entry["rrNo"],
                 "rR_Qty": entry["rR_Qty"],
+                "rake_No": entry["rake_No"],
                 "supplier": entry["supplier"],
                 "receive_date": entry["sample_Received_Date"],
                 "parameters": [] 
             }
 
             for param in entry["sample_Parameters"]:
-
                 param_info = {
                     "parameter_Name": param.get('parameter_Name'),
                     "unit_Val": param["unit_Val"],
@@ -497,17 +503,53 @@ def coal_test():
                     "val1": param["val1"]
                 }
                 data["parameters"].append(param_info)
-            extracted_data.append(data)
+            wcl_extracted_data.append(data)
 
-    for entry in extracted_data:
+        
+        if entry["supplier"] == "SECL" and entry["rrNo"] != "" and entry["rrNo"] != "NA":
+
+            secl_data = {
+                "sample_Desc": entry["sample_Desc"],
+                "rrNo": entry["rrNo"],
+                "rR_Qty": entry["rR_Qty"],
+                "rake_No": entry["rake_No"],
+                "supplier": entry["supplier"],
+                "receive_date": entry["sample_Received_Date"],
+                "parameters": [] 
+            }
+
+            for secl_param in entry["sample_Parameters"]:
+                param_info = {
+                    "parameter_Name": secl_param.get('parameter_Name'),
+                    "unit_Val": secl_param["unit_Val"],
+                    "test_Method": secl_param["test_Method"],
+                    "val1": secl_param["val1"]
+                }
+                secl_data["parameters"].append(param_info)
+            secl_extracted_data.append(secl_data)
+
+    for entry in wcl_extracted_data:
         CoalTesting(
             location = entry["sample_Desc"].upper(),
             rrNo = entry["rrNo"],
             rR_Qty = entry["rR_Qty"],
+            rake_no = entry["rake_No"],
             supplier = entry["supplier"],
             receive_date = entry["receive_date"],
             parameters = entry["parameters"],
             ID = CoalTesting.objects.count() + 1
+        ).save()
+
+    for secl_entry in secl_extracted_data:
+        CoalTestingTrain(
+            location = secl_entry["sample_Desc"].upper(),
+            rrNo = secl_entry["rrNo"],
+            rR_Qty = secl_entry["rR_Qty"],
+            rake_no = secl_entry["rake_No"],
+            supplier = secl_entry["supplier"],
+            receive_date = secl_entry["receive_date"],
+            parameters = secl_entry["parameters"],
+            ID = CoalTestingTrain.objects.count() + 1
         ).save()
     
     return {"message" : "Successful"}
@@ -515,7 +557,7 @@ def coal_test():
 
 
 @router.get("/coal_test_table", tags=["Coal Testing"])
-def coal_test_table(response:Response,currentPage: Optional[int] = None, perPage: Optional[int] = None,
+def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, perPage: Optional[int] = None,
                     search_text: Optional[str] = None,
                     start_timestamp: Optional[str] = None,
                     end_timestamp: Optional[str] = None,
@@ -577,7 +619,7 @@ def coal_test_table(response:Response,currentPage: Optional[int] = None, perPage
             
             if search_text:
                 if search_text.isdigit():
-                    data["rrNo__iexact"] = search_text
+                    data["rrNo__icontains"] = search_text
                 else:
                     data["location__icontains"] = search_text
 
@@ -604,7 +646,7 @@ def coal_test_table(response:Response,currentPage: Optional[int] = None, perPage
 
             file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
             target_directory = f"static_server/gmr_ai/{file}"
-            os.makedirs(target_directory, exist_ok=True, mode=511)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
 
             if not start_timestamp:
                 from_date = (
@@ -644,7 +686,7 @@ def coal_test_table(response:Response,currentPage: Optional[int] = None, perPage
 
             if search_text:
                 if search_text.isdigit():
-                    data["rrNo__iexact"] = search_text
+                    data["rrNo__icontains"] = search_text
                     del search_text
                 else:
                     data["location__icontains"] = search_text
@@ -659,9 +701,8 @@ def coal_test_table(response:Response,currentPage: Optional[int] = None, perPage
                         "static_server",
                         "gmr_ai",
                         file,
-                        "{}_report_{}.xlsx".format(
-                            service_id,
-                            datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
+                        "WCL_Report_{}.xlsx".format(
+                            datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
                         ),
                     )
                     filename = os.path.join(os.getcwd(), path)
@@ -686,6 +727,7 @@ def coal_test_table(response:Response,currentPage: Optional[int] = None, perPage
                         "Mine",
                         "RR_No",
                         "RR_Qty",
+                        "Rake_No",
                         "Supplier",
                         "Total Moisture %",
                         "Inherent Moisture (ADB) %",
@@ -709,18 +751,19 @@ def coal_test_table(response:Response,currentPage: Optional[int] = None, perPage
                         worksheet.write(row, 1, str(result["Mine"]), cell_format)
                         worksheet.write(row, 2, str(result["RR_No"]), cell_format)
                         worksheet.write(row, 3, str(result["RR_Qty"]), cell_format)
-                        worksheet.write(row, 4, str(result["Supplier"]), cell_format)
-                        worksheet.write(row, 5, str(result["Total Moisture %"]), cell_format)
-                        worksheet.write(row, 6, str(result["Inherent Moisture (ADB) %"]), cell_format)
-                        worksheet.write(row, 7, str(result["ASH (ADB) %"]), cell_format)
-                        worksheet.write(row, 8, str(result["Volatile Matter (ADB) %"]), cell_format)
-                        worksheet.write(row, 9, str(result["Gross calorific value (ADB) Kcal/kg"]), cell_format)
-                        worksheet.write(row, 10, str(result["ASH (ARB) %"]), cell_format)
-                        worksheet.write(row, 11, str(result["Volatile Matter (ARB) %"]), cell_format)
-                        worksheet.write(row, 12, str(result["Fixed Carbon (ARB) %"]), cell_format)
-                        worksheet.write(row, 13, str(result["Gross Calorific Value (ARB) Kcal/Kg"]), cell_format)
-                        worksheet.write(row, 14, str(result["Date"]), cell_format)
-                        worksheet.write(row, 15, str(result["Time"]), cell_format)
+                        worksheet.write(row, 4, str(result["Rake_No"]), cell_format)
+                        worksheet.write(row, 5, str(result["Supplier"]), cell_format)
+                        worksheet.write(row, 6, str(result["Total Moisture %"]), cell_format)
+                        worksheet.write(row, 7, str(result["Inherent Moisture (ADB) %"]), cell_format)
+                        worksheet.write(row, 8, str(result["ASH (ADB) %"]), cell_format)
+                        worksheet.write(row, 9, str(result["Volatile Matter (ADB) %"]), cell_format)
+                        worksheet.write(row, 10, str(result["Gross calorific value (ADB) Kcal/kg"]), cell_format)
+                        worksheet.write(row, 11, str(result["ASH (ARB) %"]), cell_format)
+                        worksheet.write(row, 12, str(result["Volatile Matter (ARB) %"]), cell_format)
+                        worksheet.write(row, 13, str(result["Fixed Carbon (ARB) %"]), cell_format)
+                        worksheet.write(row, 14, str(result["Gross Calorific Value (ARB) Kcal/Kg"]), cell_format)
+                        worksheet.write(row, 15, str(result["Date"]), cell_format)
+                        worksheet.write(row, 16, str(result["Time"]), cell_format)
                         count -= 1
                     workbook.close()
 
@@ -749,7 +792,246 @@ def coal_test_table(response:Response,currentPage: Optional[int] = None, perPage
         response.status_code = 400
         console_logger.debug(e)
         return e
-    
+
+
+
+@router.get("/coal_train_test_table", tags=["Coal Testing"])
+def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, perPage: Optional[int] = None,
+                    search_text: Optional[str] = None,
+                    start_timestamp: Optional[str] = None,
+                    end_timestamp: Optional[str] = None,
+                    type: Optional[str] = "display"):
+    try:
+        data={}
+        result = {        
+                "labels": [],
+                "datasets": [],
+                "total" : 0,
+                "page_size": 15
+        }
+
+        UTC_OFFSET_TIMEDELTA = datetime.datetime.utcnow() - datetime.datetime.now()
+        
+        if type and type == "display":
+
+            page_no = 1
+            page_len = result["page_size"]
+
+            if currentPage:
+                page_no = currentPage
+
+            if perPage:
+                page_len = perPage
+                result["page_size"] = perPage
+
+            if not start_timestamp:
+                from_date = (
+                    (datetime.datetime.utcnow()-datetime.timedelta(days=30)).replace(
+                        hour=0, minute=0, second=0, microsecond=0
+                    )
+                    + UTC_OFFSET_TIMEDELTA
+                )
+            
+            else:
+                from_date = (
+                    datetime.datetime.strptime(
+                        start_timestamp, "%Y-%m-%dT%H:%M"
+                    )
+                    + UTC_OFFSET_TIMEDELTA
+                )
+                del start_timestamp
+
+            if not end_timestamp:
+                to_date = datetime.datetime.utcnow()
+
+            else:
+                to_date = (
+                    datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
+                    + UTC_OFFSET_TIMEDELTA
+                )
+                del end_timestamp
+
+            if from_date:
+                data["created_at__gte"] = from_date
+            if to_date:
+                data["created_at__lte"] = to_date
+            
+            if search_text:
+                if search_text.isdigit():
+                    data["rrNo__icontains"] = search_text
+                else:
+                    data["location__icontains"] = search_text
+
+            offset = (page_no - 1) * page_len
+            
+            logs = (
+                CoalTestingTrain.objects(**data)
+                .order_by("-ID")
+                .skip(offset)
+                .limit(page_len)                  
+            )        
+
+            if any(logs):
+                for log in logs:
+                    result["labels"] = list(log.payload().keys())
+                    result["datasets"].append(log.payload())
+
+            result["total"] = (len(CoalTestingTrain.objects(**data)))
+            console_logger.debug(f"-------- Coal Testing Response -------- {result}")
+            return result
+
+        elif type and type == "download":
+            del type
+
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+            if not start_timestamp:
+                from_date = (
+                    datetime.datetime.utcnow().replace(
+                        hour=0, minute=0, second=0, microsecond=0
+                    )
+                    + UTC_OFFSET_TIMEDELTA
+                )
+            
+            else:
+                from_date = (
+                    datetime.datetime.strptime(
+                    start_timestamp, "%Y-%m-%dT%H:%M"
+                    )
+                    + UTC_OFFSET_TIMEDELTA
+                )
+                del start_timestamp
+
+            if not end_timestamp:
+                to_date = datetime.datetime.utcnow()
+            else:
+                to_date = (
+                    datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
+                    + UTC_OFFSET_TIMEDELTA
+                )
+                del end_timestamp
+
+            console_logger.info(from_date)
+            console_logger.info(to_date)
+            
+            if from_date:
+                data["created_at__gte"] = from_date
+            if to_date:
+                data["created_at__lte"] = to_date
+
+            console_logger.debug(data)
+
+            if search_text:
+                if search_text.isdigit():
+                    data["rrNo__icontains"] = search_text
+                    del search_text
+                else:
+                    data["location__icontains"] = search_text
+                    del search_text
+
+            usecase_data = CoalTestingTrain.objects(**data).order_by("-created_at")
+            count = len(usecase_data)
+            path = None
+            if usecase_data:
+                try:
+                    path = os.path.join(
+                        "static_server",
+                        "gmr_ai",
+                        file,
+                        "SECL_Report_{}.xlsx".format(
+                            datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                        ),
+                    )
+                    filename = os.path.join(os.getcwd(), path)
+                    workbook = xlsxwriter.Workbook(filename)
+                    workbook.use_zip64()
+                    cell_format2 = workbook.add_format()
+                    cell_format2.set_bold()
+                    cell_format2.set_font_size(10)
+                    cell_format2.set_align("center")
+                    cell_format2.set_align("vjustify")
+
+                    worksheet = workbook.add_worksheet()
+                    worksheet.set_column("A:AZ", 20)
+                    worksheet.set_default_row(50)
+                    cell_format = workbook.add_format()
+                    cell_format.set_font_size(10)
+                    cell_format.set_align("center")
+                    cell_format.set_align("vcenter")
+
+                    headers = [
+                        "Sr.No",
+                        "Mine",
+                        "RR_No",
+                        "RR_Qty",
+                        "Rake_No",
+                        "Supplier",
+                        "Total Moisture %",
+                        "Inherent Moisture (ADB) %",
+                        "ASH (ADB) %",
+                        "Volatile Matter (ADB) %",
+                        "Gross calorific value (ADB) Kcal/kg",
+                        "ASH (ARB) %",
+                        "Volatile Matter (ARB) %",
+                        "Fixed Carbon (ARB) %",
+                        "Gross Calorific Value (ARB) Kcal/Kg",
+                        "Date",
+                        "Time",
+                    ]
+
+                    for index, header in enumerate(headers):
+                        worksheet.write(0, index, header, cell_format2)
+
+                    for row, query in enumerate(usecase_data,start=1):
+                        result = query.payload()
+                        worksheet.write(row, 0, count, cell_format)
+                        worksheet.write(row, 1, str(result["Mine"]), cell_format)
+                        worksheet.write(row, 2, str(result["RR_No"]), cell_format)
+                        worksheet.write(row, 3, str(result["RR_Qty"]), cell_format)
+                        worksheet.write(row, 4, str(result["Rake_No"]), cell_format)
+                        worksheet.write(row, 5, str(result["Supplier"]), cell_format)
+                        worksheet.write(row, 6, str(result["Total Moisture %"]), cell_format)
+                        worksheet.write(row, 7, str(result["Inherent Moisture (ADB) %"]), cell_format)
+                        worksheet.write(row, 8, str(result["ASH (ADB) %"]), cell_format)
+                        worksheet.write(row, 9, str(result["Volatile Matter (ADB) %"]), cell_format)
+                        worksheet.write(row, 10, str(result["Gross calorific value (ADB) Kcal/kg"]), cell_format)
+                        worksheet.write(row, 11, str(result["ASH (ARB) %"]), cell_format)
+                        worksheet.write(row, 12, str(result["Volatile Matter (ARB) %"]), cell_format)
+                        worksheet.write(row, 13, str(result["Fixed Carbon (ARB) %"]), cell_format)
+                        worksheet.write(row, 14, str(result["Gross Calorific Value (ARB) Kcal/Kg"]), cell_format)
+                        worksheet.write(row, 15, str(result["Date"]), cell_format)
+                        worksheet.write(row, 16, str(result["Time"]), cell_format)
+                        count -= 1
+                    workbook.close()
+
+                    console_logger.debug("Successfully {} report generated".format(service_id))
+                    console_logger.debug("sent data {}".format(path))
+                    return {
+                            "Type": "coal_test_download_event",
+                            "Datatype": "Report",
+                            "File_Path": path,
+                        }
+                except Exception as e:
+                    console_logger.debug(e)
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+                    console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            else:
+                console_logger.error("No data found")
+                return {
+                            "Type": "coal_test_download_event",
+                            "Datatype": "Report",
+                            "File_Path": path,
+                        }
+
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(e)
+        return e
+
 
 #  x------------------------------   Road Trip Coal API    ------------------------------------x
 
@@ -790,6 +1072,7 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
                     )
                     + UTC_OFFSET_TIMEDELTA
                 )
+                console_logger.debug(from_date)
             
             else:
                 from_date = (
@@ -817,9 +1100,9 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
             
             if search_text:
                 if search_text.isdigit():
-                    data["arv_cum_do_number__iexact"] = search_text
+                    data["arv_cum_do_number__icontains"] = search_text
                 else:
-                    data["vehicle_number__iexact"] = search_text
+                    data["vehicle_number__icontains"] = search_text
 
             offset = (page_no - 1) * page_len
             
@@ -843,7 +1126,7 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
 
             file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
             target_directory = f"static_server/gmr_ai/{file}"
-            os.makedirs(target_directory, exist_ok=True,mode=511)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
 
             if not start_timestamp:
                 from_date = (
@@ -883,12 +1166,11 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
 
             if search_text:
                 if search_text.isdigit():
-                    data["arv_cum_do_number__iexact"] = search_text
+                    data["arv_cum_do_number__icontains"] = search_text
                     del search_text
                 else:
-                    data["vehicle_number__iexact"] = search_text
+                    data["vehicle_number__icontains"] = search_text
                     del search_text
-
 
             usecase_data = Gmrdata.objects(**data).order_by("-created_at")
             count = len(usecase_data)
@@ -899,9 +1181,8 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
                         "static_server",
                         "gmr_ai",
                         file,
-                        "{}_report_{}.xlsx".format(
-                            service_id,
-                            datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
+                        "Road_Report_{}.xlsx".format(
+                            datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
                         ),
                     )
                     filename = os.path.join(os.getcwd(), path)

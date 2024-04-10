@@ -14,9 +14,8 @@ from dateutil.relativedelta import relativedelta
 
 timezone = read_timezone_from_file()
 tzInfo = pytz.timezone(timezone)
-service_id = os.environ.get("SERVICE_ID", "gmr")
 
 file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
 if not os.path.exists(os.path.join(os.getcwd(), "static_server","gmr_ai",file)):
-    os.makedirs(os.path.join(os.getcwd(), "static_server","gmr_ai",file))
+    os.makedirs(os.path.join(os.getcwd(), "static_server","gmr_ai",file), mode=0o777)
 

@@ -163,7 +163,7 @@ class CoalTesting(Document):
     meta = {"db_alias" : "gmrDB-alias" , "collection" : "coaltesting"}
         
     def payload(self):
-        local_timestamp = self.created_at.replace(
+        local_timestamp = self.receive_date.replace(
             tzinfo=datetime.timezone.utc
         ).astimezone(tz=None)
         
@@ -327,3 +327,4 @@ class Gmrdata(Document):
                 "Fitness_image": self.fitness_file if self.fitness_file else None,
                 "Face_image": self.fr_file if self.fr_file else None,
                 }
+    

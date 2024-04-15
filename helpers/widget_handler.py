@@ -17,5 +17,6 @@ tzInfo = pytz.timezone(timezone)
 
 file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
 if not os.path.exists(os.path.join(os.getcwd(), "static_server","gmr_ai",file)):
+    os.umask(0)
     os.makedirs(os.path.join(os.getcwd(), "static_server","gmr_ai",file), mode=0o777)
 

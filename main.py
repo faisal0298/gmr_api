@@ -162,7 +162,7 @@ consumption_headers = {
 
 
 @router.get("/load_historian_data", tags=["Coal Consumption"])                                    # coal consumption
-def extract_historian_data():
+def extract_historian_data(start_date: Optional[str] = None, end_date: Optional[str] = None):
     
     # entry = UsecaseParameters.objects.filter(Parameters__gmr_api__exists=True).first()
     entry = UsecaseParameters.objects.first()
@@ -172,9 +172,11 @@ def extract_historian_data():
     console_logger.debug(f"---- Coal Consumption IP ----        {historian_ip}")
     console_logger.debug(f"---- Coal Consumption Duration ----  {historian_timer}")
 
-    no_of_day = historian_timer.split(":")[0]
-    end_date = datetime.date.today().__str__()                                                    # end_date will always be the current date
-    start_date = (datetime.date.today()-timedelta(int(no_of_day))).__str__()
+    if not end_date:
+        end_date = datetime.date.today().__str__()                                                    # end_date will always be the current date
+    if not start_date:
+        no_of_day = historian_timer.split(":")[0]
+        start_date = (datetime.date.today()-timedelta(int(no_of_day))).__str__()
 
     console_logger.debug(f" --- Consumption Start Date --- {start_date}")
     console_logger.debug(f" --- Consumption End Date --- {end_date}")
@@ -443,7 +445,7 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
                         result["data"]["datasets"][1]["data"][index] = total_sum
 
         result["data"]["labels"] = copy.deepcopy(modified_labels)
-        console_logger.debug(f"-------- Coal Consumption Response -------- {result}")
+        console_logger.debug(f"-------- Coal Consumption Graph Response -------- {result}")
         return result
     
     except Exception as e:
@@ -455,8 +457,8 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
 #  x------------------------------    Coal Quality Testing Api's    ------------------------------------x
 
 
-@router.get("/coal_test", tags=["Coal Testing"])
-def coal_test():
+@router.get("/extract_coal_test", tags=["Coal Testing"])
+def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
     # entry = UsecaseParameters.objects.filter(Parameters__gmr_api__exists=True).first()
     entry = UsecaseParameters.objects.first()
     testing_ip = entry.Parameters.get('gmr_api', {}).get('roi1', {}).get('Coal Testing IP') if entry else None
@@ -465,11 +467,15 @@ def coal_test():
     console_logger.debug(f"---- Coal Testing IP ----            {testing_ip}")
     console_logger.debug(f"---- Coal Testing Duration ----      {testing_timer}")
 
-    no_of_day = testing_timer.split(":")[0]
     payload={}
     headers = {}
-    end_date = datetime.date.today()                                      #  end_date will always be the current date
-    start_date = (end_date-timedelta(int(no_of_day))).__str__()
+    if not end_date:
+        end_date = datetime.date.today()                                      #  end_date will always be the current date
+
+    if not start_date:
+        no_of_day = testing_timer.split(":")[0]
+        start_date = (end_date-timedelta(int(no_of_day))).__str__()
+        
     console_logger.debug(f" --- Test Start Date --- {start_date}")
     console_logger.debug(f" --- Test End Date --- {end_date}")
 
@@ -613,9 +619,9 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
                 del end_timestamp
 
             if from_date:
-                data["created_at__gte"] = from_date
+                data["receive_date__gte"] = from_date
             if to_date:
-                data["created_at__lte"] = to_date
+                data["receive_date__lte"] = to_date
             
             if search_text:
                 if search_text.isdigit():
@@ -638,7 +644,7 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
                     result["datasets"].append(log.payload())
 
             result["total"] = (len(CoalTesting.objects(**data)))
-            console_logger.debug(f"-------- Coal Testing Response -------- {result}")
+            console_logger.debug(f"-------- Road Coal Testing Response -------- {result}")
             return result
 
         elif type and type == "download":
@@ -646,6 +652,7 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
 
             file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
             target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
             os.makedirs(target_directory, exist_ok=True, mode=0o777)
 
             if not start_timestamp:
@@ -678,9 +685,9 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
             console_logger.info(to_date)
             
             if from_date:
-                data["created_at__gte"] = from_date
+                data["receive_date__gte"] = from_date
             if to_date:
-                data["created_at__lte"] = to_date
+                data["receive_date__lte"] = to_date
 
             console_logger.debug(data)
 
@@ -692,7 +699,7 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
                     data["location__icontains"] = search_text
                     del search_text
 
-            usecase_data = CoalTesting.objects(**data).order_by("-created_at")
+            usecase_data = CoalTesting.objects(**data).order_by("-receive_date")
             count = len(usecase_data)
             path = None
             if usecase_data:
@@ -852,9 +859,9 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
                 del end_timestamp
 
             if from_date:
-                data["created_at__gte"] = from_date
+                data["receive_date__gte"] = from_date
             if to_date:
-                data["created_at__lte"] = to_date
+                data["receive_date__lte"] = to_date
             
             if search_text:
                 if search_text.isdigit():
@@ -877,7 +884,7 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
                     result["datasets"].append(log.payload())
 
             result["total"] = (len(CoalTestingTrain.objects(**data)))
-            console_logger.debug(f"-------- Coal Testing Response -------- {result}")
+            console_logger.debug(f"-------- Rail Coal Testing Response -------- {result}")
             return result
 
         elif type and type == "download":
@@ -885,6 +892,7 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
 
             file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
             target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
             os.makedirs(target_directory, exist_ok=True, mode=0o777)
 
             if not start_timestamp:
@@ -917,9 +925,9 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
             console_logger.info(to_date)
             
             if from_date:
-                data["created_at__gte"] = from_date
+                data["receive_date__gte"] = from_date
             if to_date:
-                data["created_at__lte"] = to_date
+                data["receive_date__lte"] = to_date
 
             console_logger.debug(data)
 
@@ -931,7 +939,7 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
                     data["location__icontains"] = search_text
                     del search_text
 
-            usecase_data = CoalTestingTrain.objects(**data).order_by("-created_at")
+            usecase_data = CoalTestingTrain.objects(**data).order_by("-receive_date")
             count = len(usecase_data)
             path = None
             if usecase_data:
@@ -1118,7 +1126,7 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
                     result["datasets"].append(log.payload())
 
             result["total"]= len(Gmrdata.objects(**data))
-            console_logger.debug(f"-------- Road Journey Response -------- {result}")
+            console_logger.debug(f"-------- Road Journey Table Response -------- {result}")
             return result
 
         elif type and type == "download":
@@ -1126,6 +1134,7 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
 
             file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
             target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
             os.makedirs(target_directory, exist_ok=True, mode=0o777)
 
             if not start_timestamp:
@@ -1228,8 +1237,7 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
                         "Transporter LR No.",
                         "Transporter LR Date",
                         "E-way bill No.",
-                        "Out date",
-                        "Out time",
+                        "Vehicle Out Time",
                         "Total Net Amount",
                         "Driver Name",
                         "Gate Pass No",
@@ -1268,15 +1276,14 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
                         worksheet.write(row, 22, str(result["Transporter_LR_No"]), cell_format)
                         worksheet.write(row, 23, str(result["Transporter_LR_Date"]), cell_format)
                         worksheet.write(row, 24, str(result["Eway_bill_No"]), cell_format)
-                        worksheet.write(row, 25, str(result["Out_date"]), cell_format)
-                        worksheet.write(row, 26, str(result["Out_time"]), cell_format)
-                        worksheet.write(row, 27, str(result["Total_net_amount"]), cell_format)
-                        worksheet.write(row, 28, str(result["Driver_Name"]), cell_format)
-                        worksheet.write(row, 29, str(result["Gate_Pass_No"]), cell_format)
-                        worksheet.write(row, 30, str(result["Gate_verified_time"]), cell_format)
-                        worksheet.write(row, 31, str(result["Vehicle_in_time"]), cell_format)
-                        worksheet.write(row, 32, str(result["Actual_gross_wt_time"]), cell_format)
-                        worksheet.write(row, 33, str(result["Actual_tare_wt_time"]), cell_format)
+                        worksheet.write(row, 25, str(result["Vehicle_out_time"]), cell_format)
+                        worksheet.write(row, 26, str(result["Total_net_amount"]), cell_format)
+                        worksheet.write(row, 27, str(result["Driver_Name"]), cell_format)
+                        worksheet.write(row, 28, str(result["Gate_Pass_No"]), cell_format)
+                        worksheet.write(row, 29, str(result["Gate_verified_time"]), cell_format)
+                        worksheet.write(row, 30, str(result["Vehicle_in_time"]), cell_format)
+                        worksheet.write(row, 31, str(result["Actual_gross_wt_time"]), cell_format)
+                        worksheet.write(row, 32, str(result["Actual_tare_wt_time"]), cell_format)
                         count-=1
                         
                     workbook.close()

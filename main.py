@@ -1041,7 +1041,7 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
         return e
 
 
-#  x------------------------------   Road Trip Coal API    ------------------------------------x
+#  x------------------------------   Road Coal Journey API    ------------------------------------x
 
 
 @router.get("/road_journey_table", tags=["Road Map Table"])
@@ -1313,6 +1313,255 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
     except Exception as e:
         response.status_code = 400
         console_logger.debug(e)
+        return e
+
+
+@router.get("/minewise_road_graph", tags=["Road Map Table"])
+def minewise_road_analysis(response:Response,type: Optional[str] = "Daily",
+                            Month: Optional[str] = None, Daily: Optional[str] = None, 
+                            Year: Optional[str] = None):
+    try:
+        data={}
+        UTC_OFFSET_TIMEDELTA = datetime.datetime.utcnow() - datetime.datetime.now()
+
+        basePipeline = [
+            {
+                "$match": {
+                    "created_date": {
+                        "$gte": None,
+                    },
+                },
+            },
+            {
+                "$project": {
+                    "ts": {
+                        "$hour": {"date": "$created_date", "timezone": timezone},
+                    },
+                    "mine": "$mine",
+                    "actual_net_qty": "$sum",
+                    "_id": 0
+                },
+            },
+            {
+                "$group": {
+                    "_id": {
+                        "ts": "$ts",
+                        "mine": "$mine"
+                    },
+                    "data": {
+                        "$push": "$sum"
+                    }
+                }
+            },
+        ]
+
+        if type == "Daily":
+
+            date=Daily
+            end_date =f'{date} 23:59:59'
+            start_date = f'{date} 00:00:00'
+            format_data = "%Y-%m-%d %H:%M:%S"
+            endd_date=datetime.datetime.strptime(end_date,format_data)
+            startd_date=datetime.datetime.strptime(start_date,format_data)
+
+            basePipeline[0]["$match"]["created_date"]["$lte"] = (endd_date)
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (startd_date)
+            
+
+            result = {
+                "data": {
+                    "labels": [str(i) for i in range(1, 25)],
+                    "datasets": [
+                        {"label": "YEKONA", "data": [0 for i in range(1, 25)]},
+                        {"label": "SASTI", "data": [0 for i in range(1, 25)]},
+                        {"label": "PENGANGA", "data": [0 for i in range(1, 25)]},
+                        {"label": "MUNGOLI", "data": [0 for i in range(1, 25)]},
+                        {"label": "NEELJAY", "data": [0 for i in range(1, 25)]},             
+                    ],
+                }
+            }
+
+        elif type == "Week":
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (
+                datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                + UTC_OFFSET_TIMEDELTA
+                - datetime.timedelta(days=7)
+            )
+            basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$created_date"}
+            result = {
+                "data": {
+                    "labels": [
+                        (
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
+                            + datetime.timedelta(days=i + 1)
+                        ).strftime("%d")
+                        for i in range(1, 8)
+                    ],
+                    "datasets": [
+                        {"label": "YEKONA", "data": [0 for i in range(1, 8)]},
+                        {"label": "SASTI", "data": [0 for i in range(1, 8)]},
+                        {"label": "PENGANGA", "data": [0 for i in range(1, 8)]},
+                        {"label": "MUNGOLI", "data": [0 for i in range(1, 8)]},
+                        {"label": "NEELJAY", "data": [0 for i in range(1, 8)]},
+                    ],
+                }
+            }
+
+        elif type == "Month":
+
+            date=Month
+            format_data = "%Y - %m-%d"
+
+            start_date = f'{date}-01'
+            startd_date=datetime.datetime.strptime(start_date,format_data)
+            
+            end_date = startd_date + relativedelta( day=31)
+            end_label = (end_date).strftime("%d")
+
+            basePipeline[0]["$match"]["created_date"]["$lte"] = (end_date)
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (startd_date)
+            basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$created_date"}
+            result = {
+                "data": {
+                    "labels": [
+                        (
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
+                            + datetime.timedelta(days=i + 1)
+                        ).strftime("%d")
+                        for i in range(-1, (int(end_label))-1)
+                    ],
+                    "datasets": [
+                        {"label": "YEKONA", "data": [0 for i in range(-1, (int(end_label))-1)]},
+                        {"label": "SASTI", "data": [0 for i in range(-1, (int(end_label))-1)]},
+                        {"label": "PENGANGA", "data": [0 for i in range(-1, (int(end_label))-1)]},
+                        {"label": "MUNGOLI", "data": [0 for i in range(-1, (int(end_label))-1)]},
+                        {"label": "NEELJAY", "data": [0 for i in range(-1, (int(end_label))-1)]},
+                    ],
+                }
+            }
+
+        elif type == "Year":
+
+            date=Year
+            console_logger.debug(date)
+            end_date =f'{date}-12-31 23:59:59'
+            start_date = f'{date}-01-01 00:00:00'
+            format_data = "%Y-%m-%d %H:%M:%S"
+            endd_date=datetime.datetime.strptime(end_date,format_data)
+            startd_date=datetime.datetime.strptime(start_date,format_data)
+
+            basePipeline[0]["$match"]["created_date"]["$lte"] = (
+                endd_date
+            )
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (
+                startd_date          
+            )
+
+            basePipeline[1]["$project"]["ts"] = {"$month": "$created_date"}
+            result = {
+                "data": {
+                    "labels": [
+                        (
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
+                            + relativedelta(months=i)
+                        ).strftime("%m")
+                        for i in range(0, 12)
+                    ],
+                    "datasets": [
+                        {"label": "YEKONA", "data": [0 for i in range(0, 12)]},
+                        {"label": "SASTI", "data": [0 for i in range(0, 12)]},
+                        {"label": "PENGANGA", "data": [0 for i in range(0, 12)]},
+                        {"label": "MUNGOLI", "data": [0 for i in range(0, 12)]},
+                        {"label": "NEELJAY", "data": [0 for i in range(0, 12)]},
+                    ],
+                }
+            }
+
+        output = Gmrdata.objects().aggregate(basePipeline)
+        outputDict = {}
+
+        for data in output:
+            if "_id" in data:
+                ts = data["_id"]["ts"]
+                tag_id = data["_id"]["mine"]
+
+                data_list = data.get('data', [])
+                sum_list = []
+                for item in data_list:
+                    try:
+                        sum_value = float(item)
+                        sum_list.append(sum_value)
+                    except ValueError:
+                        pass
+                
+                if ts not in outputDict:
+                    outputDict[ts] = {tag_id: sum_list}
+                else:
+                    if tag_id not in outputDict[ts]:
+                        outputDict[ts][tag_id] = sum_list
+                    else:
+                        outputDict[ts][tag_id].append(sum_list)
+
+        modified_labels = [i for i in range(len(result["data"]["labels"]))]
+
+        for index, label in enumerate(result["data"]["labels"]):
+            if type == "Week":
+                modified_labels = [
+                    (
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
+                        + datetime.timedelta(days=i + 1)
+                    ).strftime("%d-%m-%Y,%a")
+                    for i in range(1, 8)
+                ]
+            
+            elif type == "Month":
+                modified_labels = [
+                    (
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
+                        + datetime.timedelta(days=i + 1)
+                    ).strftime("%d/%m")
+                    for i in range(-1, (int(end_label))-1)
+                ]
+
+            elif type == "Year":
+                modified_labels = [
+                    (
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
+                        + relativedelta(months=i)
+                    ).strftime("%b %y")
+                    for i in range(0, 12)
+                ]
+
+            if int(label) in outputDict:
+                for key, val in outputDict[int(label)].items():
+                    total_sum = sum(val)
+                    console_logger.debug(total_sum)
+                    if key == "YEKONA":
+                        result["data"]["datasets"][0]["data"][index] = total_sum
+
+                    if key == "SASTI":
+                        result["data"]["datasets"][1]["data"][index] = total_sum
+
+                    if key == "PENGANGA":
+                        result["data"]["datasets"][2]["data"][index] = total_sum
+
+                    if key == "MUNGOLI":
+                        result["data"]["datasets"][3]["data"][index] = total_sum
+
+                    if key == "NEELJAY":
+                        result["data"]["datasets"][4]["data"][index] = total_sum
+
+        result["data"]["labels"] = copy.deepcopy(modified_labels)
+        console_logger.debug(f"-------- Road Minewise Graph Response -------- {result}")
+        return result
+    
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
 
 

@@ -29,4 +29,16 @@ class HistorianData(BaseModel):
     TagID: List[str]
 
 
-    
+class wclData(BaseModel):
+    id: str
+    coal_data: dict
+
+
+class seclData(BaseModel):
+    id: str
+    coal_data: dict
+
+
+class WCLtest(BaseModel):
+    id: str
+    coal_data: dict

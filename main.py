@@ -189,7 +189,7 @@ def extract_historian_data(start_date: Optional[str] = None, end_date: Optional[
                 "EndTime": end_date, 
                 "RetrievalType": "Aggregate", 
                 "RetrievalMode": "History", 
-                "TagID": ["2","3538"],
+                "TagID": ["2","3538","16","3536"],
                 "RetrieveBy": "ID"
                 })
     
@@ -234,9 +234,8 @@ def extract_historian_data(start_date: Optional[str] = None, end_date: Optional[
 #     return Response(response.text)
 
 
-
-@router.get("/coal_comsumption_graph", tags=["Coal Consumption"])
-def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
+@router.get("/coal_generation_graph", tags=["Coal Consumption"])
+def coal_generation_analysis(response:Response,type: Optional[str] = "Daily",
                               Month: Optional[str] = None, 
                               Daily: Optional[str] = None, Year: Optional[str] = None):
     try:
@@ -292,7 +291,7 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
                     "labels": [str(i) for i in range(1, 25)],
                     "datasets": [
                         {"label": "Unit 1", "data": [0 for i in range(1, 25)]},             # unit 1 = tagid_2
-                        {"label": "Unit 2", "data": [0 for i in range(1, 25)]},             # unit 2 = tagid_3538
+                        {"label": "Unit 2", "data": [0 for i in range(1, 25)]},             # unit 2 = tagid_3536
                     ],
                 }
             }
@@ -315,7 +314,7 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
                     ],
                     "datasets": [
                         {"label": "Unit 1", "data": [0 for i in range(1, 8)]},              # unit 1 = tagid_2
-                        {"label": "Unit 2", "data": [0 for i in range(1, 8)]},              # unit 2 = tagid_3538
+                        {"label": "Unit 2", "data": [0 for i in range(1, 8)]},              # unit 2 = tagid_3536
                     ],
                 }
             }
@@ -345,7 +344,7 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
                     ],
                     "datasets": [
                         {"label": "Unit 1", "data": [0 for i in range(-1, (int(end_label))-1)]},        # unit 1 = tagid_2
-                        {"label": "Unit 2", "data": [0 for i in range(-1, (int(end_label))-1)]},        # unit 2 = tagid_3538
+                        {"label": "Unit 2", "data": [0 for i in range(-1, (int(end_label))-1)]},        # unit 2 = tagid_3536
                     ],
                 }
             }
@@ -379,7 +378,7 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
                     ],
                     "datasets": [
                         {"label": "Unit 1", "data": [0 for i in range(0, 12)]},                     # unit 1 = tagid_2
-                        {"label": "Unit 2", "data": [0 for i in range(0, 12)]},                     # unit 2 = tagid_3538
+                        {"label": "Unit 2", "data": [0 for i in range(0, 12)]},                     # unit 2 = tagid_3536
                     ],
                 }
             }
@@ -388,7 +387,6 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
         outputDict = {}
 
         for data in output:
-            console_logger.debug(data)
             if "_id" in data:
                 ts = data["_id"]["ts"]
                 tag_id = data["_id"]["tagid"]
@@ -412,7 +410,6 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
 
         modified_labels = [i for i in range(len(result["data"]["labels"]))]
 
-        console_logger.debug(outputDict)
         for index, label in enumerate(result["data"]["labels"]):
             if type == "Week":
                 modified_labels = [
@@ -446,7 +443,229 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
                     total_sum = sum(val)
                     if key == 2:
                         result["data"]["datasets"][0]["data"][index] = total_sum
+                    if key == 3536:
+                        result["data"]["datasets"][1]["data"][index] = total_sum
+
+        result["data"]["labels"] = copy.deepcopy(modified_labels)
+        console_logger.debug(f"-------- Coal Generation Graph Response -------- {result}")
+        return result
+    
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(e)
+        return e
+
+
+@router.get("/coal_consumption_graph", tags=["Coal Consumption"])
+def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
+                              Month: Optional[str] = None, 
+                              Daily: Optional[str] = None, Year: Optional[str] = None):
+    try:
+        data={}
+        UTC_OFFSET_TIMEDELTA = datetime.datetime.utcnow() - datetime.datetime.now()
+
+        basePipeline = [
+            {
+                "$match": {
+                    "created_date": {
+                        "$gte": None,
+                    },
+                },
+            },
+            {
+                "$project": {
+                    "ts": {
+                        "$hour": {"date": "$created_date", "timezone": timezone},
+                    },
+                    "tagid": "$tagid",
+                    "sum": "$sum",
+                    "_id": 0
+                },
+            },
+            {
+                "$group": {
+                    "_id": {
+                        "ts": "$ts",
+                        "tagid": "$tagid"
+                    },
+                    "data": {
+                        "$push": "$sum"
+                    }
+                }
+            },
+        ]
+
+        if type == "Daily":
+
+            date=Daily
+            end_date =f'{date} 23:59:59'
+            start_date = f'{date} 00:00:00'
+            format_data = "%Y-%m-%d %H:%M:%S"
+            endd_date=datetime.datetime.strptime(end_date,format_data)
+            startd_date=datetime.datetime.strptime(start_date,format_data)
+
+            basePipeline[0]["$match"]["created_date"]["$lte"] = (endd_date)
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (startd_date)
+            
+
+            result = {
+                "data": {
+                    "labels": [str(i) for i in range(1, 25)],
+                    "datasets": [
+                        {"label": "Unit 1", "data": [0 for i in range(1, 25)]},             # unit 1 = tagid_16
+                        {"label": "Unit 2", "data": [0 for i in range(1, 25)]},             # unit 2 = tagid_3538
+                    ],
+                }
+            }
+
+        elif type == "Week":
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (
+                datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                + UTC_OFFSET_TIMEDELTA
+                - datetime.timedelta(days=7)
+            )
+            basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$created_date"}
+            result = {
+                "data": {
+                    "labels": [
+                        (
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
+                            + datetime.timedelta(days=i + 1)
+                        ).strftime("%d")
+                        for i in range(1, 8)
+                    ],
+                    "datasets": [
+                        {"label": "Unit 1", "data": [0 for i in range(1, 8)]},              # unit 1 = tagid_16
+                        {"label": "Unit 2", "data": [0 for i in range(1, 8)]},              # unit 2 = tagid_3538
+                    ],
+                }
+            }
+
+        elif type == "Month":
+
+            date=Month
+            format_data = "%Y - %m-%d"
+
+            start_date = f'{date}-01'
+            startd_date=datetime.datetime.strptime(start_date,format_data)
+            
+            end_date = startd_date + relativedelta( day=31)
+            end_label = (end_date).strftime("%d")
+
+            basePipeline[0]["$match"]["created_date"]["$lte"] = (end_date)
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (startd_date)
+            basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$created_date"}
+            result = {
+                "data": {
+                    "labels": [
+                        (
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
+                            + datetime.timedelta(days=i + 1)
+                        ).strftime("%d")
+                        for i in range(-1, (int(end_label))-1)
+                    ],
+                    "datasets": [
+                        {"label": "Unit 1", "data": [0 for i in range(-1, (int(end_label))-1)]},        # unit 1 = tagid_16
+                        {"label": "Unit 2", "data": [0 for i in range(-1, (int(end_label))-1)]},        # unit 2 = tagid_3538
+                    ],
+                }
+            }
+
+        elif type == "Year":
+
+            date=Year
+            console_logger.debug(date)
+            end_date =f'{date}-12-31 23:59:59'
+            start_date = f'{date}-01-01 00:00:00'
+            format_data = "%Y-%m-%d %H:%M:%S"
+            endd_date=datetime.datetime.strptime(end_date,format_data)
+            startd_date=datetime.datetime.strptime(start_date,format_data)
+
+            basePipeline[0]["$match"]["created_date"]["$lte"] = (
+                endd_date
+            )
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (
+                startd_date          
+            )
+
+            basePipeline[1]["$project"]["ts"] = {"$month": "$created_date"}
+            result = {
+                "data": {
+                    "labels": [
+                        (
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
+                            + relativedelta(months=i)
+                        ).strftime("%m")
+                        for i in range(0, 12)
+                    ],
+                    "datasets": [
+                        {"label": "Unit 1", "data": [0 for i in range(0, 12)]},                     # unit 1 = tagid_16
+                        {"label": "Unit 2", "data": [0 for i in range(0, 12)]},                     # unit 2 = tagid_3538
+                    ],
+                }
+            }
+
+        output = Historian.objects().aggregate(basePipeline)
+        outputDict = {}
+
+        for data in output:
+            if "_id" in data:
+                ts = data["_id"]["ts"]
+                tag_id = data["_id"]["tagid"]
+
+                data_list = data.get('data', [])
+                sum_list = []
+                for item in data_list:
+                    try:
+                        sum_value = float(item)
+                        sum_list.append(sum_value)
+                    except ValueError:
+                        pass
+                
+                if ts not in outputDict:
+                    outputDict[ts] = {tag_id: sum_list}
+                else:
+                    if tag_id not in outputDict[ts]:
+                        outputDict[ts][tag_id] = sum_list
                     else:
+                        outputDict[ts][tag_id].append(sum_list)
+
+        modified_labels = [i for i in range(len(result["data"]["labels"]))]
+
+        for index, label in enumerate(result["data"]["labels"]):
+            if type == "Week":
+                modified_labels = [
+                    (
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
+                        + datetime.timedelta(days=i + 1)
+                    ).strftime("%d-%m-%Y,%a")
+                    for i in range(1, 8)
+                ]
+            
+            elif type == "Month":
+                modified_labels = [
+                    (
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
+                        + datetime.timedelta(days=i + 1)
+                    ).strftime("%d/%m")
+                    for i in range(-1, (int(end_label))-1)
+                ]
+
+            elif type == "Year":
+                modified_labels = [
+                    (
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
+                        + relativedelta(months=i)
+                    ).strftime("%b %y")
+                    for i in range(0, 12)
+                ]
+
+            if int(label) in outputDict:
+                for key, val in outputDict[int(label)].items():
+                    total_sum = sum(val)
+                    if key == 16:
+                        result["data"]["datasets"][0]["data"][index] = total_sum
+                    if key == 3538:
                         result["data"]["datasets"][1]["data"][index] = total_sum
 
         result["data"]["labels"] = copy.deepcopy(modified_labels)
@@ -1310,9 +1529,6 @@ def coal_wcl_gcv_table(
                     #     aggregated_data[month][mine]["Third_Party_Gcv"] = None
                     aggregated_data[month][mine]["count"] += 1
 
-                
-                console_logger.debug(aggregated_data)
-
                 dataList = [
                     {"month": month, "data": {
                         mine: {
@@ -1322,7 +1538,7 @@ def coal_wcl_gcv_table(
                         } for mine, data in aggregated_data[month].items()
                     }} for month in aggregated_data
                 ]
-                console_logger.debug(dataList)
+                # console_logger.debug(dataList)
                 coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
 
                 # Iterate through each month's data
@@ -1349,10 +1565,10 @@ def coal_wcl_gcv_table(
 
                         if mine_data["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
                             for single_coal_grades in coal_grades:
-                                console_logger.debug(mine_data.get("average_Third_Party_Gross_Calorific_Value_(Adb)"))
+                                # console_logger.debug(mine_data.get("average_Third_Party_Gross_Calorific_Value_(Adb)"))
                                 if single_coal_grades["end_value"] != "":
                                     if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Third_Party_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
-                                        console_logger.debug(single_coal_grades["grade"])
+                                        # console_logger.debug(single_coal_grades["grade"])
                                         mine_data["average_Third_Party_GCV_Grade"] = single_coal_grades["grade"]
                                         # single_data["thrd_grade"] = single_coal_grades["grade"]
                                     elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
@@ -1361,17 +1577,16 @@ def coal_wcl_gcv_table(
                                         # single_data["thrd_grade"] = single_coal_grades["grade"]
                                         break
             final_data = []
-            console_logger.debug(month_date)
             if month_date:
                 filtered_data = [entry for entry in dataList if entry["month"] == month_date]
-                console_logger.debug(filtered_data)
+                # console_logger.debug(filtered_data)
                 if filtered_data:
-                    console_logger.debug(filtered_data)
+                    # console_logger.debug(filtered_data)
                     data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
                     for mine, values in data.items():
                         dictData = {}
-                        console_logger.debug(mine)
-                        console_logger.debug(values)
+                        # console_logger.debug(mine)
+                        # console_logger.debug(values)
                         dictData['Mine'] = mine
                         dictData['RR_Qty'] = str(values['average_RR_Qty'])
                         dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
@@ -1392,11 +1607,11 @@ def coal_wcl_gcv_table(
                 # data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
                 console_logger.debug(filtered_data)
                 for single_data in filtered_data:
-                    console_logger.debug(single_data)
+                    # console_logger.debug(single_data)
                     for mine, values in single_data['data'].items():
                         dictData = {}
-                        console_logger.debug(mine)
-                        console_logger.debug(values)
+                        # console_logger.debug(mine)
+                        # console_logger.debug(values)
                         dictData['Mine'] = mine
                         dictData['RR_Qty'] = str(values['average_RR_Qty'])
                         dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
@@ -1408,7 +1623,7 @@ def coal_wcl_gcv_table(
                                 dictData["Difference_Grade"] = str(abs(int(dictData['GCV_Grade'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
                             dictData["Difference_GCV_value"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
                         final_data.append(dictData)
-            console_logger.debug(list(final_data[0].keys()))
+            # console_logger.debug(list(final_data[0].keys()))
             result["labels"] = list(final_data[0].keys())
             result["total"] = len(final_data)
             # final_data.append(countDict)
@@ -2946,9 +3161,11 @@ def minewise_road_analysis(response:Response,type: Optional[str] = "Daily",
 
 @router.get("/minewise_road_table", tags=["Road Map"])
 def gmr_table(response: Response, currentPage: Optional[int] = None,
-              perPage: Optional[int] = None,
-              mine: Optional[str] = "All",
-              type: Optional[str] = "display"):
+                perPage: Optional[int] = None,
+                mine: Optional[str] = "All",
+                start_timestamp: Optional[str] = None,
+                end_timestamp: Optional[str] = None,
+                type: Optional[str] = "display"):
     try:
         data = {}
         result = {        
@@ -2970,6 +3187,12 @@ def gmr_table(response: Response, currentPage: Optional[int] = None,
             if perPage:
                 page_len = perPage
                 result["page_size"] = perPage
+
+            if start_timestamp:
+                data["created_at__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+
+            if end_timestamp:
+                data["created_at__lte"] = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
 
             if mine and mine != "All":
                 data["mine__icontains"] = mine.upper()
@@ -3035,6 +3258,12 @@ def gmr_table(response: Response, currentPage: Optional[int] = None,
             target_directory = f"static_server/gmr_ai/{file}"
             os.umask(0)
             os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+            if start_timestamp:
+                data["created_at__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+
+            if end_timestamp:
+                data["created_at__lte"] = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
 
             if mine and mine != "All":
                 data["mine__icontains"] = mine.upper()
@@ -3538,7 +3767,6 @@ console_logger.debug(f"---- Coal Consumption Hr ----      {consumption_hr}")
 console_logger.debug(f"---- Coal Consumption Min ----     {consumption_min}")
 
 
-
 backgroundTaskHandler.run_job(task_name="save consumption data",
                                 func=extract_historian_data,
                                 trigger="cron",
@@ -3560,5 +3788,4 @@ if __name__ == "__main__":
     uvicorn.run("main:router",reload=False, host="0.0.0.0",port=7704)
     # sched.add_job(scheduled_job, "interval", seconds=10)
     # sched.start()
-
 

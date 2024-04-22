@@ -31,6 +31,8 @@ from helpers.serializer import *
 import xlsxwriter
 from typing import Optional
 from mongoengine.queryset.visitor import Q
+from collections import defaultdict
+import pandas as pd
 
 ### database setup
 host = os.environ.get("HOST", "192.168.1.57")
@@ -831,6 +833,7 @@ def coal_wcl_gcv_table(
     search_text: Optional[str] = None,
     start_timestamp: Optional[str] = None,
     end_timestamp: Optional[str] = None,
+    month_date: Optional[str] = None,
     type: Optional[str] = "display"):
     try:
         data = {}
@@ -864,13 +867,131 @@ def coal_wcl_gcv_table(
             logs = CoalTesting.objects(**data).order_by("-ID").skip(offset).limit(page_len)
 
             if any(logs):
-                for log in logs:
-                    console_logger.debug(log.gradepayload().keys())
-                    result["labels"] = list(log.gradepayload().keys())
-                    result["datasets"].append(log.gradepayload())
+                aggregated_data = defaultdict(lambda: defaultdict(lambda: {"DO_Qty": 0, "Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)_count": 0, "count": 0}))
 
-            result["total"] = len(CoalTesting.objects(**data))
-            console_logger.debug(f"-------- Road Coal Testing Response -------- {result}")
+                for log in logs:
+                    month = log.receive_date.strftime("%Y-%m")
+                    console_logger.debug(month)
+                    payload = log.gradepayload()
+                    console_logger.debug(payload)
+                    mine = payload["Mine"]
+                    # aggregated_data[month][mine]["RR_Qty"] += float(payload["RR_Qty"])
+                    # rr_qty_values = payload["RR_Qty"].split('.')  # Split the string by periods
+                    # console_logger.debug(rr_qty_values)
+                    aggregated_data[month][mine]["DO_Qty"] += float(payload["DO_Qty"])
+                    aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["Gross_Calorific_Value_(Adb)"])
+                    # console_logger.debug(payload["Third_Party_Gross_Calorific_Value_(Adb)"])   
+                    if payload.get("Third_Party_Gross_Calorific_Value_(Adb)"):
+                        console_logger.debug(payload["Third_Party_Gross_Calorific_Value_(Adb)"])
+                        aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)"] += float(payload["Third_Party_Gross_Calorific_Value_(Adb)"])
+                        aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)_count"] += 1
+                    # else:
+                    #     aggregated_data[month][mine]["Third_Party_Gcv"] = None
+                    aggregated_data[month][mine]["count"] += 1
+
+                
+                console_logger.debug(aggregated_data)
+
+                dataList = [
+                    {"month": month, "data": {
+                        mine: {
+                            "average_DO_Qty": data["DO_Qty"] / data["count"],
+                            "average_Gross_Calorific_Value_(Adb)": data["Gross_Calorific_Value_(Adb)"] / data["count"],
+                            "average_Third_Party_Gross_Calorific_Value_(Adb)": data["Third_Party_Gross_Calorific_Value_(Adb)"] / data["Third_Party_Gross_Calorific_Value_(Adb)_count"] if data["Third_Party_Gross_Calorific_Value_(Adb)"] != 0 else "",
+                        } for mine, data in aggregated_data[month].items()
+                    }} for month in aggregated_data
+                ]
+                console_logger.debug(dataList)
+                coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
+
+                # Iterate through each month's data
+                for month_data in dataList:
+                    for key, mine_data in month_data["data"].items():
+                        console_logger.debug(mine_data["average_Gross_Calorific_Value_(Adb)"])
+                        if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
+                            for single_coal_grades in coal_grades:
+                                # console_logger.debug(single_coal_grades["start_value"])
+                                # console_logger.debug(mine_data["average_Gross_Calorific_Value_(Adb)"])
+                                # console_logger.debug(single_coal_grades["end_value"])
+                                if single_coal_grades["end_value"] != "":
+                                    if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                                        console_logger.debug(single_coal_grades["grade"])
+                                        mine_data["average_GCV_Grade"] = single_coal_grades["grade"]
+                                        # single_data["thrd_grade"] = single_coal_grades["grade"]
+                                    elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                        console_logger.debug("G-1")
+                                        mine_data["average_GCV_Grade"] = "G-1"
+                                        # single_data["thrd_grade"] = single_coal_grades["grade"]
+                                        break
+                                # else:
+                                #     mine_data["average_GCV_Grade"] = "G-1"
+
+                        if mine_data["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                            for single_coal_grades in coal_grades:
+                                console_logger.debug(mine_data.get("average_Third_Party_Gross_Calorific_Value_(Adb)"))
+                                if single_coal_grades["end_value"] != "":
+                                    if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Third_Party_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                                        console_logger.debug(single_coal_grades["grade"])
+                                        mine_data["average_Third_Party_GCV_Grade"] = single_coal_grades["grade"]
+                                        # single_data["thrd_grade"] = single_coal_grades["grade"]
+                                    elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                        console_logger.debug("G-1")
+                                        mine_data["average_Third_Party_GCV_Grade"] = "G-1"
+                                        # single_data["thrd_grade"] = single_coal_grades["grade"]
+                                        break
+            final_data = []
+            console_logger.debug(month_date)
+            if month_date:
+                filtered_data = [entry for entry in dataList if entry["month"] == month_date]
+                console_logger.debug(filtered_data)
+                if filtered_data:
+                    console_logger.debug(filtered_data)
+                    data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                    for mine, values in data.items():
+                        dictData = {}
+                        console_logger.debug(mine)
+                        console_logger.debug(values)
+                        dictData['Mine'] = mine
+                        dictData['DO_Qty'] = str(values['average_DO_Qty'])
+                        dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                        if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":    
+                            dictData['GCV_Grade'] = values['average_GCV_Grade']
+                            dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                            if values.get("average_Third_Party_GCV_Grade"):
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                dictData["Difference_Grade"] = str(abs(int(dictData['GCV_Grade'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
+                            dictData["Difference_GCV_value"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                            # str(abs(int(single_data["thrd_grade"].replace('G-', '')) - int(single_data["grade"].replace('G-', ''))))
+                        final_data.append(dictData)
+                else:
+                    console_logger.debug("No data available for the given month:", month_data)
+            else:
+                console_logger.debug("inside else")
+                filtered_data = [entry for entry in dataList]
+                # data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                console_logger.debug(filtered_data)
+                for single_data in filtered_data:
+                    console_logger.debug(single_data)
+                    for mine, values in single_data['data'].items():
+                        dictData = {}
+                        console_logger.debug(mine)
+                        console_logger.debug(values)
+                        dictData['Mine'] = mine
+                        dictData['DO_Qty'] = str(values['average_DO_Qty'])
+                        dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                        if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                            dictData['GCV_Grade'] = values['average_GCV_Grade']
+                            dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                            if values.get("average_Third_Party_GCV_Grade"):
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                dictData["Difference_Grade"] = str(abs(int(dictData['GCV_Grade'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
+                            dictData["Difference_GCV_value"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                        final_data.append(dictData)
+            console_logger.debug(list(final_data[0].keys()))
+            result["labels"] = list(final_data[0].keys())
+            result["total"] = len(final_data)
+            # final_data.append(countDict)
+            result["datasets"] = final_data
             return result
         
         elif type and type == "download":
@@ -945,22 +1066,593 @@ def coal_wcl_gcv_table(
                     for index, header in enumerate(headers):
                         worksheet.write(0, index, header, cell_format2)
 
-                    for row, query in enumerate(usecase_data,start=1):
-                        result = query.gradepayload()
-                        console_logger.debug(query.gradepayload())
+                    
+                    if any(usecase_data):
+                        aggregated_data = defaultdict(lambda: defaultdict(lambda: {"DO_Qty": 0, "Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)_count": 0, "count": 0}))
+
+                        for log in usecase_data:
+                            month = log.receive_date.strftime("%Y-%m")
+                            console_logger.debug(month)
+                            payload = log.gradepayload()
+                            console_logger.debug(payload)
+                            mine = payload["Mine"]
+                            # aggregated_data[month][mine]["RR_Qty"] += float(payload["RR_Qty"])
+                            # rr_qty_values = payload["RR_Qty"].split('.')  # Split the string by periods
+                            # console_logger.debug(rr_qty_values)
+                            aggregated_data[month][mine]["DO_Qty"] += float(payload["DO_Qty"])
+                            aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["Gross_Calorific_Value_(Adb)"])
+                            console_logger.debug(payload["Third_Party_Gross_Calorific_Value_(Adb)"])   
+                            if payload["Third_Party_Gross_Calorific_Value_(Adb)"] != None:
+                                console_logger.debug(payload["Third_Party_Gross_Calorific_Value_(Adb)"])
+                                aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)"] += float(payload["Third_Party_Gross_Calorific_Value_(Adb)"])
+                                aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)_count"] += 1
+                            # else:
+                            #     aggregated_data[month][mine]["Third_Party_Gcv"] = None
+                            aggregated_data[month][mine]["count"] += 1
+
+                        
+                        console_logger.debug(aggregated_data)
+
+                        dataList = [
+                            {"month": month, "data": {
+                                mine: {
+                                    "average_DO_Qty": data["DO_Qty"] / data["count"],
+                                    "average_Gross_Calorific_Value_(Adb)": data["Gross_Calorific_Value_(Adb)"] / data["count"],
+                                    "average_Third_Party_Gross_Calorific_Value_(Adb)": data["Third_Party_Gross_Calorific_Value_(Adb)"] / data["Third_Party_Gross_Calorific_Value_(Adb)_count"] if data["Third_Party_Gross_Calorific_Value_(Adb)"] != 0 else "",
+                                } for mine, data in aggregated_data[month].items()
+                            }} for month in aggregated_data
+                        ]
+                        console_logger.debug(dataList)
+                        coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
+
+                        # Iterate through each month's data
+                        for month_data in dataList:
+                            for key, mine_data in month_data["data"].items():
+                                console_logger.debug(mine_data["average_Gross_Calorific_Value_(Adb)"])
+                                if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
+                                    for single_coal_grades in coal_grades:
+                                        # console_logger.debug(single_coal_grades["start_value"])
+                                        # console_logger.debug(mine_data["average_Gross_Calorific_Value_(Adb)"])
+                                        # console_logger.debug(single_coal_grades["end_value"])
+                                        if single_coal_grades["end_value"] != "":
+                                            if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                                                console_logger.debug(single_coal_grades["grade"])
+                                                mine_data["average_GCV_Grade"] = single_coal_grades["grade"]
+                                                # single_data["thrd_grade"] = single_coal_grades["grade"]
+                                            elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                                console_logger.debug("G-1")
+                                                mine_data["average_GCV_Grade"] = "G-1"
+                                                # single_data["thrd_grade"] = single_coal_grades["grade"]
+                                                break
+                                        # else:
+                                        #     mine_data["average_GCV_Grade"] = "G-1"
+
+                                if mine_data["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                    for single_coal_grades in coal_grades:
+                                        console_logger.debug(mine_data.get("average_Third_Party_Gross_Calorific_Value_(Adb)"))
+                                        if single_coal_grades["end_value"] != "":
+                                            if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Third_Party_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                                                console_logger.debug(single_coal_grades["grade"])
+                                                mine_data["average_Third_Party_GCV_Grade"] = single_coal_grades["grade"]
+                                                # single_data["thrd_grade"] = single_coal_grades["grade"]
+                                            elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                                console_logger.debug("G-1")
+                                                mine_data["average_Third_Party_GCV_Grade"] = "G-1"
+                                                # single_data["thrd_grade"] = single_coal_grades["grade"]
+                                                break
+                    final_data = []
+                    console_logger.debug(month_date)
+                    if month_date:
+                        filtered_data = [entry for entry in dataList if entry["month"] == month_date]
+                        console_logger.debug(filtered_data)
+                        if filtered_data:
+                            console_logger.debug(filtered_data)
+                            data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                            for mine, values in data.items():
+                                dictData = {}
+                                console_logger.debug(mine)
+                                console_logger.debug(values)
+                                dictData['Mine'] = mine
+                                dictData['DO_Qty'] = str(values['average_DO_Qty'])
+                                dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                                if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":    
+                                    dictData['GCV_Grade'] = values['average_GCV_Grade']
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                                    if values.get("average_Third_Party_GCV_Grade"):
+                                        dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                        dictData["Difference_Grade"] = str(abs(int(dictData['GCV_Grade'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
+                                    dictData["Difference_GCV_value"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                    # str(abs(int(single_data["thrd_grade"].replace('G-', '')) - int(single_data["grade"].replace('G-', ''))))
+                                final_data.append(dictData)
+                        else:
+                            console_logger.debug("No data available for the given month:", month_data)
+                    else:
+                        console_logger.debug("inside else")
+                        filtered_data = [entry for entry in dataList]
+                        # data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                        console_logger.debug(filtered_data)
+                        for single_data in filtered_data:
+                            console_logger.debug(single_data)
+                            for mine, values in single_data['data'].items():
+                                dictData = {}
+                                console_logger.debug(mine)
+                                console_logger.debug(values)
+                                dictData['Mine'] = mine
+                                dictData['DO_Qty'] = str(values['average_DO_Qty'])
+                                dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                                if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                    dictData['GCV_Grade'] = values['average_GCV_Grade']
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                                    if values.get("average_Third_Party_GCV_Grade"):
+                                        dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                        dictData["Difference_Grade"] = str(abs(int(dictData['GCV_Grade'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
+                                    dictData["Difference_GCV_value"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                final_data.append(dictData)
+                    console_logger.debug(list(final_data[0].keys()))
+                    result["labels"] = list(final_data[0].keys())
+                    result["total"] = len(final_data)
+                    # final_data.append(countDict)
+                    result["datasets"] = final_data
+
+                    console_logger.debug(result["datasets"])
+                    
+                    
+                    row = 1
+                    for single_data in result["datasets"]:
                         worksheet.write(row, 0, count, cell_format)
-                        worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                        worksheet.write(row, 2, str(result["RR_Qty"]), cell_format)
-                        worksheet.write(row, 3, str(result["Gross_Calorific_Value_(Adb)"]), cell_format)
-                        worksheet.write(row, 4, str(result["grade"]), cell_format)
-                        worksheet.write(row, 5, str(result["gcv_difference"]), cell_format)
-                        worksheet.write(row, 6, str(result["thrdgcv"]), cell_format)
-                        worksheet.write(row, 7, str(result["thrd_grade"]), cell_format)
-                        worksheet.write(row, 8, str(result["grade_diff"]), cell_format)
-                        worksheet.write(row, 9, str(result["Date"]), cell_format)
-                        worksheet.write(row, 10, str(result["Time"]), cell_format)
+                        worksheet.write(row, 1, single_data["Mine"])
+                        worksheet.write(row, 2, single_data["DO_Qty"])
+                        worksheet.write(row, 3, single_data["Gross_Calorific_Value_(Adb)"])
+                        if single_data.get("GCV_Grade") != "" and single_data.get("GCV_Grade") != None:
+                            worksheet.write(row, 4, str(single_data["GCV_Grade"]), cell_format)
+                        if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != None:
+                            worksheet.write(row, 5, str(single_data["Third_Party_Gross_Calorific_Value_(Adb)"]), cell_format)
+                        if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != None:
+                            worksheet.write(row, 6, str(single_data["Third_Party_Gross_Calorific_Value_(Adb)_grade"]), cell_format)
+                        if single_data.get("Difference_Grade") != "" and single_data.get("Difference_Grade") != None:
+                            worksheet.write(row, 7, str(single_data["Difference_Grade"]), cell_format)
+                        if single_data.get("Difference_GCV_value") != "" and single_data.get("Difference_GCV_value") != None:
+                            worksheet.write(row, 8, str(single_data["Difference_GCV_value"]), cell_format)
                         count -= 1
+                        row += 1
                     workbook.close()
+
+                    console_logger.debug("Successfully {} report generated".format(service_id))
+                    console_logger.debug("sent data {}".format(path))
+                    return {
+                            "Type": "coal_test_download_event",
+                            "Datatype": "Report",
+                            "File_Path": path,
+                        }
+                except Exception as e:
+                    console_logger.debug(e)
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+                    console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            else:
+                console_logger.error("No data found")
+                return {
+                            "Type": "coal_test_download_event",
+                            "Datatype": "Report",
+                            "File_Path": path,
+                        }
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.get("/coal_gcv_table_train", tags=["Coal Testing"])
+def coal_wcl_gcv_table(
+    response: Response,
+    currentPage: Optional[int] = None,
+    perPage: Optional[int] = None,
+    search_text: Optional[str] = None,
+    start_timestamp: Optional[str] = None,
+    end_timestamp: Optional[str] = None,
+    month_date: Optional[str] = None,
+    type: Optional[str] = "display"):
+    try:
+        data = {}
+        result = {"labels": [], "datasets": [], "total": 0, "page_size": 15}
+
+        if type and type == "display":
+            page_no = 1
+            page_len = result["page_size"]
+
+            if currentPage:
+                page_no = currentPage
+
+            if perPage:
+                page_len = perPage
+                result["page_size"] = perPage
+
+            if start_timestamp:
+                data["receive_date__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+
+            if end_timestamp:
+                data["receive_date__lte"] =  datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
+
+            if search_text:
+                if search_text.isdigit():
+                    data["rrNo__icontains"] = search_text
+                else:
+                    data["location__icontains"] = search_text
+
+            offset = (page_no - 1) * page_len
+            console_logger.debug(data)
+            logs = CoalTestingTrain.objects(**data).order_by("-ID").skip(offset).limit(page_len)
+
+            if any(logs):
+                aggregated_data = defaultdict(lambda: defaultdict(lambda: {"RR_Qty": 0, "Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)_count": 0, "count": 0}))
+
+                for log in logs:
+                    month = log.receive_date.strftime("%Y-%m")
+                    console_logger.debug(month)
+                    payload = log.gradepayload()
+                    console_logger.debug(payload)
+                    mine = payload["Mine"]
+                    # aggregated_data[month][mine]["RR_Qty"] += float(payload["RR_Qty"])
+                    # rr_qty_values = payload["RR_Qty"].split('.')  # Split the string by periods
+                    # console_logger.debug(rr_qty_values)
+                    aggregated_data[month][mine]["RR_Qty"] += float(payload["RR_Qty"])
+                    aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["Gross_Calorific_Value_(Adb)"])
+                    if payload.get("Third_Party_Gross_Calorific_Value_(Adb)"):
+                        console_logger.debug(payload["Third_Party_Gross_Calorific_Value_(Adb)"])
+                        aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)"] += float(payload["Third_Party_Gross_Calorific_Value_(Adb)"])
+                        aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)_count"] += 1
+                    # else:
+                    #     aggregated_data[month][mine]["Third_Party_Gcv"] = None
+                    aggregated_data[month][mine]["count"] += 1
+
+                
+                console_logger.debug(aggregated_data)
+
+                dataList = [
+                    {"month": month, "data": {
+                        mine: {
+                            "average_RR_Qty": data["RR_Qty"] / data["count"],
+                            "average_Gross_Calorific_Value_(Adb)": data["Gross_Calorific_Value_(Adb)"] / data["count"],
+                            "average_Third_Party_Gross_Calorific_Value_(Adb)": data["Third_Party_Gross_Calorific_Value_(Adb)"] / data["Third_Party_Gross_Calorific_Value_(Adb)_count"] if data["Third_Party_Gross_Calorific_Value_(Adb)"] != 0 else "",
+                        } for mine, data in aggregated_data[month].items()
+                    }} for month in aggregated_data
+                ]
+                console_logger.debug(dataList)
+                coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
+
+                # Iterate through each month's data
+                for month_data in dataList:
+                    for key, mine_data in month_data["data"].items():
+                        console_logger.debug(mine_data["average_Gross_Calorific_Value_(Adb)"])
+                        if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
+                            for single_coal_grades in coal_grades:
+                                # console_logger.debug(single_coal_grades["start_value"])
+                                # console_logger.debug(mine_data["average_Gross_Calorific_Value_(Adb)"])
+                                # console_logger.debug(single_coal_grades["end_value"])
+                                if single_coal_grades["end_value"] != "":
+                                    if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                                        console_logger.debug(single_coal_grades["grade"])
+                                        mine_data["average_GCV_Grade"] = single_coal_grades["grade"]
+                                        # single_data["thrd_grade"] = single_coal_grades["grade"]
+                                    elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                        console_logger.debug("G-1")
+                                        mine_data["average_GCV_Grade"] = "G-1"
+                                        # single_data["thrd_grade"] = single_coal_grades["grade"]
+                                        break
+                                # else:
+                                #     mine_data["average_GCV_Grade"] = "G-1"
+
+                        if mine_data["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                            for single_coal_grades in coal_grades:
+                                console_logger.debug(mine_data.get("average_Third_Party_Gross_Calorific_Value_(Adb)"))
+                                if single_coal_grades["end_value"] != "":
+                                    if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Third_Party_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                                        console_logger.debug(single_coal_grades["grade"])
+                                        mine_data["average_Third_Party_GCV_Grade"] = single_coal_grades["grade"]
+                                        # single_data["thrd_grade"] = single_coal_grades["grade"]
+                                    elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                        console_logger.debug("G-1")
+                                        mine_data["average_Third_Party_GCV_Grade"] = "G-1"
+                                        # single_data["thrd_grade"] = single_coal_grades["grade"]
+                                        break
+            final_data = []
+            console_logger.debug(month_date)
+            if month_date:
+                filtered_data = [entry for entry in dataList if entry["month"] == month_date]
+                console_logger.debug(filtered_data)
+                if filtered_data:
+                    console_logger.debug(filtered_data)
+                    data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                    for mine, values in data.items():
+                        dictData = {}
+                        console_logger.debug(mine)
+                        console_logger.debug(values)
+                        dictData['Mine'] = mine
+                        dictData['RR_Qty'] = str(values['average_RR_Qty'])
+                        dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                        if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":    
+                            dictData['GCV_Grade'] = values['average_GCV_Grade']
+                            dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                            if values.get("average_Third_Party_GCV_Grade"):
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                dictData["Difference_Grade"] = str(abs(int(dictData['GCV_Grade'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
+                            dictData["Difference_GCV_value"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                            # str(abs(int(single_data["thrd_grade"].replace('G-', '')) - int(single_data["grade"].replace('G-', ''))))
+                        final_data.append(dictData)
+                else:
+                    console_logger.debug("No data available for the given month:", month_data)
+            else:
+                console_logger.debug("inside else")
+                filtered_data = [entry for entry in dataList]
+                # data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                console_logger.debug(filtered_data)
+                for single_data in filtered_data:
+                    console_logger.debug(single_data)
+                    for mine, values in single_data['data'].items():
+                        dictData = {}
+                        console_logger.debug(mine)
+                        console_logger.debug(values)
+                        dictData['Mine'] = mine
+                        dictData['RR_Qty'] = str(values['average_RR_Qty'])
+                        dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                        if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                            dictData['GCV_Grade'] = values['average_GCV_Grade']
+                            dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                            if values.get("average_Third_Party_GCV_Grade"):
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                dictData["Difference_Grade"] = str(abs(int(dictData['GCV_Grade'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
+                            dictData["Difference_GCV_value"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                        final_data.append(dictData)
+            console_logger.debug(list(final_data[0].keys()))
+            result["labels"] = list(final_data[0].keys())
+            result["total"] = len(final_data)
+            # final_data.append(countDict)
+            result["datasets"] = final_data
+            return result
+        
+        elif type and type == "download":
+            del type
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+            
+            if start_timestamp:
+                data["receive_date__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+
+            if end_timestamp:
+                data["receive_date__lte"] =  datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
+
+            console_logger.debug(data)
+
+            if search_text:
+                if search_text.isdigit():
+                    data["rrNo__icontains"] = search_text
+                    del search_text
+                else:
+                    data["location__icontains"] = search_text
+                    del search_text
+            console_logger.debug(data)
+            usecase_data = CoalTestingTrain.objects(**data).order_by("-receive_date")
+            count = len(usecase_data)
+            console_logger.debug(count)
+            path = None
+            if usecase_data:
+                console_logger.debug("inside usecase data")
+                try:
+                    path = os.path.join(
+                        "static_server",
+                        "gmr_ai",
+                        file,
+                        "Railwise_GCV_Grade_Comparision_Report_{}.xlsx".format(
+                            datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                        ),
+                    )
+                    filename = os.path.join(os.getcwd(), path)
+                    workbook = xlsxwriter.Workbook(filename)
+                    workbook.use_zip64()
+                    cell_format2 = workbook.add_format()
+                    cell_format2.set_bold()
+                    cell_format2.set_font_size(10)
+                    cell_format2.set_align("center")
+                    cell_format2.set_align("vjustify")
+
+                    worksheet = workbook.add_worksheet()
+                    worksheet.set_column("A:AZ", 20)
+                    worksheet.set_default_row(50)
+                    cell_format = workbook.add_format()
+                    cell_format.set_font_size(10)
+                    cell_format.set_align("center")
+                    cell_format.set_align("vcenter")
+
+                    headers = [
+                        "Sr.No",
+                        "Mine",
+                        "RR_Qty",
+                        "Gross_Calorific_Value_(Adb)",
+                        "GCV_Grade",
+                        "Third_Party_Gross_Calorific_Value_(Adb)",
+                        "Third_Party_Gross_Calorific_Value_(Adb)_grade",
+                        "Difference_Grade",
+                        "Difference_GCV_value"
+                    ]
+
+                    for index, header in enumerate(headers):
+                        worksheet.write(0, index, header, cell_format2)
+
+
+                    if any(usecase_data):
+                        aggregated_data = defaultdict(lambda: defaultdict(lambda: {"RR_Qty": 0, "Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)_count": 0, "count": 0}))
+
+                        for log in usecase_data:
+                            month = log.receive_date.strftime("%Y-%m")
+                            console_logger.debug(month)
+                            payload = log.gradepayload()
+                            console_logger.debug(payload)
+                            mine = payload["Mine"]
+                            # aggregated_data[month][mine]["RR_Qty"] += float(payload["RR_Qty"])
+                            # rr_qty_values = payload["RR_Qty"].split('.')  # Split the string by periods
+                            # console_logger.debug(rr_qty_values)
+                            aggregated_data[month][mine]["RR_Qty"] += float(payload["RR_Qty"])
+                            aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["Gross_Calorific_Value_(Adb)"])
+                            console_logger.debug(payload["Third_Party_Gross_Calorific_Value_(Adb)"])   
+                            if payload["Third_Party_Gross_Calorific_Value_(Adb)"] != None:
+                                console_logger.debug(payload["Third_Party_Gross_Calorific_Value_(Adb)"])
+                                aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)"] += float(payload["Third_Party_Gross_Calorific_Value_(Adb)"])
+                                aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)_count"] += 1
+                            # else:
+                            #     aggregated_data[month][mine]["Third_Party_Gcv"] = None
+                            aggregated_data[month][mine]["count"] += 1
+
+                        
+                        console_logger.debug(aggregated_data)
+
+                        dataList = [
+                            {"month": month, "data": {
+                                mine: {
+                                    "average_RR_Qty": data["RR_Qty"] / data["count"],
+                                    "average_Gross_Calorific_Value_(Adb)": data["Gross_Calorific_Value_(Adb)"] / data["count"],
+                                    "average_Third_Party_Gross_Calorific_Value_(Adb)": data["Third_Party_Gross_Calorific_Value_(Adb)"] / data["Third_Party_Gross_Calorific_Value_(Adb)_count"] if data["Third_Party_Gross_Calorific_Value_(Adb)"] != 0 else "",
+                                } for mine, data in aggregated_data[month].items()
+                            }} for month in aggregated_data
+                        ]
+                        console_logger.debug(dataList)
+                        coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
+
+                        # Iterate through each month's data
+                        for month_data in dataList:
+                            for key, mine_data in month_data["data"].items():
+                                console_logger.debug(mine_data["average_Gross_Calorific_Value_(Adb)"])
+                                if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
+                                    for single_coal_grades in coal_grades:
+                                        # console_logger.debug(single_coal_grades["start_value"])
+                                        # console_logger.debug(mine_data["average_Gross_Calorific_Value_(Adb)"])
+                                        # console_logger.debug(single_coal_grades["end_value"])
+                                        if single_coal_grades["end_value"] != "":
+                                            if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                                                console_logger.debug(single_coal_grades["grade"])
+                                                mine_data["average_GCV_Grade"] = single_coal_grades["grade"]
+                                                # single_data["thrd_grade"] = single_coal_grades["grade"]
+                                            elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                                console_logger.debug("G-1")
+                                                mine_data["average_GCV_Grade"] = "G-1"
+                                                # single_data["thrd_grade"] = single_coal_grades["grade"]
+                                                break
+                                        # else:
+                                        #     mine_data["average_GCV_Grade"] = "G-1"
+
+                                if mine_data["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                    for single_coal_grades in coal_grades:
+                                        console_logger.debug(mine_data.get("average_Third_Party_Gross_Calorific_Value_(Adb)"))
+                                        if single_coal_grades["end_value"] != "":
+                                            if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Third_Party_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                                                console_logger.debug(single_coal_grades["grade"])
+                                                mine_data["average_Third_Party_GCV_Grade"] = single_coal_grades["grade"]
+                                                # single_data["thrd_grade"] = single_coal_grades["grade"]
+                                            elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                                console_logger.debug("G-1")
+                                                mine_data["average_Third_Party_GCV_Grade"] = "G-1"
+                                                # single_data["thrd_grade"] = single_coal_grades["grade"]
+                                                break
+                    final_data = []
+                    console_logger.debug(month_date)
+                    if month_date:
+                        filtered_data = [entry for entry in dataList if entry["month"] == month_date]
+                        console_logger.debug(filtered_data)
+                        if filtered_data:
+                            console_logger.debug(filtered_data)
+                            data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                            for mine, values in data.items():
+                                dictData = {}
+                                console_logger.debug(mine)
+                                console_logger.debug(values)
+                                dictData['Mine'] = mine
+                                dictData['RR_Qty'] = str(values['average_RR_Qty'])
+                                dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                                if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":    
+                                    dictData['GCV_Grade'] = values['average_GCV_Grade']
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                                    if values.get("average_Third_Party_GCV_Grade"):
+                                        dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                        dictData["Difference_Grade"] = str(abs(int(dictData['GCV_Grade'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
+                                    dictData["Difference_GCV_value"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                    # str(abs(int(single_data["thrd_grade"].replace('G-', '')) - int(single_data["grade"].replace('G-', ''))))
+                                final_data.append(dictData)
+                        else:
+                            console_logger.debug("No data available for the given month:", month_data)
+                    else:
+                        console_logger.debug("inside else")
+                        filtered_data = [entry for entry in dataList]
+                        # data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                        console_logger.debug(filtered_data)
+                        for single_data in filtered_data:
+                            console_logger.debug(single_data)
+                            for mine, values in single_data['data'].items():
+                                dictData = {}
+                                console_logger.debug(mine)
+                                console_logger.debug(values)
+                                dictData['Mine'] = mine
+                                dictData['RR_Qty'] = str(values['average_RR_Qty'])
+                                dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                                if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                    dictData['GCV_Grade'] = values['average_GCV_Grade']
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                                    if values.get("average_Third_Party_GCV_Grade"):
+                                        dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                        dictData["Difference_Grade"] = str(abs(int(dictData['GCV_Grade'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
+                                    dictData["Difference_GCV_value"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                final_data.append(dictData)
+                    console_logger.debug(list(final_data[0].keys()))
+                    result["labels"] = list(final_data[0].keys())
+                    result["total"] = len(final_data)
+                    # final_data.append(countDict)
+                    result["datasets"] = final_data
+
+                    console_logger.debug(result["datasets"])
+                    row = 1
+                    for single_data in result["datasets"]:
+                        worksheet.write(row, 0, count, cell_format)
+                        worksheet.write(row, 1, single_data["Mine"])
+                        worksheet.write(row, 2, single_data["RR_Qty"])
+                        worksheet.write(row, 3, single_data["Gross_Calorific_Value_(Adb)"])
+                        if single_data.get("GCV_Grade") != "" and single_data.get("GCV_Grade") != None:
+                            worksheet.write(row, 4, str(single_data["GCV_Grade"]), cell_format)
+                        if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != None:
+                            worksheet.write(row, 5, str(single_data["Third_Party_Gross_Calorific_Value_(Adb)"]), cell_format)
+                        if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != None:
+                            worksheet.write(row, 6, str(single_data["Third_Party_Gross_Calorific_Value_(Adb)_grade"]), cell_format)
+                        if single_data.get("Difference_Grade") != "" and single_data.get("Difference_Grade") != None:
+                            worksheet.write(row, 7, str(single_data["Difference_Grade"]), cell_format)
+                        if single_data.get("Difference_GCV_value") != "" and single_data.get("Difference_GCV_value") != None:
+                            worksheet.write(row, 8, str(single_data["Difference_GCV_value"]), cell_format)
+                        count -= 1
+                        row += 1
+                    workbook.close()
+                    
+                    # row = 1
+                    # for single_data in data:
+                    #     worksheet.write(row, 0, count, cell_format)
+                    #     worksheet.write(row, 1, single_data["Mine"])
+                    #     worksheet.write(row, 2, single_data["DO_Qty"])
+                    #     worksheet.write(row, 3, single_data["Gross_Calorific_Value_(Adb)"])
+                    #     if single_data.get("GCV_Grade") != "" and single_data.get("GCV_Grade") != None:
+                    #         worksheet.write(row, 4, str(single_data["GCV_Grade"]), cell_format)
+                    #     if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != None:
+                    #         worksheet.write(row, 5, str(single_data["Third_Party_Gross_Calorific_Value_(Adb)"]), cell_format)
+                    #     if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != None:
+                    #         worksheet.write(row, 6, str(single_data["Third_Party_Gross_Calorific_Value_(Adb)_grade"]), cell_format)
+                    #     if single_data.get("Difference_Grade") != "" and single_data.get("Difference_Grade") != None:
+                    #         worksheet.write(row, 7, str(single_data["Difference_Grade"]), cell_format)
+                    #     if single_data.get("Difference_GCV_value") != "" and single_data.get("Difference_GCV_value") != None:
+                    #         worksheet.write(row, 8, str(single_data["Difference_GCV_value"]), cell_format)
+                    #     count -= 1
+                    #     row += 1
+                    # workbook.close()
 
                     console_logger.debug("Successfully {} report generated".format(service_id))
                     console_logger.debug("sent data {}".format(path))
@@ -1056,6 +1748,19 @@ def wcl_addon_data(response: Response, data: WCLtest):
         console_logger.debug(dataLoad.get("id"))
         fetchCoaltesting = CoalTesting.objects.get(id=dataLoad.get("id"))
         if fetchCoaltesting:
+            
+            for param_name, param_value in dataLoad.get("coal_data").items():
+                # Check if the parameter exists already
+                if not any(param['parameter_Name'] == param_name.rsplit('_', 1)[0] for param in fetchCoaltesting.parameters):
+                    # if param_name != "Third_Party_Gcv":
+                    single_data = {
+                        "parameter_Name": param_name.rsplit('_', 1)[0],
+                        "unit_Val": param_name.rsplit('_', 1)[1],  # Add the unit value if available
+                        "test_Method": "",  # Add the test method if available
+                        "val1": param_value
+                    }
+                    fetchCoaltesting.parameters.append(single_data)
+
             for single_data in fetchCoaltesting.parameters:
                 console_logger.debug(single_data)
 
@@ -1068,27 +1773,110 @@ def wcl_addon_data(response: Response, data: WCLtest):
                     single_data["val1"] = dataLoad.get("coal_data").get(param_name)
                 
                 if single_data["parameter_Name"] == "Gross_Calorific_Value_(Adb)":
-                    single_data["thrdgcv"] = dataLoad.get("coal_data").get("thrdgcv")
-                    single_data["gcv_difference"] = str(abs(float(single_data["val1"]) - float(dataLoad.get("coal_data").get("thrdgcv"))))
+                    single_data["Third_Party_Gross_Calorific_Value_(Adb)"] = dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")
+                    single_data["Gcv_Difference"] = str(abs(float(single_data["val1"]) - float(dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"))))
+
 
                     fetchCoalGrades = CoalGrades.objects()
                     for single_coal_grades in fetchCoalGrades:
                         if (
                             single_coal_grades["start_value"]
-                            <= dataLoad.get("coal_data").get("thrdgcv")
+                            <= dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")
                             <= single_coal_grades["end_value"]
                             and single_coal_grades["start_value"] != ""
                             and single_coal_grades["end_value"] != ""
                         ):
                             console_logger.debug(single_coal_grades["grade"])
-                            single_data["thrd_grade"] = single_coal_grades["grade"]
-                        elif dataLoad.get("coal_data").get("thrdgcv") > "7001":
+                            single_data["Third_Party_Grade"] = single_coal_grades["grade"]
+                        elif dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg") > "7001":
                             console_logger.debug("G-1")
-                            single_data["thrd_grade"] = single_coal_grades["grade"]
+                            single_data["Third_Party_Grade"] = single_coal_grades["grade"]
                             break
                     grade_diff = str(abs(int(single_coal_grades["grade"].replace('G-', '')) - int(single_data["grade"].replace('G-', ''))))
                     console_logger.debug(grade_diff)
-                    single_data["grade_diff"] = grade_diff
+                    single_data["Grade_Diff"] = grade_diff
+
+                
+                
+
+                else:
+                    single_data["thrdgcv"] = None
+                    single_data["gcv_difference"] = None
+                    single_data["thrd_grade"] = None
+                    single_data["grade_diff"] = None
+
+        fetchCoaltesting.save()
+        return {"detail": "success"}
+    
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+    
+
+
+@router.post("/coal_test_wcl_train_addon", tags=["Coal Testing"])
+def wcl_addon_data(response: Response, data: WCLtest):
+    try:
+        console_logger.debug(data.dict())
+        dataLoad = data.dict()
+        console_logger.debug(dataLoad)
+        console_logger.debug(dataLoad.get("id"))
+        fetchCoaltesting = CoalTestingTrain.objects.get(id=dataLoad.get("id"))
+        if fetchCoaltesting:
+            
+            for param_name, param_value in dataLoad.get("coal_data").items():
+                # Check if the parameter exists already
+                if not any(param['parameter_Name'] == param_name.rsplit('_', 1)[0] for param in fetchCoaltesting.parameters):
+                    # if param_name != "Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg":
+                    single_data = {
+                        "parameter_Name": param_name.rsplit('_', 1)[0],
+                        "unit_Val": param_name.rsplit('_', 1)[1],  # Add the unit value if available
+                        "test_Method": "",  # Add the test method if available
+                        "val1": param_value
+                    }
+                    fetchCoaltesting.parameters.append(single_data)
+
+            for single_data in fetchCoaltesting.parameters:
+                console_logger.debug(single_data)
+
+                # param_name = f"{single_data.get('parameter_Name')}_{single_data.get('unit_Val').replace(' ', '')}"
+                # param_name = f"{single_data.get('parameter_Name')}_{single_data.get('unit_Val')}".replace('_%','')
+                param_name = f"{single_data.get('parameter_Name')}_{single_data.get('unit_Val').replace(' ', '')}"
+                console_logger.debug(param_name)
+                console_logger.debug(dataLoad.get("coal_data").get(param_name))
+                if dataLoad.get("coal_data").get(param_name) is not None:
+                    single_data["val1"] = dataLoad.get("coal_data").get(param_name)
+                
+                if single_data["parameter_Name"] == "Gross_Calorific_Value_(Adb)":
+                    single_data["Third_Party_Gross_Calorific_Value_(Adb)"] = dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")
+                    single_data["Gcv_Difference"] = str(abs(float(single_data["val1"]) - float(dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"))))
+
+
+                    fetchCoalGrades = CoalGrades.objects()
+                    for single_coal_grades in fetchCoalGrades:
+                        if (
+                            single_coal_grades["start_value"]
+                            <= dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")
+                            <= single_coal_grades["end_value"]
+                            and single_coal_grades["start_value"] != ""
+                            and single_coal_grades["end_value"] != ""
+                        ):
+                            console_logger.debug(single_coal_grades["grade"])
+                            single_data["Third_Party_Grade"] = single_coal_grades["grade"]
+                        elif dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg") > "7001":
+                            console_logger.debug("G-1")
+                            single_data["Third_Party_Grade"] = single_coal_grades["grade"]
+                            break
+                    if single_data.get("grade"):
+                        grade_diff = str(abs(int(single_coal_grades["grade"].replace('G-', '')) - int(single_data["grade"].replace('G-', ''))))
+                        console_logger.debug(grade_diff)
+                        single_data["Grade_Diff"] = grade_diff
+
                 else:
                     single_data["thrdgcv"] = None
                     single_data["gcv_difference"] = None
@@ -1108,6 +1896,192 @@ def wcl_addon_data(response: Response, data: WCLtest):
         return e
 
 
+
+# @router.get("/coal_test_table", tags=["Coal Testing"])
+# def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, perPage: Optional[int] = None,
+#                     search_text: Optional[str] = None,
+#                     start_timestamp: Optional[str] = None,
+#                     end_timestamp: Optional[str] = None,
+#                     type: Optional[str] = "display"):
+#     # try:
+#     data={}
+#     result = {        
+#             "labels": [],
+#             "datasets": [],
+#             "total" : 0,
+#             "page_size": 15
+#     }
+    
+#     if type and type == "display":
+
+#         page_no = 1
+#         page_len = result["page_size"]
+
+#         if currentPage:
+#             page_no = currentPage
+
+#         if perPage:
+#             page_len = perPage
+#             result["page_size"] = perPage
+
+#         if start_timestamp:
+#             data["receive_date__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+
+#         if end_timestamp:
+#             data["receive_date__lte"] =  datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
+        
+#         if search_text:
+#             if search_text.isdigit():
+#                 data["rrNo__icontains"] = search_text
+#             else:
+#                 data["location__icontains"] = search_text
+
+#         offset = (page_no - 1) * page_len
+        
+#         logs = (
+#             CoalTesting.objects(**data)
+#             .order_by("-ID")
+#             .skip(offset)
+#             .limit(page_len)                  
+#         )        
+
+#         if any(logs):
+#             for log in logs:
+#                 result["labels"] = list(log.payload().keys())
+#                 result["datasets"].append(log.payload())
+
+#         result["total"] = (len(CoalTesting.objects(**data)))
+#         console_logger.debug(f"-------- Road Coal Testing Response -------- {result}")
+#         return result
+
+#     elif type and type == "download":
+#         del type
+
+#         file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+#         target_directory = f"static_server/gmr_ai/{file}"
+#         os.umask(0)
+#         os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+#         if start_timestamp:
+#             data["receive_date__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+
+#         if end_timestamp:
+#             data["receive_date__lte"] =  datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
+
+#         console_logger.debug(data)
+
+#         if search_text:
+#             if search_text.isdigit():
+#                 data["rrNo__icontains"] = search_text
+#                 del search_text
+#             else:
+#                 data["location__icontains"] = search_text
+#                 del search_text
+
+#         usecase_data = CoalTesting.objects(**data).order_by("-receive_date")
+#         count = len(usecase_data)
+#         path = None
+#         if usecase_data:
+#             try:
+#                 path = os.path.join(
+#                     "static_server",
+#                     "gmr_ai",
+#                     file,
+#                     "WCL_Report_{}.xlsx".format(
+#                         datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+#                     ),
+#                 )
+#                 filename = os.path.join(os.getcwd(), path)
+#                 workbook = xlsxwriter.Workbook(filename)
+#                 workbook.use_zip64()
+#                 cell_format2 = workbook.add_format()
+#                 cell_format2.set_bold()
+#                 cell_format2.set_font_size(10)
+#                 cell_format2.set_align("center")
+#                 cell_format2.set_align("vjustify")
+
+#                 worksheet = workbook.add_worksheet()
+#                 worksheet.set_column("A:AZ", 20)
+#                 worksheet.set_default_row(50)
+#                 cell_format = workbook.add_format()
+#                 cell_format.set_font_size(10)
+#                 cell_format.set_align("center")
+#                 cell_format.set_align("vcenter")
+
+#                 headers = [
+#                     "Sr.No",
+#                     "Mine",
+#                     "DO_No.",
+#                     "DO_Qty",
+#                     "Lot_No.",
+#                     "Supplier",
+#                     "Total Moisture %",
+#                     "Inherent Moisture (ADB) %",
+#                     "ASH (ADB) %",
+#                     "Volatile Matter (ADB) %",
+#                     "Gross calorific value (ADB) Kcal/kg",
+#                     "ASH (ARB) %",
+#                     "Volatile Matter (ARB) %",
+#                     "Fixed Carbon (ARB) %",
+#                     "Gross Calorific Value (ARB) Kcal/Kg",
+#                     "Date",
+#                     "Time",
+#                 ]
+
+#                 for index, header in enumerate(headers):
+#                     worksheet.write(0, index, header, cell_format2)
+
+#                 for row, query in enumerate(usecase_data,start=1):
+#                     result = query.payload()
+#                     worksheet.write(row, 0, count, cell_format)
+#                     worksheet.write(row, 1, str(result["Mine"]), cell_format)
+#                     worksheet.write(row, 2, str(result["DO_No."]), cell_format)
+#                     worksheet.write(row, 3, str(result["DO_Qty"]), cell_format)
+#                     worksheet.write(row, 4, str(result["Lot_No."]), cell_format)
+#                     worksheet.write(row, 5, str(result["Supplier"]), cell_format)
+#                     worksheet.write(row, 6, str(result["Total Moisture %"]), cell_format)
+#                     worksheet.write(row, 7, str(result["Inherent Moisture (ADB) %"]), cell_format)
+#                     worksheet.write(row, 8, str(result["ASH (ADB) %"]), cell_format)
+#                     worksheet.write(row, 9, str(result["Volatile Matter (ADB) %"]), cell_format)
+#                     worksheet.write(row, 10, str(result["Gross calorific value (ADB) Kcal/kg"]), cell_format)
+#                     worksheet.write(row, 11, str(result["ASH (ARB) %"]), cell_format)
+#                     worksheet.write(row, 12, str(result["Volatile Matter (ARB) %"]), cell_format)
+#                     worksheet.write(row, 13, str(result["Fixed Carbon (ARB) %"]), cell_format)
+#                     worksheet.write(row, 14, str(result["Gross Calorific Value (ARB) Kcal/Kg"]), cell_format)
+#                     worksheet.write(row, 15, str(result["Date"]), cell_format)
+#                     worksheet.write(row, 16, str(result["Time"]), cell_format)
+#                     count -= 1
+#                 workbook.close()
+
+#                 console_logger.debug("Successfully {} report generated".format(service_id))
+#                 console_logger.debug("sent data {}".format(path))
+#                 return {
+#                         "Type": "coal_test_download_event",
+#                         "Datatype": "Report",
+#                         "File_Path": path,
+#                     }
+#             except Exception as e:
+#                 console_logger.debug(e)
+#                 exc_type, exc_obj, exc_tb = sys.exc_info()
+#                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#                 console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#                 console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#         else:
+#             console_logger.error("No data found")
+#             return {
+#                         "Type": "coal_test_download_event",
+#                         "Datatype": "Report",
+#                         "File_Path": path,
+#                     }
+
+#     # except Exception as e:
+#     #     response.status_code = 400
+#     #     console_logger.debug(e)
+#     #     exc_type, exc_obj, exc_tb = sys.exc_info()
+#     #     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#     #     console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#     #     console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#     #     return e
 
 @router.get("/coal_test_table", tags=["Coal Testing"])
 def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, perPage: Optional[int] = None,
@@ -1161,7 +2135,10 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
 
         if any(logs):
             for log in logs:
-                result["labels"] = list(log.payload().keys())
+                # result["labels"] = list(log.payload().keys())
+                result["labels"] = ["Sr.No", "Mine", "Lot_No.", "DO_No.", "DO_Qty", "Supplier", "Date", "Time", "Id", "Total_Moisture_%", "Inherent_Moisture_(Adb)_%", "Ash_(Adb)_%", "Volatile_Matter_(Adb)_%", "Gross_Calorific_Value_(Adb)_Kcal/Kg", "Ash_(Arb)_%", "Volatile_Matter_(Arb)_%", "Fixed_Carbon_(Arb)_%", "Gross_Calorific_Value_(Arb)_Kcal/Kg", "Third_Party_Total_Moisture_%", "Third_Party_Inherent_Moisture_(Adb)_%", "Third_Party_Ash_(Adb)_%",
+      "Third_Party_Volatile_Matter_(Adb)_%", "Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg",  "Third_Party_Ash_(Arb)_%", "Third_Party_Volatile_Matter_(Arb)_%", "Third_Party_Fixed_Carbon_(Arb)_%",
+      "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]
                 result["datasets"].append(log.payload())
 
         result["total"] = (len(CoalTesting.objects(**data)))
@@ -1222,25 +2199,28 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
                 cell_format.set_align("center")
                 cell_format.set_align("vcenter")
 
-                headers = [
-                    "Sr.No",
-                    "Mine",
-                    "RR_No",
-                    "RR_Qty",
-                    "Rake_No",
-                    "Supplier",
-                    "Total Moisture %",
-                    "Inherent Moisture (ADB) %",
-                    "ASH (ADB) %",
-                    "Volatile Matter (ADB) %",
-                    "Gross calorific value (ADB) Kcal/kg",
-                    "ASH (ARB) %",
-                    "Volatile Matter (ARB) %",
-                    "Fixed Carbon (ARB) %",
-                    "Gross Calorific Value (ARB) Kcal/Kg",
-                    "Date",
-                    "Time",
-                ]
+                # headers = [
+                #     "Sr.No",
+                #     "Mine",
+                #     "RR_No",
+                #     "RR_Qty",
+                #     "Rake_No",
+                #     "Supplier",
+                #     "Total Moisture %",
+                #     "Inherent Moisture (ADB) %",
+                #     "ASH (ADB) %",
+                #     "Volatile Matter (ADB) %",
+                #     "Gross calorific value (ADB) Kcal/kg",
+                #     "ASH (ARB) %",
+                #     "Volatile Matter (ARB) %",
+                #     "Fixed Carbon (ARB) %",
+                #     "Gross Calorific Value (ARB) Kcal/Kg",
+                #     "Date",
+                #     "Time",
+                # ]
+                headers = ["Sr.No", "Mine", "Lot_No.", "DO_No.", "DO_Qty", "Supplier", "Date", "Time", "Id", "Total_Moisture_%", "Inherent_Moisture_(Adb)_%", "Ash_(Adb)_%", "Volatile_Matter_(Adb)_%", "Gross_Calorific_Value_(Adb)_Kcal/Kg", "Ash_(Arb)_%", "Volatile_Matter_(Arb)_%", "Fixed_Carbon_(Arb)_%", "Gross_Calorific_Value_(Arb)_Kcal/Kg", "Third_Party_Total_Moisture_%", "Third_Party_Inherent_Moisture_(Adb)_%", "Third_Party_Ash_(Adb)_%",
+      "Third_Party_Volatile_Matter_(Adb)_%", "Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg",  "Third_Party_Ash_(Arb)_%", "Third_Party_Volatile_Matter_(Arb)_%", "Third_Party_Fixed_Carbon_(Arb)_%",
+      "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]
 
                 for index, header in enumerate(headers):
                     worksheet.write(0, index, header, cell_format2)
@@ -1407,9 +2387,9 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
                     headers = [
                         "Sr.No",
                         "Mine",
-                        "RR_No",
-                        "RR_Qty",
-                        "Rake_No",
+                        "DO_No.",
+                        "DO_Qty",
+                        "Lot_No.",
                         "Supplier",
                         "Total Moisture %",
                         "Inherent Moisture (ADB) %",
@@ -1431,9 +2411,9 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
                         result = query.payload()
                         worksheet.write(row, 0, count, cell_format)
                         worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                        worksheet.write(row, 2, str(result["RR_No"]), cell_format)
-                        worksheet.write(row, 3, str(result["RR_Qty"]), cell_format)
-                        worksheet.write(row, 4, str(result["Rake_No"]), cell_format)
+                        worksheet.write(row, 2, str(result["DO_No."]), cell_format)
+                        worksheet.write(row, 3, str(result["DO_Qty"]), cell_format)
+                        worksheet.write(row, 4, str(result["Lot_No."]), cell_format)
                         worksheet.write(row, 5, str(result["Supplier"]), cell_format)
                         worksheet.write(row, 6, str(result["Total Moisture %"]), cell_format)
                         worksheet.write(row, 7, str(result["Inherent Moisture (ADB) %"]), cell_format)
@@ -1650,12 +2630,12 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
                         worksheet.write(row, 12, str(result["Fitness_Expiry"]), cell_format)
                         worksheet.write(row, 13, str(result["Weightment_Date"]), cell_format)
                         worksheet.write(row, 14, str(result["Weightment_Time"]), cell_format)
-                        worksheet.write(row, 15, str(result["Gross_challan_Wt(MT)"]), cell_format)
-                        worksheet.write(row, 16, str(result["Tare_challan_Wt(MT)"]), cell_format)
-                        worksheet.write(row, 17, str(result["Net_challan_Wt(MT)"]), cell_format)
-                        worksheet.write(row, 18, str(result["Gross_actual_Wt(MT)"]), cell_format)
-                        worksheet.write(row, 19, str(result["Tare_actual_Wt(MT)"]), cell_format)
-                        worksheet.write(row, 20, str(result["Net_actual_Wt(MT)"]), cell_format)
+                        worksheet.write(row, 15, str(result["Challan_Gross_Wt(MT)"]), cell_format)
+                        worksheet.write(row, 16, str(result["Challan_Tare_Wt(MT)"]), cell_format)
+                        worksheet.write(row, 17, str(result["Challan_Net_Wt(MT)"]), cell_format)
+                        worksheet.write(row, 18, str(result["GWEL_Gross_Wt(MT)"]), cell_format)
+                        worksheet.write(row, 19, str(result["GWEL_Tare_Wt(MT)"]), cell_format)
+                        worksheet.write(row, 20, str(result["GWEL_Net_Wt(MT)"]), cell_format)
                         worksheet.write(row, 21, str(result["Wastage"]), cell_format)
                         worksheet.write(row, 22, str(result["Transporter_LR_No"]), cell_format)
                         worksheet.write(row, 23, str(result["Transporter_LR_Date"]), cell_format)
@@ -1963,16 +2943,18 @@ def minewise_road_analysis(response:Response,type: Optional[str] = "Daily",
         return e
 
 
+
 @router.get("/minewise_road_table", tags=["Road Map"])
-def gmr_table(response:Response,currentPage: Optional[int] = None,
+def gmr_table(response: Response, currentPage: Optional[int] = None,
               perPage: Optional[int] = None,
               mine: Optional[str] = "All",
               type: Optional[str] = "display"):
     try:
-        data={}
+        data = {}
         result = {        
                 "labels": [],
                 "datasets": [],
+                "weight_total":[],
                 "total" : 0,
                 "page_size": 15
         }
@@ -1996,21 +2978,55 @@ def gmr_table(response:Response,currentPage: Optional[int] = None,
 
             logs = (
                 Gmrdata.objects(**data)
-                # .order_by("mine","arv_cum_do_number","-created_at")
-                .order_by("mine","arv_cum_do_number")
+                .order_by("mine", "arv_cum_do_number", "-created_at")
                 .skip(offset)
                 .limit(page_len)
             )
 
+            overall_totals = {
+                "Challan_Gross_Wt(MT)": 0,
+                "Challan_Tare_Wt(MT)": 0,
+                "Challan_Net_Wt(MT)": 0,
+                "GWEL_Gross_Wt(MT)": 0,
+                "GWEL_Tare_Wt(MT)": 0,
+                "GWEL_Net_Wt(MT)": 0,
+            }
+            mine_grouped_data = {}
+
             if any(logs):
                 for log in logs:
-                    console_logger.debug(log)
-                    result["labels"] = list(log.payload().keys())
-                    result["datasets"].append(log.payload())
+                    payload = log.payload()
+                    result["labels"] = list(payload.keys())
+                    mine_name = payload.get("Mines_Name")
 
-            result["total"] = len(Gmrdata.objects(**data))
+                    if mine_name not in mine_grouped_data:
+                        mine_grouped_data[mine_name] = []
+
+                    mine_grouped_data[mine_name].append(payload)
+
+                    for key in overall_totals:
+                        value = payload.get(key)
+                        if value is None:
+                            value = 0.0
+                        else:
+                            try:
+                                value = float(value)
+                            except ValueError:
+                                value = 0.0
+                        
+                        overall_totals[key] += value
+
+                overall_totals = {key: str(overall_totals[key]) for key in overall_totals}
+
+                for mine_name, records in mine_grouped_data.items():
+                    result["datasets"].append({mine_name: records})
+                result["weight_total"].append(overall_totals)
+
+            result["total"] = Gmrdata.objects(**data).count()
+
             console_logger.debug(f"-------- Road Journey Table Response -------- {result}")
             return result
+
 
         elif type and type == "download":
             del type
@@ -2054,7 +3070,6 @@ def gmr_table(response:Response,currentPage: Optional[int] = None,
                     cell_format.set_align("vcenter")
 
                     headers = [
-                        
                         "PO No",
                         "Arv Cum DO No.",
                         "Mines Name",
@@ -2068,7 +3083,8 @@ def gmr_table(response:Response,currentPage: Optional[int] = None,
                         "Net Wt. as per actual (MT)",
                         "Vehicle In Time",
                         "Transit Loss",
-                        "LOT"
+                        "LOT",
+                        "Line_Item"
                     ]
 
                     for index, header in enumerate(headers):
@@ -2081,16 +3097,16 @@ def gmr_table(response:Response,currentPage: Optional[int] = None,
                         worksheet.write(row, 3, str(result["Mines_Name"]), cell_format)
                         worksheet.write(row, 4, str(result["vehicle_number"]), cell_format)
                         worksheet.write(row, 5, str(result["Total_net_amount"]), cell_format)
-                        worksheet.write(row, 6, str(result["Gross_challan_Wt(MT)"]), cell_format)
-                        worksheet.write(row, 7, str(result["Tare_challan_Wt(MT)"]), cell_format)
-                        worksheet.write(row, 8, str(result["Net_challan_Wt(MT)"]), cell_format)
-                        worksheet.write(row, 9, str(result["Gross_actual_Wt(MT)"]), cell_format)
-                        worksheet.write(row, 10, str(result["Tare_actual_Wt(MT)"]), cell_format)
-                        worksheet.write(row, 11, str(result["Net_actual_Wt(MT)"]), cell_format)
+                        worksheet.write(row, 6, str(result["Challan_Gross_Wt(MT)"]), cell_format)
+                        worksheet.write(row, 7, str(result["Challan_Tare_Wt(MT)"]), cell_format)
+                        worksheet.write(row, 8, str(result["Challan_Net_Wt(MT)"]), cell_format)
+                        worksheet.write(row, 9, str(result["GWEL_Gross_Wt(MT)"]), cell_format)
+                        worksheet.write(row, 10, str(result["GWEL_Tare_Wt(MT)"]), cell_format)
+                        worksheet.write(row, 11, str(result["GWEL_Net_Wt(MT)"]), cell_format)
                         worksheet.write(row, 12, str(result["Vehicle_in_time"]), cell_format)
                         worksheet.write(row, 13, str(result["Transit_Loss"]), cell_format)
                         worksheet.write(row, 14, str(result["LOT"]), cell_format)
-                        
+                        worksheet.write(row, 15, str(result["Line_Item"]), cell_format)
                         count-=1
                         
                     workbook.close()
@@ -2125,6 +3141,7 @@ def gmr_table(response:Response,currentPage: Optional[int] = None,
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
+
 
 
 @router.get("/road/vehicle_in_count", tags=["Road Map"])
@@ -2181,9 +3198,8 @@ def daywise_out_vehicle_count(response:Response):
         return e
 
 
-
-@router.get("/road/coal_received", tags=["Road Map"])
-def daywise_coal_receive(response:Response):
+@router.get("/road/grn_coal", tags=["Road Map"])
+def daywise_grn_receive(response:Response):
     try:
         today = datetime.date.today()
         startdate = f'{today} 00:00:00'
@@ -2231,104 +3247,201 @@ def daywise_coal_receive(response:Response):
         return e
 
 
+@router.get("/road/gwel_coal", tags=["Road Map"])
+def daywise_gwel_receive(response:Response):
+    try:
+        today = datetime.date.today()
+        startdate = f'{today} 00:00:00'
+        from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
 
-
-# @router.get("road/minewise_road_report", tags=["Road Map"])
-# def road_report(response:Response,start_timestamp: Optional[str] = None,
-#                 end_timestamp: Optional[str] = None,              
-#                 type: Optional[str] = "display"):
-#     try:
-        # basePipeline = [
-        #     {
-        #         "$match": {
-        #             "created_at": {
-        #                 "$gte": None  # Replace None with the appropriate start date
-        #             }
-        #         }
-        #     },
-        #     {
-        #         "$group": {
-        #             "_id": {
-        #                 "mine": "$mine",
-        #                 "actual_net_qty": {
-        #                     "$toDouble": "$actual_net_qty"  # Convert actual_net_qty to double
-        #                 },
-        #                 "date": {
-        #                     "$dateToString": {
-        #                         "date": "$created_at",
-        #                         "format": "%Y-%m-%d"
-        #                     }
-        #                 }
-        #             },
-        #             "count": { 
-        #                 "$sum": 1  # Calculate the count of documents in each group
-        #             }
-        #         }
-        #     }
-        # ]
+        pipeline = [
+                    {
+                        "$match": {
+                            "created_at": {"$gte": from_ts},
+                            "actual_net_qty": {"$ne": None}
+                        }
+                    },
+                    {
+                        "$group": {
+                            "_id": None,
+                            "total_actual_net_qty": {
+                                "$sum": {
+                                    "$toDouble": "$actual_net_qty"  # Convert actual_net_qty to a numeric type before summing
+                                }
+                            }
+                        }
+                    }]
         
-        # basePipeline1 = [
-        #     {
-        #         '$match': {
-        #             'created_at': {
-        #                 '$gte': None, 
-        #                 '$lte': None
-        #             }
-        #         }
-        #     },
-        #     {
-        #         '$group': {
-        #             '_id': {
-        #                 'actual_net_qty': {
-        #                     '$toDouble': '$actual_net_qty'  # Convert actual_net_qty to double
-        #                 },
-        #                 'term': '$term'
-        #             },
-        #             'total': {
-        #                 '$sum': 1  # Calculate the count of documents in each group
-        #             }
-        #         }
-        #     }
-        # ]
+        result = Gmrdata.objects.aggregate(pipeline)
 
-#         if data["type"] == "display":
+        total_coal = 0
+        for doc in result:
+            total_coal = doc["total_actual_net_qty"]
 
-#         elif type and type == "download":
-#             del type
+        console_logger.debug({"title": "Total Coal",
+                "data": total_coal,
+                "last_updated": today})
 
-#                     console_logger.debug("Successfully {} report generated".format(service_id))
-#                     console_logger.debug("sent data {}".format(path))
+        return {"title": "Total Coal",
+                "data": total_coal,
+                "last_updated": today}
 
-#                     return {
-#                             "Type": "Minewise_road_journey_download_event",
-#                             "Datatype": "Report",
-#                             "File_Path": path,
-#                             }
-                
-#                 except Exception as e:
-#                     console_logger.debug(e)
-#                     exc_type, exc_obj, exc_tb = sys.exc_info()
-#                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-#                     console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
-#                     console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
-#             else:
-#                 console_logger.error("No data found")
-#                 return {
-#                         "Type": "Minewise_road_journey_download_event",
-#                         "Datatype": "Report",
-#                         "File_Path": path,
-#                         }
-
-#     except Exception as e:
-#         response.status_code = 400
-#         console_logger.debug(e)
-#         exc_type, exc_obj, exc_tb = sys.exc_info()
-#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
-#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
-#         return e
+    except Exception as e:
+        console_logger.debug("----- Gate Vehicle Count Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
 
 
+@router.get("/road/minewise_road_report", tags=["Road Map"])
+def road_report(response:Response,start_timestamp: Optional[str] = None,
+                end_timestamp: Optional[str] = None,
+                type: Optional[str] = "display"):
+    try:
+        today = datetime.date.today()
+        startdate = f'{today} 00:00:00'
+        from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
+
+        data = {"data": {}, "Total": {"vehicle_count": 0, "net_qty": 0, "actual_net_qty": 0}}
+
+        mine_pipeline = [
+                    {
+                        "$match": {
+                            "created_at": {"$gte": from_ts},
+                        }
+                    },
+                    {
+                        "$group": {
+                            "_id": "$mine",
+                            "vehicle_count": {
+                                "$sum": 1
+                            },
+                            "net_qty": {
+                                "$sum": {
+                                    "$toDouble": "$net_qty"
+                                }
+                            },
+                            "actual_net_qty": {
+                                "$sum": {
+                                    "$toDouble": "$actual_net_qty"
+                                }
+                            }
+                        }
+                    }
+                ]
+
+        if type == "display":
+
+                if start_timestamp:
+                    end_date =f'{start_timestamp} 23:59:59'
+                    start_date = f'{start_timestamp} 00:00:00'
+                    format_data = "%Y-%m-%d %H:%M:%S"
+                    endd_date=datetime.datetime.strptime(end_date,format_data)
+                    startd_date=datetime.datetime.strptime(start_date,format_data)
+
+                    mine_pipeline[0]["$match"]["created_at"]["$lte"] = (endd_date)
+                    mine_pipeline[0]["$match"]["created_at"]["$gte"] = (startd_date)
+
+                mine_data = list(Gmrdata.objects.aggregate(mine_pipeline))
+
+                for mine in mine_data:
+                    mine_name = mine["_id"]
+                    vehicle_count = mine["vehicle_count"]
+                    net_qty = mine["net_qty"]
+                    actual_net_qty = mine["actual_net_qty"]
+
+                    data["data"][mine_name] = {
+                        "vehicle_count": vehicle_count,
+                        "net_qty": net_qty,
+                        "actual_net_qty": actual_net_qty}
+                    
+                    data["Total"]["vehicle_count"] += vehicle_count
+                    data["Total"]["net_qty"] += net_qty
+                    data["Total"]["actual_net_qty"] += actual_net_qty
+
+                return data
+
+        elif type and type == "download":
+            del type
+
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+            path = os.path.join(
+                        "static_server",
+                        "gmr_ai",
+                        file,
+                        "mine_count_Report_{}.xlsx".format(
+                            datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                        ),
+                    )
+
+            if start_timestamp and end_timestamp:
+                end_date =f'{end_timestamp} 23:59:59'
+                start_date = f'{start_timestamp} 00:00:00'
+                format_data = "%Y-%m-%d %H:%M:%S"
+                endd_date=datetime.datetime.strptime(end_date,format_data)
+                startd_date=datetime.datetime.strptime(start_date,format_data)
+
+                mine_pipeline[0]["$match"]["created_at"]["$lte"] = (endd_date)
+                mine_pipeline[0]["$match"]["created_at"]["$gte"] = (startd_date)
+
+            mine_data = list(Gmrdata.objects.aggregate(mine_pipeline))
+
+            for mine in mine_data:
+                mine_name = mine["_id"]
+                vehicle_count = mine["vehicle_count"]
+                net_qty = mine["net_qty"]
+                actual_net_qty = mine["actual_net_qty"]
+
+                data["data"][mine_name] = {
+                    "vehicle_count": vehicle_count,
+                    "net_qty": net_qty,
+                    "actual_net_qty": actual_net_qty
+                }
+
+                data["Total"]["vehicle_count"] += vehicle_count
+                data["Total"]["net_qty"] += net_qty
+                data["Total"]["actual_net_qty"] += actual_net_qty
+
+            df_data = pd.DataFrame.from_dict(data['data'], orient='index')
+            
+            total_df = pd.DataFrame.from_dict({'Total': data['Total']}).T
+            df_data = pd.concat([df_data, total_df], axis=0)
+            df_data.columns = df_data.columns.str.replace('_', ' ').str.title()
+
+            df_data.to_excel(path, sheet_name='Report')
+
+            console_logger.debug("Successfully {} report generated".format(service_id))
+            console_logger.debug("sent data {}".format(path))
+
+            return {
+                    "Type": "Minewise_report_download_event",
+                    "Datatype": "Report",
+                    "File_Path": path,
+                    }
+        
+        else:
+            console_logger.error("No data found")
+            return {
+                    "Type": "Minewise_report_download_event",
+                    "Datatype": "Report",
+                    "File_Path": path,
+                    }
+
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
 
 
     

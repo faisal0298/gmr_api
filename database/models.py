@@ -170,9 +170,9 @@ class CoalTesting(Document):
         payload_dict = {
             "Sr.No": self.ID,
             "Mine": self.location,
-            "Rake_No": self.rake_no,
-            "RR_No": self.rrNo,
-            "RR_Qty": self.rR_Qty,
+            "Lot_No.": self.rake_no,
+            "DO_No.": self.rrNo,
+            "DO_Qty": self.rR_Qty,
             "Supplier": self.supplier,
             "Date": local_timestamp.strftime("%Y-%m-%d"),
             "Time": local_timestamp.strftime("%H:%M:%S"),
@@ -182,13 +182,12 @@ class CoalTesting(Document):
             console_logger.debug(param)
             param_name = f"{param['parameter_Name']}_{param['unit_Val'].replace(' ','')}"
             payload_dict[param_name] = param["val1"]
-            console_logger.debug(param.get("thrdgcv"))
-            if param.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
-                if param.get("thrdgcv"):
-                    payload_dict["thrdgcv"] = param.get("thrdgcv")
-                else:
-                    payload_dict[f"thrdgcv"] = None
-
+            # console_logger.debug(param.get("Third_Party_Gcv"))
+            # if param.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
+            #     if param.get("Third_Party_Gcv"):
+            #         payload_dict["Third_Party_Gcv"] = param.get("Third_Party_Gcv")
+            #     else:
+            #         payload_dict[f"Third_Party_Gcv"] = None
 
         return payload_dict
     
@@ -201,7 +200,7 @@ class CoalTesting(Document):
             "id": str(self.pk),
             "Sr.No": self.ID,
             "Mine": self.location,
-            "RR_Qty": self.rR_Qty,
+            "DO_Qty": self.rR_Qty,
         }
 
         for single_param in self.parameters:
@@ -218,10 +217,10 @@ class CoalTesting(Document):
                     payload_data["gcv_difference"] = single_param["gcv_difference"]
                 else:
                     payload_data["gcv_difference"] = None
-                if single_param.get("thrdgcv"):
-                    payload_data["thrdgcv"] = single_param["thrdgcv"]
+                if single_param.get("Third_Party_Gcv"):
+                    payload_data["Third_Party_Gcv"] = single_param["Third_Party_Gcv"]
                 else:
-                    payload_data["thrdgcv"] = None
+                    payload_data["Third_Party_Gcv"] = None
                 if single_param.get("thrd_grade"):
                     payload_data["thrd_grade"] = single_param["thrd_grade"]
                 else:
@@ -261,9 +260,9 @@ class CoalTestingTrain(Document):
         payload_dict = {
             "Sr.No": self.ID,
             "Mine": self.location,
-            "Rake_No": self.rake_no,
-            "RR_No": self.rrNo,
-            "RR_Qty": self.rR_Qty,
+            "Lot_No.": self.rake_no,
+            "DO_No.": self.rrNo,
+            "DO_Qty": self.rR_Qty,
             "Supplier": self.supplier,
             "Date": local_timestamp.strftime("%Y-%m-%d"),
             "Time": local_timestamp.strftime("%H:%M:%S"),
@@ -274,6 +273,52 @@ class CoalTestingTrain(Document):
             payload_dict[param_name] = param["val1"]
 
         return payload_dict
+
+    def gradepayload(self):
+        local_timestamp = self.receive_date.replace(
+            tzinfo=datetime.timezone.utc
+        ).astimezone(tz=None)
+
+        payload_data = {
+            "id": str(self.pk),
+            "Sr.No": self.ID,
+            "Mine": self.location,
+            "DO_Qty": self.rR_Qty,
+        }
+
+        for single_param in self.parameters:
+            console_logger.debug(single_param)
+            param_name = f"Gross_Calorific_Value_(Adb)"
+            if single_param["parameter_Name"] == "Gross_Calorific_Value_(Adb)":
+                console_logger.debug("inside gcv")
+                payload_data[param_name] = single_param["val1"]
+                if single_param.get("grade"):
+                    payload_data[f"grade"] = single_param["grade"]
+                else:
+                    payload_data[f"grade"] = None
+                if single_param.get("gcv_difference"):
+                    payload_data["gcv_difference"] = single_param["gcv_difference"]
+                else:
+                    payload_data["gcv_difference"] = None
+                if single_param.get("Third_Party_Gcv"):
+                    payload_data["Third_Party_Gcv"] = single_param["Third_Party_Gcv"]
+                else:
+                    payload_data["Third_Party_Gcv"] = None
+                if single_param.get("thrd_grade"):
+                    payload_data["thrd_grade"] = single_param["thrd_grade"]
+                else:
+                    payload_data["thrd_grade"] = None
+                if single_param.get("grade_diff"):
+                    payload_data["grade_diff"] = single_param["grade_diff"]
+                else:
+                    payload_data["grade_diff"] = None
+
+        payload_data["Date"] = local_timestamp.strftime("%Y-%m-%d")
+        payload_data["Time"] = local_timestamp.strftime("%H:%M:%S")
+
+            
+        console_logger.debug(payload_data)
+        return payload_data
 
 
 
@@ -338,6 +383,9 @@ class Gmrdata(Document):
     actual_gross_wt_time = DateTimeField(default=None)
     actual_tare_wt_time = DateTimeField(default=None)
     lot = StringField()
+    line_item = StringField(null=True)
+    GWEL_Gross_Time = DateTimeField(null=True)
+    GWEL_Tare_Time = DateTimeField(null=True)
 
     ID = IntField(min_value=1)
 
@@ -353,12 +401,12 @@ class Gmrdata(Document):
             transit_loss = round(Loss,5)
 
         return {"Sr.No.":self.ID,
+                "Mines_Name":self.mine,
                 "PO_No":self.po_no,
                 "PO_Date":self.po_date,
                 "PO_Qty":self.po_qty, 
                 "Delivery_Challan_No":self.delivery_challan_number,
                 "Arv_Cum_DO_No":self.arv_cum_do_number,
-                "Mines_Name":self.mine,
                 "Grade":self.grade,
                 "Type_of_consumer":self.type_consumer,
                 "DC_Date":self.delivery_challan_date,
@@ -370,12 +418,12 @@ class Gmrdata(Document):
                 "Weightment_Date" : self.weightment_date,
                 "Weightment_Time" : self.weightment_time,
                 # "Out gate": self.out_camera_name if self.out_camera_name else None,
-                "Gross_challan_Wt(MT)" : self.gross_qty,
-                "Tare_challan_Wt(MT)" : self.tare_qty,
-                "Net_challan_Wt(MT)" : self.net_qty,
-                "Gross_actual_Wt(MT)" : self.actual_gross_qty,
-                "Tare_actual_Wt(MT)" : self.actual_tare_qty,
-                "Net_actual_Wt(MT)" : self.actual_net_qty,
+                "Challan_Gross_Wt(MT)" : self.gross_qty,
+                "Challan_Tare_Wt(MT)" : self.tare_qty,
+                "Challan_Net_Wt(MT)" : self.net_qty,
+                "GWEL_Gross_Wt(MT)" : self.actual_gross_qty,
+                "GWEL_Tare_Wt(MT)" : self.actual_tare_qty,
+                "GWEL_Net_Wt(MT)" : self.actual_net_qty,
                 "Wastage" : self.wastage,
                 "Driver_Name" : self.driver_name,
                 "Gate_Pass_No" : self .gate_pass_no,
@@ -390,8 +438,11 @@ class Gmrdata(Document):
                 "Challan_image" : self.challan_file if self.challan_file else None,
                 "Fitness_image": self.fitness_file if self.fitness_file else None,
                 "Face_image": self.fr_file if self.fr_file else None,
-                "Transit_Loss": transit_loss if transit_loss else None,
-                "LOT":self.lot
+                "Transit_Loss": transit_loss if transit_loss else 0,
+                "LOT":self.lot,
+                "Line_Item" : self.line_item if self.line_item else None,
+                "GWEL_Gross_Time" : self.GWEL_Gross_Time.strftime("%Y-%m-%d:%H:%M:%S") if self.GWEL_Gross_Time else None,
+                "GWEL_Tare_Time" : self.GWEL_Tare_Time.strftime("%Y-%m-%d:%H:%M:%S") if self.GWEL_Gross_Time else None,
                 }
     
 
@@ -408,3 +459,4 @@ class CoalGrades(Document):
             "start_value": self.start_value,
             "end_value": self.end_value,
         }
+    

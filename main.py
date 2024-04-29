@@ -947,26 +947,26 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
     secl_extracted_data = []
 
     for entry in testing_data["responseData"]:
-        if entry["supplier"] == "WCL" and entry["rrNo"] != "" and entry["rrNo"] != "NA":
+        if entry.get("supplier") == "WCL" and entry.get("rrNo") != "" and entry.get("rrNo") != "NA":
 
             data = {
-                "sample_Desc": entry["sample_Desc"],
-                "rrNo": entry["rrNo"],
-                "rR_Qty": entry["rR_Qty"],
-                "rake_No": entry["rake_No"],
-                "supplier": entry["supplier"],
-                "receive_date": entry["sample_Received_Date"],
+                "sample_Desc": entry.get("sample_Desc"),
+                "rrNo": entry.get("rrNo"),
+                "rR_Qty": entry.get("rR_Qty"),
+                "rake_No": entry.get("rake_No"),
+                "supplier": entry.get("supplier"),
+                "receive_date": entry.get("sample_Received_Date"),
                 "parameters": [],
             }
 
-            for param in entry["sample_Parameters"]:
+            for param in entry.get("sample_Parameters"):
                 param_info = {
                     "parameter_Name": param.get("parameter_Name")
                     .title()
                     .replace(" ", "_"),
-                    "unit_Val": param["unit_Val"].title().replace(" ",""),
-                    "test_Method": param["test_Method"],
-                    "val1": param["val1"],
+                    "unit_Val": param.get("unit_Val").title().replace(" ",""),
+                    "test_Method": param.get("test_Method"),
+                    "val1": param.get("val1"),
                 }
 
                 if param.get("parameter_Name").title() == "Gross Calorific Value (Adb)":
@@ -975,13 +975,13 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
                         for single_coal_grades in fetchCoalGrades:
                             if (
                                 single_coal_grades["start_value"]
-                                <= param["val1"]
+                                <= param.get("val1")
                                 <= single_coal_grades["end_value"]
                                 and single_coal_grades["start_value"] != ""
                                 and single_coal_grades["end_value"] != ""
                             ):
                                 param_info["grade"] = single_coal_grades["grade"]
-                            elif param["val1"] > "7001":
+                            elif param.get("val1") > "7001":
                                 console_logger.debug("G-1")
                                 param_info["grade"] = "G-1"
                                 break
@@ -996,12 +996,12 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
         ):
 
             secl_data = {
-                "sample_Desc": entry["sample_Desc"],
-                "rrNo": entry["rrNo"],
-                "rR_Qty": entry["rR_Qty"],
-                "rake_No": entry["rake_No"],
-                "supplier": entry["supplier"],
-                "receive_date": entry["sample_Received_Date"],
+                "sample_Desc": entry.get("sample_Desc"),
+                "rrNo": entry.get("rrNo"),
+                "rR_Qty": entry.get("rR_Qty"),
+                "rake_No": entry.get("rake_No"),
+                "supplier": entry.get("supplier"),
+                "receive_date": entry.get("sample_Received_Date"),
                 "parameters": [],
             }
 
@@ -1010,34 +1010,34 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
                     "parameter_Name": secl_param.get("parameter_Name")
                     .title()
                     .replace(" ", "_"),
-                    "unit_Val": secl_param["unit_Val"].title().replace(" ",""),
-                    "test_Method": secl_param["test_Method"],
-                    "val1": secl_param["val1"],
+                    "unit_Val": secl_param.get("unit_Val").title().replace(" ",""),
+                    "test_Method": secl_param.get("test_Method"),
+                    "val1": secl_param.get("val1"),
                 }
                 secl_data["parameters"].append(param_info)
             secl_extracted_data.append(secl_data)
 
     for entry in wcl_extracted_data:
         CoalTesting(
-            location=entry["sample_Desc"].upper().strip(),
-            rrNo=entry["rrNo"].strip(),
-            rR_Qty=entry["rR_Qty"].strip(),
-            rake_no=entry["rake_No"].upper().strip(),
-            supplier=entry["supplier"].strip(),
-            receive_date=entry["receive_date"],
-            parameters=entry["parameters"],
+            location=entry.get("sample_Desc").upper().strip(),
+            rrNo=entry.get("rrNo").strip(),
+            rR_Qty=entry.get("rR_Qty").strip(),
+            rake_no=entry.get("rake_No").upper().strip(),
+            supplier=entry.get("supplier").strip(),
+            receive_date=entry.get("receive_date"),
+            parameters=entry.get("parameters"),
             ID=CoalTesting.objects.count() + 1,
         ).save()
 
     for secl_entry in secl_extracted_data:
         CoalTestingTrain(
-            location=secl_entry["sample_Desc"].upper().strip(),
-            rrNo=secl_entry["rrNo"].strip(),
-            rR_Qty=secl_entry["rR_Qty"].strip(),
-            rake_no=secl_entry["rake_No"].strip(),
-            supplier=secl_entry["supplier"].strip(),
-            receive_date=secl_entry["receive_date"],
-            parameters=secl_entry["parameters"],
+            location=secl_entry.get("sample_Desc").upper().strip(),
+            rrNo=secl_entry.get("rrNo").strip(),
+            rR_Qty=secl_entry.get("rR_Qty").strip(),
+            rake_no=secl_entry.get("rake_No").strip(),
+            supplier=secl_entry.get("supplier").strip(),
+            receive_date=secl_entry.get("receive_date"),
+            parameters=secl_entry.get("parameters"),
             ID=CoalTestingTrain.objects.count() + 1,
         ).save()
 
@@ -3437,7 +3437,7 @@ if __name__ == "__main__":
     usecase_handler_object.handler.send_status(True)
     pre_processing()
     import uvicorn
-    uvicorn.run("main:router",reload=False, host="0.0.0.0",port=7704)
+    uvicorn.run("main:router",reload=False, host="0.0.0.0",port=7705)
     # sched.add_job(scheduled_job, "interval", seconds=10)
     # sched.start()
 

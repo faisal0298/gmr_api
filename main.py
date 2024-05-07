@@ -14,7 +14,19 @@ import helpers.usecase_handler as usecase_handler_object
 from helpers.logger import console_logger
 from fastapi import FastAPI,BackgroundTasks
 import json
-from fastapi import Response
+# from fastapi import Response
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Form,
+    Query,
+    File,
+    Depends,
+    UploadFile,
+    Header,
+    Request,
+    Response,
+)
 from lxml import etree
 import xml.etree.ElementTree as ET
 import datetime
@@ -33,6 +45,16 @@ from typing import Optional
 from mongoengine.queryset.visitor import Q
 from collections import defaultdict
 import pandas as pd
+import pytz
+
+# mahabal starts
+import tabula
+import math
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+import re
+# mahabal end
+
 
 ### database setup
 host = os.environ.get("HOST", "192.168.1.57")
@@ -63,6 +85,7 @@ server_ip = os.environ.get("IP", "192.168.1.57")
 server_port = os.environ.get("PORT", "80")
 db_name = os.environ.get("DB_NAME", "gmrDB")
 
+IST = pytz.timezone('Asia/Kolkata')
 
 usecase_handler_object.handler = rdx.SocketHandler(
     service_id=service_id,
@@ -159,6 +182,468 @@ timezone = read_timezone_from_file()
 #  x------------------------------    Historian Api's for Coal Consumption    ------------------------------------x
 
 
+# ---------------------------------- Mahabal data start ----------------------------------------
+
+def mahabal_rr_lot(pdf_path):
+    try:
+        flattened_table=[]
+        rake_and_lot ={}
+        rake_and_lot['rake']=None
+        rake_and_lot['rr']=None
+        rake_and_lot['lot']=None
+        rake_and_lot['do']=None
+
+        area=[224.64, 174.24, 349.92, 293.76]
+        tables = tabula.read_pdf(pdf_path,guess=False, lattice=False, 
+                    stream=True, multiple_tables=False, area=area, pages='all')
+
+        for table in tables:
+
+            flattened_table = [item for sublist in table.values.tolist() for item in sublist]
+
+            joined_string = " ".join(flattened_table)
+            if "Rake" and "RR" in joined_string:
+                match = re.search(r'Rake\s+(\d+)\s+RR\s+(\d+)', joined_string)
+                if match:
+                    rake = match.group(1)
+                    rr = match.group(2)
+                    rake_and_lot['rake']=rake
+                    rake_and_lot['rr']=rr
+
+            if "Lot" and "DO" in joined_string:
+                match = re.search(r'Lot-\s+(\d+)\s+DO\s+(\d+)', joined_string)
+                if match:
+                    lot = match.group(1)
+                    do = match.group(2)
+                    rake_and_lot['lot']=lot
+                    rake_and_lot['do']=do
+
+        return rake_and_lot
+    except Exception as e:
+        print(e)
+
+def mahabal_ulr(pdf_path):
+    try:
+        ulrtable=[]
+        date_and_report={}
+        date_and_report['date']=None
+        date_and_report['report_no']=None
+
+        ulr_area=[129.6, 174.24, 162, 553.68]
+        tables = tabula.read_pdf(pdf_path,guess=False, lattice=False, 
+                    stream=True, multiple_tables=False, area=ulr_area, pages='all')
+
+        for table in tables:
+            report_no = ''
+            date = ''
+
+            for col in table.columns:
+                ulrtable.append(col)
+
+            for index, row in table.iterrows():
+                if 'Report No.' in row.values:
+                    for item in row.values:
+                        if 'Report No.' in item:
+                            report_no = item.split(':')[1].strip()
+                if 'Date' in row.values:
+                    for item in row.values:
+                        if 'Date' in item:
+                            date = item.split(':')[1].strip()
+
+            ulrtable.append(report_no)
+            ulrtable.append(date)
+
+            for sublist in table.values.tolist():
+                ulrtable.extend(sublist)
+
+        joined_string = " ".join(str(v) for v in ulrtable) 
+        date_match = re.search(r'Date:\s*([^\d]*)(\d{2})[^\d]*(\d{2})[^\d]*(\d{4})', joined_string)
+        report_no_match = re.search(r'Report\s+No\.\s*:\s*([A-Z]+-\d+)', joined_string)
+        if date_match and report_no_match:
+            day = date_match.group(2)
+            month = date_match.group(3)
+            year = date_match.group(4)
+            date = f"{day}.{month}.{year}"
+            report_no = report_no_match.group(1)
+            date_and_report['date']=date
+            date_and_report['report_no']=report_no
+
+
+        return date_and_report
+    except Exception as e:
+        print(e)
+
+
+def mahabal_parameter(pdf_path):
+    try:
+        para_table=[]
+        coal_data = {}
+        total_moisture_adb=None
+        total_moisture_arb=None
+        moisture_inherent_adb=None
+        moisture_inherent_arb=None
+        ash_adb=None
+        ash_arb=None
+        volatile_adb=None
+        volatile_arb=None
+        fixed_carbon_adb=None
+        fixed_carbon_arb=None
+        gross_calorific_adb=None
+        gross_calorific_arb=None
+
+        area=[362.16, 64.8, 536.4, 552.96]
+        tables = tabula.read_pdf(pdf_path,guess=True, stream=True, multiple_tables=False, area=area, pages='all')
+
+        for table in tables:
+
+            para_table = [item for sublist in table.values.tolist() for item in sublist if not (isinstance(item, float) and math.isnan(item))]
+
+        if "Total Moisture" in para_table:
+            total_moisture_index=para_table.index('Total Moisture')
+            total_moisture_adb=para_table[total_moisture_index+2]
+            total_moisture_arb=para_table[total_moisture_index+3]
+        if 'Moisture (Inherent)' in para_table :
+            moisture_inherent_index=para_table.index('Moisture (Inherent)')
+            moisture_inherent_adb=para_table[moisture_inherent_index+2]
+            moisture_inherent_arb=para_table[moisture_inherent_index+3]
+        if 'Ash' in para_table :
+            ash_index=para_table.index('Ash')
+            ash_adb=para_table[ash_index+2]
+            ash_arb=para_table[ash_index+3]
+        if 'Volatile Matter' in para_table:
+            volatile_index=para_table.index('Volatile Matter')
+            volatile_adb=para_table[volatile_index+2]
+            volatile_arb=para_table[volatile_index+3]
+        if 'Fixed Carbon' in para_table:
+            fixed_carbon_index=para_table.index('Fixed Carbon')
+            fixed_carbon_adb=para_table[fixed_carbon_index+2]
+            fixed_carbon_arb=para_table[fixed_carbon_index+3]
+        if 'Gross Calorific Value' in para_table:
+            gross_calorific_index=para_table.index('Gross Calorific Value')
+            gross_calorific_adb=para_table[gross_calorific_index+2]
+            gross_calorific_arb=para_table[gross_calorific_index+3]
+            
+        coal_data['total_moisture_adb']=total_moisture_adb
+        coal_data['total_moisture_arb']=total_moisture_arb
+        coal_data['moisture_inherent_adb']=moisture_inherent_adb
+        coal_data['moisture_inherent_arb']=moisture_inherent_arb
+        coal_data['ash_adb']=ash_adb
+        coal_data['ash_arb']=ash_arb
+        coal_data['volatile_adb']=volatile_adb
+        coal_data['volatile_arb']=volatile_arb
+        coal_data['fixed_carbon_adb']=fixed_carbon_adb
+        coal_data['fixed_carbon_arb']=fixed_carbon_arb
+        coal_data['gross_calorific_adb']=gross_calorific_adb
+        coal_data['gross_calorific_arb']=gross_calorific_arb
+
+        return coal_data
+    except Exception as e:
+        print(e)
+
+
+@router.post("/pdf_data_upload", tags=[""])
+async def ectract_data_from_mahabal_pdf(response: Response, pdf_upload: Optional[UploadFile] = File(None)):
+    try:
+        contents = await pdf_upload.read()
+        console_logger.debug(mahabal_rr_lot(pdf_upload.file))
+        console_logger.debug(mahabal_ulr(pdf_upload.file))
+        console_logger.debug(mahabal_parameter(pdf_upload.file))
+
+        rrLot = mahabal_rr_lot(pdf_upload.file)
+        ulrData = mahabal_ulr(pdf_upload.file)
+        parameterData = mahabal_parameter(pdf_upload.file)
+
+        if rrLot.get("rake") != None and rrLot.get("rr") != None:
+            console_logger.debug("train data")
+            console_logger.debug(rrLot.get("rake"))
+            console_logger.debug(rrLot.get("rr"))
+            try:
+                coalTrainData = CoalTestingTrain.objects.get(rake_no=rrLot.get("rake"), rrNo=rrLot.get("rr"))
+                console_logger.debug(coalTrainData)
+            except DoesNotExist as e:
+                console_logger.debug("No matching object found.")
+                # return HTTPException(status_code="404", detail="No matching object found in db")
+                response.status_code = 404
+                return e
+            if ulrData.get("report_no"):
+                coalTrainData.third_party_report_no = ulrData.get("report_no")
+            if coalTrainData:
+                console_logger.debug("data there")
+                console_logger.debug(parameterData)
+                listData = []
+                console_logger.debug(coalTrainData.rrNo)
+                # existing_parameter_names = set(singleData.get("parameter_Name") for singleData in coalTrainData.parameters)
+                existing_parameter_names = [singleData.get("parameter_Name") for singleData in coalTrainData.parameters]
+                console_logger.debug(existing_parameter_names)
+                for key, value in parameterData.items():
+                    if value != '-':
+                        if key == 'total_moisture_adb' and "Third_Party_Total_Moisture_(Adb)" not in existing_parameter_names:
+                        # if key == 'total_moisture_adb':
+                            # if "Third_Party_Total_Moisture_(Adb)" not in singleData:
+                            addData = {
+                                "parameter_Name": "Third_Party_Total_Moisture_(Adb)",
+                                # "parameter_Name": "Third_Party_Total_Moisture_%",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalTrainData.parameters.append(addData)
+                        # elif key == 'total_moisture_arb' and "Third_Party_Total_Moisture_(Arb)" not in existing_parameter_names:
+                        elif key == 'total_moisture_arb' and "Third_Party_Total_Moisture" not in existing_parameter_names:
+                        # elif key == 'total_moisture_arb':
+                            # if "Third_Party_Total_Moisture_(Arb)" not in singleData:
+                            addData = {
+                                # "parameter_Name": "Third_Party_Total_Moisture_(Arb)",
+                                "parameter_Name": "Third_Party_Total_Moisture",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalTrainData.parameters.append(addData)
+                        elif key == 'moisture_inherent_adb' and "Third_Party_Inherent_Moisture_(Adb)" not in existing_parameter_names:
+                        # elif key == 'moisture_inherent_adb':
+                            # if "Third_Party_Inherent_Moisture_(Adb)" not in singleData:
+                            addData = {
+                                "parameter_Name": "Third_Party_Inherent_Moisture_(Adb)",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalTrainData.parameters.append(addData)
+                        elif key == 'moisture_inherent_arb' and "Third_Party_Inherent_Moisture_(Arb)" not in existing_parameter_names:
+                        # elif key == 'moisture_inherent_arb':
+                            # if "Third_Party_Inherent_Moisture_(Arb)" not in singleData:
+                            addData = {
+                                "parameter_Name": "Third_Party_Inherent_Moisture_(Arb)",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalTrainData.parameters.append(addData)
+                        elif key == "ash_adb" and "Third_Party_Ash_(Adb)" not in existing_parameter_names:
+                        # elif key == "ash_adb":
+                            # if "Third_Party_Ash_(Adb)" not in singleData:
+                            addData = {
+                                "parameter_Name": "Third_Party_Ash_(Adb)",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalTrainData.parameters.append(addData)
+                        elif key == "ash_arb" and "Third_Party_Ash_(Arb)" not in existing_parameter_names:
+                        # elif key == "ash_arb":
+                            # if "Third_Party_Ash_(Arb)" not in singleData:
+                            addData = {
+                                "parameter_Name": "Third_Party_Ash_(Arb)",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalTrainData.parameters.append(addData)
+                        elif key == "volatile_adb" and "Third_Party_Volatile_Matter_(Adb)" not in existing_parameter_names:
+                        # elif key == "volatile_adb":
+                            # if "Third_Party_Volatile_Matter_(Adb)" not in singleData:
+                            addData = {
+                                "parameter_Name": "Third_Party_Volatile_Matter_(Adb)",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalTrainData.parameters.append(addData)
+                        elif key == "volatile_arb" and "Third_Party_Volatile_Matter_(Arb)" not in existing_parameter_names:
+                        # elif key == "volatile_arb":
+                            # if "Third_Party_Volatile_Matter_(Arb)" not in singleData:
+                            addData = {
+                                "parameter_Name": "Third_Party_Volatile_Matter_(Arb)",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalTrainData.parameters.append(addData)
+                        elif key == "fixed_carbon_adb" and "Third_Party_Fixed_Carbon_(Adb)" not in existing_parameter_names:
+                        # elif key == "fixed_carbon_adb":
+                            # if "Third_Party_Fixed_Carbon_(Adb)" not in singleData:
+                            addData = {
+                                "parameter_Name": "Third_Party_Fixed_Carbon_(Adb)",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalTrainData.parameters.append(addData)
+                        elif key == "fixed_carbon_arb" and "Third_Party_Fixed_Carbon_(Arb)" not in existing_parameter_names:
+                        # elif key == "fixed_carbon_arb":
+                            # if "Third_Party_Fixed_Carbon_(Arb)" not in singleData:
+                            addData = {
+                                "parameter_Name": "Third_Party_Fixed_Carbon_(Arb)",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalTrainData.parameters.append(addData)
+                        elif key == "gross_calorific_adb" and "Third_Party_Gross_Calorific_Value_(Adb)" not in existing_parameter_names:
+                        # elif key == "gross_calorific_adb":
+                            # if "Third_Party_Gross_Calorific_Value_(Adb)" not in singleData:
+                            addData = {
+                                "parameter_Name": "Third_Party_Gross_Calorific_Value_(Adb)",
+                                "unit_Val": "Kcal/Kg",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalTrainData.parameters.append(addData)
+                        # elif key == "gross_calorific_arb":
+                        elif key == "gross_calorific_arb" and "Third_Party_Gross_Calorific_Value_(Arb)" not in existing_parameter_names:
+                            # if "Third_Party_Gross_Calorific_Value_(Arb)" not in singleData:
+                            addData = {
+                                "parameter_Name": "Third_Party_Gross_Calorific_Value_(Arb)",
+                                "unit_Val": "Kcal/Kg",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalTrainData.parameters.append(addData)
+                console_logger.debug(coalTrainData)
+                coalTrainData.save()
+                return {"detail": "success"}
+
+        elif rrLot.get("lot") != None and rrLot.get("do") != None:
+            try:
+                coalRoadData = CoalTesting.objects.get(rake_no=rrLot.get("lot"), rrNo=rrLot.get("do"))
+                console_logger.debug(coalRoadData)
+            except DoesNotExist as e:
+                console_logger.debug("No matching object found.")
+                response.status_code = 404
+                return e
+                # return HTTPException(status_code="404", detail="No matching object found in db")
+            console_logger.debug(coalRoadData)
+            if ulrData.get("report_no"):
+                coalRoadData.third_party_report_no = ulrData.get("report_no")
+            addData = {}
+            if coalRoadData:
+                console_logger.debug("data there")
+                console_logger.debug(parameterData)
+                listData = []
+                existing_parameter_names = [singleData.get("parameter_Name") for singleData in coalRoadData.parameters]
+                console_logger.debug(existing_parameter_names)
+                for key, value in parameterData.items():
+                    if value != '-':
+                        if key == 'total_moisture_adb' and "Third_Party_Total_Moisture_(Adb)" not in existing_parameter_names:
+                            addData = {
+                                "parameter_Name": "Third_Party_Total_Moisture_(Adb)",
+                                # "parameter_Name": "Third_Party_Total_Moisture_%",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalRoadData.parameters.append(addData)
+                        elif key == 'total_moisture_arb' and "Third_Party_Total_Moisture" not in existing_parameter_names:
+                            addData = {
+                                # "parameter_Name": "Third_Party_Total_Moisture_(Arb)",
+                                "parameter_Name": "Third_Party_Total_Moisture",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalRoadData.parameters.append(addData)
+                        elif key == 'moisture_inherent_adb' and "Third_Party_Inherent_Moisture_(Adb)" not in existing_parameter_names:
+                            addData = {
+                                "parameter_Name": "Third_Party_Inherent_Moisture_(Adb)",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalRoadData.parameters.append(addData)
+                        elif key == 'moisture_inherent_arb' and "Third_Party_Inherent_Moisture_(Arb)" not in existing_parameter_names:
+                            addData = {
+                                "parameter_Name": "Third_Party_Inherent_Moisture_(Arb)",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalRoadData.parameters.append(addData)
+                        elif key == "ash_adb" and "Third_Party_Ash_(Adb)" not in existing_parameter_names:
+                            addData = {
+                                "parameter_Name": "Third_Party_Ash_(Adb)",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalRoadData.parameters.append(addData)
+                        elif key == "ash_arb" and "Third_Party_Ash_(Arb)" not in existing_parameter_names:
+                            addData = {
+                                "parameter_Name": "Third_Party_Ash_(Arb)",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalRoadData.parameters.append(addData)
+                        elif key == "volatile_adb" and "Third_Party_Volatile_Matter_(Adb)" not in existing_parameter_names:
+                            addData = {
+                                "parameter_Name": "Third_Party_Volatile_Matter_(Adb)",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalRoadData.parameters.append(addData)
+                        elif key == "volatile_arb" and "Third_Party_Volatile_Matter_(Arb)" not in existing_parameter_names:
+                            addData = {
+                                "parameter_Name": "Third_Party_Volatile_Matter_(Arb)",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalRoadData.parameters.append(addData)
+                        elif key == "fixed_carbon_adb" and "Third_Party_Fixed_Carbon_(Adb)" not in existing_parameter_names:
+                            addData = {
+                                "parameter_Name": "Third_Party_Fixed_Carbon_(Adb)",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalRoadData.parameters.append(addData)
+                        elif key == "fixed_carbon_arb" and "Third_Party_Fixed_Carbon_(Arb)" not in existing_parameter_names:
+                            addData = {
+                                "parameter_Name": "Third_Party_Fixed_Carbon_(Arb)",
+                                "unit_Val": "%",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalRoadData.parameters.append(addData)
+                        elif key == "gross_calorific_adb" and "Third_Party_Gross_Calorific_Value_(Adb)" not in existing_parameter_names:
+                            addData = {
+                                "parameter_Name": "Third_Party_Gross_Calorific_Value_(Adb)",
+                                "unit_Val": "Kcal/Kg",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalRoadData.parameters.append(addData)
+                        elif key == "gross_calorific_arb" and "Third_Party_Gross_Calorific_Value_(Arb)" not in existing_parameter_names:
+                            addData = {
+                                "parameter_Name": "Third_Party_Gross_Calorific_Value_(Arb)",
+                                "unit_Val": "Kcal/Kg",
+                                "test_Method": "",
+                                "val1": value,
+                            }
+                            coalRoadData.parameters.append(addData)
+                coalRoadData.save()
+                return {"detail": "success"}
+            
+    # except DoesNotExist as e:
+    #     console_logger.debug("No matching object found.")
+    #     return HTTPException(status_code="404", detail="No matching object found in db")
+    except Exception as e:
+        console_logger.debug("----- Excel error -----", e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug(
+            "Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno)
+        )
+        return e
+
+
+# ---------------------------------- Mahabal data end ----------------------------------------
+
+
 consumption_headers = {
 'ClientToken': 'Administrator',
 'Content-Type': 'application/json'}
@@ -175,11 +660,14 @@ def extract_historian_data(start_date: Optional[str] = None, end_date: Optional[
     console_logger.debug(f"---- Coal Consumption IP ----        {historian_ip}")
     console_logger.debug(f"---- Coal Consumption Duration ----  {historian_timer}")
 
+    current_time = datetime.datetime.now(IST)
+    current_date = current_time.date()
+
     if not end_date:
-        end_date = datetime.date.today().__str__()                                                    # end_date will always be the current date
+        end_date = current_date.__str__()                                                    # end_date will always be the current date
     if not start_date:
         no_of_day = historian_timer.split(":")[0]
-        start_date = (datetime.date.today()-timedelta(int(no_of_day))).__str__()
+        start_date = (current_date-timedelta(int(no_of_day))).__str__()
 
     console_logger.debug(f" --- Consumption Start Date --- {start_date}")
     console_logger.debug(f" --- Consumption End Date --- {end_date}")
@@ -235,7 +723,7 @@ def extract_historian_data(start_date: Optional[str] = None, end_date: Optional[
 
 
 @router.get("/coal_generation_graph", tags=["Coal Consumption"])
-def coal_generation_analysis(response:Response,type: Optional[str] = "Daily",
+def coal_generation_analysis(response:Response, type: Optional[str] = "Daily",
                               Month: Optional[str] = None, 
                               Daily: Optional[str] = None, Year: Optional[str] = None):
     try:
@@ -925,12 +1413,14 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
 
     payload = {}
     headers = {}
+    current_time = datetime.datetime.now(IST)
+    current_date = current_time.date()
     if not end_date:
-        end_date = datetime.date.today()  #  end_date will always be the current date
+        end_date = current_date.__str__()  #  end_date will always be the current date
 
     if not start_date:
         no_of_day = testing_timer.split(":")[0]
-        start_date = (end_date - timedelta(int(no_of_day))).__str__()
+        start_date = (current_date - timedelta(int(no_of_day))).__str__()
 
     console_logger.debug(f" --- Test Start Date --- {start_date}")
     console_logger.debug(f" --- Test End Date --- {end_date}")
@@ -938,9 +1428,8 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
     coal_testing_url = f"http://{testing_ip}/limsapi/api/SampleDetails/GetSampleRecord/GetSampleRecord?Fromdate={start_date}&todate={end_date}"
     # coal_testing_url = f"http://172.21.96.145/limsapi/api/SampleDetails/GetSampleRecord/GetSampleRecord?Fromdate={start_date}&todate={end_date}"
 
-    response = requests.request(
-        "GET", url=coal_testing_url, headers=headers, data=payload
-    )
+    response = requests.request("GET", url=coal_testing_url, headers=headers, data=payload)
+    
     testing_data = json.loads(response.text)
 
     wcl_extracted_data = []
@@ -1044,6 +1533,7 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
     return {"message": "Successful"}
 
 
+
 @router.get("/coal_gcv_table", tags=["Coal Testing"])
 def coal_wcl_gcv_table(
     response: Response,
@@ -1055,7 +1545,6 @@ def coal_wcl_gcv_table(
     month_date: Optional[str] = None,
     type: Optional[str] = "display"):
     try:
-        data = {}
         result = {"labels": [], "datasets": [], "total": 0, "page_size": 15}
 
         if type and type == "display":
@@ -1069,20 +1558,35 @@ def coal_wcl_gcv_table(
                 page_len = perPage
                 result["page_size"] = perPage
 
+            data = Q()
+
+            # if start_timestamp:
+            #     data &= Q(receive_date__gte = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M"))
+
+            # if end_timestamp:
+            #     data &= Q(receive_date__lte = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M"))
+
             if start_timestamp:
-                data["receive_date__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(receive_date__gte = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M"))
+            else:
+                start_timestamp = (datetime.datetime.now() - datetime.timedelta(days=31)).strftime("%Y-%m-%d")
+                data &= Q(receive_date__gte = start_timestamp)
 
             if end_timestamp:
-                data["receive_date__lte"] =  datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(receive_date__lte = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M"))
+            else:
+                end_timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
+                data &= Q(receive_date__lte = end_timestamp)
 
             if search_text:
                 if search_text.isdigit():
-                    data["rrNo__icontains"] = search_text
+                    data &= (Q(rrNo__icontains=search_text))
                 else:
-                    data["location__icontains"] = search_text
+                    data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
 
             offset = (page_no - 1) * page_len
-            logs = CoalTesting.objects(**data).order_by("-ID").skip(offset).limit(page_len)
+            # logs = CoalTesting.objects(data).order_by("-ID").skip(offset).limit(page_len)
+            logs = CoalTesting.objects(data).order_by("-ID")
 
             if any(logs):
                 aggregated_data = defaultdict(lambda: defaultdict(lambda: {"DO_Qty": 0, "Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)_count": 0, "count": 0}))
@@ -1091,15 +1595,17 @@ def coal_wcl_gcv_table(
                     month = log.receive_date.strftime("%Y-%m")
                     payload = log.gradepayload()
                     mine = payload["Mine"]
-                    aggregated_data[month][mine]["DO_Qty"] += float(payload["DO_Qty"])
-                    aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["Gross_Calorific_Value_(Adb)"])
+                    if payload.get("DO_Qty"):
+                        if payload.get("DO_Qty").count('.') > 1:
+                            aggregated_data[month][mine]["DO_Qty"] += float(payload.get("DO_Qty")[:5])
+                        else:
+                            aggregated_data[month][mine]["DO_Qty"] += float(payload["DO_Qty"])
+                    if payload.get("Gross_Calorific_Value_(Adb)"):
+                        aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["Gross_Calorific_Value_(Adb)"])
                     if payload.get("Third_Party_Gross_Calorific_Value_(Adb)"):
                         aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)"] += float(payload["Third_Party_Gross_Calorific_Value_(Adb)"])
                         aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)_count"] += 1
                     aggregated_data[month][mine]["count"] += 1
-
-                
-                console_logger.debug(aggregated_data)
 
                 dataList = [
                     {"month": month, "data": {
@@ -1139,55 +1645,67 @@ def coal_wcl_gcv_table(
                                         mine_data["average_Third_Party_GCV_Grade"] = "G-1"
                                         # single_data["thrd_grade"] = single_coal_grades["grade"]
                                         break
-            final_data = []
-            if month_date:
-                filtered_data = [entry for entry in dataList if entry["month"] == month_date]
-                if filtered_data:
-                    data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
-                    for mine, values in data.items():
-                        dictData = {}
-                        dictData['Mine'] = mine
-                        dictData['DO_Qty'] = str(values['average_DO_Qty'])
-                        dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
-                        if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":    
-                            dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
-                            dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
-                            if values.get("average_Third_Party_GCV_Grade"):
-                                dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
-                            dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
-                            if values.get("average_Third_Party_GCV_Grade"):
-                                dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['Gross_Calorific_Value_Grade_(Adb)'].replace('G-', '')) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))))
-                        final_data.append(dictData)
+                final_data = []
+                if month_date:
+                    filtered_data = [entry for entry in dataList if entry["month"] == month_date]
+                    if filtered_data:
+                        data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                        for mine, values in data.items():
+                            dictData = {}
+                            dictData['Mine'] = mine
+                            dictData['DO_Qty'] = str(values['average_DO_Qty'])
+                            dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                            if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":    
+                                dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['Gross_Calorific_Value_Grade_(Adb)'].replace('G-', '')) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))))
+                            final_data.append(dictData)
+                    else:
+                        console_logger.debug(
+                            f"No data available for the given month: {month_date}"
+                        )
+                        return {"message": f"No data available for the given month: {month_date}"}
                 else:
-                    console_logger.debug(
-                        f"No data available for the given month: {month_date}"
-                    )
-                    return {"message": f"No data available for the given month: {month_date}"}
-            else:
-                console_logger.debug("inside else")
-                filtered_data = [entry for entry in dataList]
-                # data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
-                for single_data in filtered_data:
-                    for mine, values in single_data['data'].items():
-                        dictData = {}
-                        dictData['Mine'] = mine
-                        dictData['DO_Qty'] = str(values['average_DO_Qty'])
-                        dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
-                        if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
-                            dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
-                            dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
-                            if values.get("average_Third_Party_GCV_Grade"):
-                                dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
-                            dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
-                            if values.get("average_Third_Party_GCV_Grade"):
-                                dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['Gross_Calorific_Value_Grade_(Adb)'].replace('G-', '')) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))))
+                    console_logger.debug("inside else")
+                    filtered_data = [entry for entry in dataList]
+                    # data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                    for single_data in filtered_data:
+                        for mine, values in single_data['data'].items():
+                            dictData = {}
+                            dictData['Mine'] = mine
+                            dictData['DO_Qty'] = str(values['average_DO_Qty'])
+                            dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                            if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['Gross_Calorific_Value_Grade_(Adb)'].replace('G-', '')) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))))
 
-                        final_data.append(dictData)
-            result["labels"] = list(final_data[0].keys())
-            result["total"] = len(final_data)
-            # final_data.append(countDict)
-            result["datasets"] = final_data
-            return result
+                            final_data.append(dictData)
+                # result["labels"] = list(final_data[0].keys())
+                # result["total"] = len(final_data)
+                # # final_data.append(countDict)
+                # result["datasets"] = final_data
+
+                # Perform pagination here using list slicing
+                start_index = (page_no - 1) * page_len
+                end_index = start_index + page_len
+                paginated_data = final_data[start_index:end_index]
+
+                result["labels"] = list(final_data[0].keys())
+                result["total"] = len(final_data)
+                result["datasets"] = paginated_data
+
+                return result
+            else:
+                return result
         
         elif type and type == "download":
             del type
@@ -1196,25 +1714,25 @@ def coal_wcl_gcv_table(
             os.umask(0)
             os.makedirs(target_directory, exist_ok=True, mode=0o777)
             
+            data = Q()
+
             if start_timestamp:
-                data["receive_date__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(receive_date__gte = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M"))
 
             if end_timestamp:
-                data["receive_date__lte"] =  datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(receive_date__lte = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M"))
 
 
             if search_text:
                 if search_text.isdigit():
-                    data["rrNo__icontains"] = search_text
-                    del search_text
+                    data &= (Q(rrNo__icontains=search_text))
                 else:
-                    data["location__icontains"] = search_text
-                    del search_text
-            usecase_data = CoalTesting.objects(**data).order_by("-receive_date")
+                    data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
+
+            usecase_data = CoalTesting.objects(data).order_by("-receive_date")
             count = len(usecase_data)
             path = None
             if usecase_data:
-                console_logger.debug("inside usecase data")
                 try:
                     path = os.path.join(
                         "static_server",
@@ -1264,8 +1782,14 @@ def coal_wcl_gcv_table(
                             month = log.receive_date.strftime("%Y-%m")
                             payload = log.gradepayload()
                             mine = payload["Mine"]
-                            aggregated_data[month][mine]["DO_Qty"] += float(payload["DO_Qty"])
-                            aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["Gross_Calorific_Value_(Adb)"]) 
+                            if payload.get("DO_Qty"):
+                                # console_logger.debug(payload.get("DO_Qty").count('.'))
+                                if payload.get("DO_Qty").count('.') > 1:
+                                    aggregated_data[month][mine]["DO_Qty"] += float(payload.get("DO_Qty")[:5])
+                                else:
+                                    aggregated_data[month][mine]["DO_Qty"] += float(payload["DO_Qty"])
+                            if payload.get("Gross_Calorific_Value_(Adb)"):
+                                aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["Gross_Calorific_Value_(Adb)"]) 
                             if payload.get("Third_Party_Gross_Calorific_Value_(Adb)"):
                                 aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)"] += float(payload["Third_Party_Gross_Calorific_Value_(Adb)"])
                                 aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)_count"] += 1
@@ -1338,7 +1862,6 @@ def coal_wcl_gcv_table(
                             )
                             return {"message": f"No data available for the given month: {month_date}"}
                     else:
-                        console_logger.debug("inside else")
                         filtered_data = [entry for entry in dataList]
                         # data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
                         for single_data in filtered_data:
@@ -1367,8 +1890,8 @@ def coal_wcl_gcv_table(
                         worksheet.write(row, 1, single_data["Mine"])
                         worksheet.write(row, 2, single_data["DO_Qty"])
                         worksheet.write(row, 3, single_data["Gross_Calorific_Value_(Adb)"])
-                        if single_data.get("Gross_Calorific_Value_Grade") != "" and single_data.get("Gross_Calorific_Value_Grade") != None:
-                            worksheet.write(row, 4, str(single_data["Gross_Calorific_Value_Grade"]), cell_format)
+                        if single_data.get("Gross_Calorific_Value_Grade_(Adb)") != "" and single_data.get("Gross_Calorific_Value_Grade_(Adb)") != None:
+                            worksheet.write(row, 4, str(single_data["Gross_Calorific_Value_Grade_(Adb)"]), cell_format)
                         if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != None:
                             worksheet.write(row, 5, str(single_data["Third_Party_Gross_Calorific_Value_(Adb)"]), cell_format)
                         if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != None:
@@ -1422,7 +1945,6 @@ def coal_wcl_gcv_table(
     month_date: Optional[str] = None,
     type: Optional[str] = "display"):
     try:
-        data = {}
         result = {"labels": [], "datasets": [], "total": 0, "page_size": 15}
 
         if type and type == "display":
@@ -1436,20 +1958,36 @@ def coal_wcl_gcv_table(
                 page_len = perPage
                 result["page_size"] = perPage
 
+            data = Q()
+
+            # if start_timestamp:
+            #     data &= Q(receive_date__gte = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M"))
+
+            # if end_timestamp:
+            #     data &= Q(receive_date__lte = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M"))
+
+
             if start_timestamp:
-                data["receive_date__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(receive_date__gte = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M"))
+            else:
+                start_timestamp = (datetime.datetime.now() - datetime.timedelta(days=31)).strftime("%Y-%m-%d")
+                data &= Q(receive_date__gte = start_timestamp)
 
             if end_timestamp:
-                data["receive_date__lte"] =  datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(receive_date__lte = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M"))
+            else:
+                end_timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
+                data &= Q(receive_date__lte = end_timestamp)
 
             if search_text:
                 if search_text.isdigit():
-                    data["rrNo__icontains"] = search_text
+                    data &= (Q(rrNo__icontains=search_text))
                 else:
-                    data["location__icontains"] = search_text
+                    data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
 
             offset = (page_no - 1) * page_len
-            logs = CoalTestingTrain.objects(**data).order_by("-ID").skip(offset).limit(page_len)
+            # logs = CoalTestingTrain.objects(data).order_by("-ID").skip(offset).limit(page_len)
+            logs = CoalTestingTrain.objects(data).order_by("-ID")
 
             if any(logs):
                 aggregated_data = defaultdict(lambda: defaultdict(lambda: {"RR_Qty": 0, "Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)_count": 0, "count": 0}))
@@ -1458,8 +1996,15 @@ def coal_wcl_gcv_table(
                     month = log.receive_date.strftime("%Y-%m")
                     payload = log.gradepayload()
                     mine = payload["Mine"]
-                    aggregated_data[month][mine]["RR_Qty"] += float(payload["RR_Qty"])
-                    aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["Gross_Calorific_Value_(Adb)"])
+                    if payload.get("RR_Qty"):
+                        # console_logger.debug(payload.get("RR_Qty").count('.'))
+                        if payload.get("RR_Qty").count('.') > 1:
+                            aggregated_data[month][mine]["RR_Qty"] += float(payload.get("RR_Qty")[:5])
+                        else:
+                            aggregated_data[month][mine]["RR_Qty"] += float(payload.get("RR_Qty"))
+                    # aggregated_data[month][mine]["RR_Qty"] += float(payload["RR_Qty"])
+                    if payload.get("Gross_Calorific_Value_(Adb)"):
+                        aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["Gross_Calorific_Value_(Adb)"])
                     if payload.get("Third_Party_Gross_Calorific_Value_(Adb)"):
                         aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)"] += float(payload["Third_Party_Gross_Calorific_Value_(Adb)"])
                         aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)_count"] += 1
@@ -1480,6 +2025,7 @@ def coal_wcl_gcv_table(
                 # Iterate through each month's data
                 for month_data in dataList:
                     for key, mine_data in month_data["data"].items():
+                        console_logger.debug(mine_data)
                         if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
                             for single_coal_grades in coal_grades:
                                 if single_coal_grades["end_value"] != "":
@@ -1501,52 +2047,93 @@ def coal_wcl_gcv_table(
                                     elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
                                         mine_data["average_Third_Party_GCV_Grade"] = "G-1"
                                         break
-            final_data = []
-            if month_date:
-                filtered_data = [entry for entry in dataList if entry["month"] == month_date]
-                if filtered_data:
-                    data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
-                    for mine, values in data.items():
-                        dictData = {}
-                        dictData['Mine'] = mine
-                        dictData['RR_Qty'] = str(values['average_RR_Qty'])
-                        dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
-                        if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":    
-                            dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
-                            dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
-                            if values.get("average_Third_Party_GCV_Grade"):
-                                dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
-                            dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
-                            if values.get("average_Third_Party_GCV_Grade"):
-                                dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['Gross_Calorific_Value_Grade_(Adb)'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
-                            # str(abs(int(single_data["thrd_grade"].replace('G-', '')) - int(single_data["grade"].replace('G-', ''))))
-                        final_data.append(dictData)
+                final_data = []
+                if month_date:
+                    filtered_data = [entry for entry in dataList if entry["month"] == month_date]
+                    if filtered_data:
+                        data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                        for mine, values in data.items():
+                            dictData = {}
+                            dictData['Mine'] = mine
+                            dictData['RR_Qty'] = str(values['average_RR_Qty'])
+                            dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                            # if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":    
+                            #     dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                            #     dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                            #     if values.get("average_Third_Party_GCV_Grade"):
+                            #         dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                            #     dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                            #     if values.get("average_Third_Party_GCV_Grade"):
+                            #         dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['Gross_Calorific_Value_Grade_(Adb)'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
+                            #     # str(abs(int(single_data["thrd_grade"].replace('G-', '')) - int(single_data["grade"].replace('G-', ''))))
+                            # final_data.append(dictData)
+
+                            if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_Third_Party_GCV_Grade']
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['Gross_Calorific_Value_Grade_(Adb)'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
+                            elif values["average_Third_Party_Gross_Calorific_Value_(Adb)"] == "":
+                                dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                if dictData["Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                    dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['Gross_Calorific_Value_Grade_(Adb)'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
+                            final_data.append(dictData)
+                    else:
+                        console_logger.debug("No data available for the given month:", month_date)
+                        return {"message": f"No data available for the given month: {month_date}"}
                 else:
-                    console_logger.debug("No data available for the given month:", month_date)
-                    return {"message": f"No data available for the given month: {month_date}"}
+                    console_logger.debug("inside else")
+                    filtered_data = [entry for entry in dataList]
+                    for single_data in filtered_data:
+                        for mine, values in single_data['data'].items():
+                            console_logger.debug(values)
+                            dictData = {}
+                            dictData['Mine'] = mine
+                            dictData['RR_Qty'] = str(values['average_RR_Qty'])
+                            dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                            if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_Third_Party_GCV_Grade']
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['Gross_Calorific_Value_Grade_(Adb)'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
+                            elif values["average_Third_Party_Gross_Calorific_Value_(Adb)"] == "":
+                                dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                if dictData["Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                    dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['Gross_Calorific_Value_Grade_(Adb)'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
+                            final_data.append(dictData)
+                # result["labels"] = list(final_data[0].keys())
+                # result["total"] = len(final_data)
+                # # final_data.append(countDict)
+                # result["datasets"] = final_data
+
+
+                start_index = (page_no - 1) * page_len
+                end_index = start_index + page_len
+                paginated_data = final_data[start_index:end_index]
+
+                result["labels"] = list(final_data[0].keys())
+                result["total"] = len(final_data)
+                result["datasets"] = paginated_data
+
+                return result
             else:
-                console_logger.debug("inside else")
-                filtered_data = [entry for entry in dataList]
-                for single_data in filtered_data:
-                    for mine, values in single_data['data'].items():
-                        dictData = {}
-                        dictData['Mine'] = mine
-                        dictData['RR_Qty'] = str(values['average_RR_Qty'])
-                        dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
-                        if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
-                            dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
-                            dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
-                            if values.get("average_Third_Party_GCV_Grade"):
-                                dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
-                            dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
-                            if values.get("average_Third_Party_GCV_Grade"):
-                                dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['Gross_Calorific_Value_Grade_(Adb)'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
-                        final_data.append(dictData)
-            result["labels"] = list(final_data[0].keys())
-            result["total"] = len(final_data)
-            # final_data.append(countDict)
-            result["datasets"] = final_data
-            return result
+                return result
         
         elif type and type == "download":
             del type
@@ -1555,20 +2142,22 @@ def coal_wcl_gcv_table(
             os.umask(0)
             os.makedirs(target_directory, exist_ok=True, mode=0o777)
             
+            data = Q()
+
             if start_timestamp:
-                data["receive_date__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(receive_date__gte = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M"))
 
             if end_timestamp:
-                data["receive_date__lte"] =  datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(receive_date__lte = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M"))
+
 
             if search_text:
                 if search_text.isdigit():
-                    data["rrNo__icontains"] = search_text
-                    del search_text
+                    data &= (Q(rrNo__icontains=search_text))
                 else:
-                    data["location__icontains"] = search_text
-                    del search_text
-            usecase_data = CoalTestingTrain.objects(**data).order_by("-receive_date")
+                    data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
+
+            usecase_data = CoalTestingTrain.objects(data).order_by("-receive_date")
             count = len(usecase_data)
             path = None
             if usecase_data:
@@ -1614,7 +2203,6 @@ def coal_wcl_gcv_table(
                     for index, header in enumerate(headers):
                         worksheet.write(0, index, header, cell_format2)
 
-
                     if any(usecase_data):
                         aggregated_data = defaultdict(lambda: defaultdict(lambda: {"RR_Qty": 0, "Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)_count": 0, "count": 0}))
 
@@ -1622,8 +2210,18 @@ def coal_wcl_gcv_table(
                             month = log.receive_date.strftime("%Y-%m")
                             payload = log.gradepayload()
                             mine = payload["Mine"]
-                            aggregated_data[month][mine]["RR_Qty"] += float(payload["RR_Qty"])
-                            aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["Gross_Calorific_Value_(Adb)"])
+                            # aggregated_data[month][mine]["RR_Qty"] += float(payload["RR_Qty"])
+                            # aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["Gross_Calorific_Value_(Adb)"])
+                            if payload.get("RR_Qty"):
+                                # console_logger.debug(payload.get("RR_Qty").count('.'))
+                                if payload.get("RR_Qty").count('.') > 1:
+                                    aggregated_data[month][mine]["RR_Qty"] += float(payload.get("RR_Qty")[:5])
+                                else:
+                                    aggregated_data[month][mine]["RR_Qty"] += float(payload.get("RR_Qty"))
+                            # aggregated_data[month][mine]["RR_Qty"] += float(payload["RR_Qty"])
+                            if payload.get("Gross_Calorific_Value_(Adb)"):
+                                aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["Gross_Calorific_Value_(Adb)"])
+
                             # if payload["Third_Party_Gross_Calorific_Value_(Adb)"] != None:
                             if payload.get("Third_Party_Gross_Calorific_Value_(Adb)"):
                                 aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)"] += float(payload["Third_Party_Gross_Calorific_Value_(Adb)"])
@@ -1716,8 +2314,8 @@ def coal_wcl_gcv_table(
                         worksheet.write(row, 1, single_data["Mine"])
                         worksheet.write(row, 2, single_data["RR_Qty"])
                         worksheet.write(row, 3, single_data["Gross_Calorific_Value_(Adb)"])
-                        if single_data.get("Gross_Calorific_Value_Grade") != "" and single_data.get("Gross_Calorific_Value_Grade") != None:
-                            worksheet.write(row, 4, str(single_data["Gross_Calorific_Value_Grade"]), cell_format)
+                        if single_data.get("Gross_Calorific_Value_Grade_(Adb)") != "" and single_data.get("Gross_Calorific_Value_Grade_(Adb)") != None:
+                            worksheet.write(row, 4, str(single_data["Gross_Calorific_Value_Grade_(Adb)"]), cell_format)
                         if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != None:
                             worksheet.write(row, 5, str(single_data["Third_Party_Gross_Calorific_Value_(Adb)"]), cell_format)
                         if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != None:
@@ -1759,6 +2357,51 @@ def coal_wcl_gcv_table(
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
 
+
+@router.get("/road/fetchyearmonth", tags=["Coal Testing"])
+def endpoint_to_fetch_road_year_month(response:Response):
+    try:
+        dataList = []
+        fetchCoaldates = CoalTesting.objects()
+        for fetchCoaldate in fetchCoaldates:
+            console_logger.debug(fetchCoaldate.receive_date)
+            # dataList.append(fetchCoaldate.receive_date)
+            console_logger.debug(datetime.datetime.strptime(str(fetchCoaldate.receive_date),'%Y-%m-%d %H:%M:%S').strftime('%Y-%m'))
+            yearMonth = datetime.datetime.strptime(str(fetchCoaldate.receive_date),'%Y-%m-%d %H:%M:%S').strftime('%Y-%m')
+            if yearMonth not in dataList:
+                dataList.append(yearMonth)
+        return dataList
+    except Exception as e:
+        console_logger.debug("----- Road Vehicle Count Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+    
+
+@router.get("/rail/fetchyearmonth", tags=["Coal Testing"])
+def endpoint_to_fetch_road_year_month(response:Response):
+    try:
+        dataList = []
+        fetchCoaldates = CoalTestingTrain.objects()
+        for fetchCoaldate in fetchCoaldates:
+            console_logger.debug(fetchCoaldate.receive_date)
+            # dataList.append(fetchCoaldate.receive_date)
+            console_logger.debug(datetime.datetime.strptime(str(fetchCoaldate.receive_date),'%Y-%m-%d %H:%M:%S').strftime('%Y-%m'))
+            yearMonth = datetime.datetime.strptime(str(fetchCoaldate.receive_date),'%Y-%m-%d %H:%M:%S').strftime('%Y-%m')
+            if yearMonth not in dataList:
+                dataList.append(yearMonth)
+        return dataList
+    except Exception as e:
+        console_logger.debug("----- Road Vehicle Count Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
 
 
 @router.post("/update_wcl/testing", tags=["Coal Testing"])
@@ -1878,7 +2521,6 @@ def wcl_addon_data(response: Response, data: WCLtest):
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
-    
 
 
 @router.post("/coal_test_wcl_train_addon", tags=["Coal Testing"])
@@ -1953,9 +2595,9 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
                     search_text: Optional[str] = None,
                     start_timestamp: Optional[str] = None,
                     end_timestamp: Optional[str] = None,
+                    month_date: Optional[str] = None,
                     type: Optional[str] = "display"):
     try:
-        data={}
         result = {        
                 "labels": [],
                 "datasets": [],
@@ -1965,6 +2607,7 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
         
         if type and type == "display":
 
+            data = Q()
             page_no = 1
             page_len = result["page_size"]
 
@@ -1975,22 +2618,34 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
                 page_len = perPage
                 result["page_size"] = perPage
 
-            if start_timestamp:
-                data["receive_date__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+            offset = (page_no - 1) * page_len
 
-            if end_timestamp:
-                data["receive_date__lte"] =  datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
-            
+            if month_date:
+                start_date = f'{month_date}-01'
+                startd_date=datetime.datetime.strptime(start_date,"%Y-%m-%d")
+                end_date = startd_date + relativedelta( day=31)
+                data &= Q(receive_date__gte = startd_date)
+                data &= Q(receive_date__lte = end_date)
+            else:
+                if start_timestamp:
+                    data &= Q(receive_date__gte = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M"))
+                else:
+                    start_timestamp = (datetime.datetime.now() - datetime.timedelta(days=31)).strftime("%Y-%m-%d")
+                    data &= Q(receive_date__gte = start_timestamp)
+
+                if end_timestamp:
+                    data &= Q(receive_date__lte = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M"))
+                else:
+                    end_timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
+                    data &= Q(receive_date__lte = end_timestamp)
+
             if search_text:
                 if search_text.isdigit():
-                    data["rrNo__icontains"] = search_text
+                    data &= (Q(rrNo__icontains=search_text))
                 else:
-                    data["location__icontains"] = search_text
-
-            offset = (page_no - 1) * page_len
-            
+                    data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
             logs = (
-                CoalTesting.objects(**data)
+                CoalTesting.objects(data)
                 .order_by("-ID")
                 .skip(offset)
                 .limit(page_len)                  
@@ -1999,39 +2654,40 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
             if any(logs):
                 for log in logs:
                     # result["labels"] = list(log.payload().keys())
-                    result["labels"] = ["Sr.No", "Mine", "Lot_No", "DO_No", "DO_Qty", "Supplier", "Date", "Time", "Id", "Total_Moisture_%", "Inherent_Moisture_(Adb)_%", "Ash_(Adb)_%", "Volatile_Matter_(Adb)_%", "Gross_Calorific_Value_(Adb)_Kcal/Kg", "Ash_(Arb)_%", "Volatile_Matter_(Arb)_%", "Fixed_Carbon_(Arb)_%", "Gross_Calorific_Value_(Arb)_Kcal/Kg", "Third_Party_Total_Moisture_%", "Third_Party_Inherent_Moisture_(Adb)_%", "Third_Party_Ash_(Adb)_%", "Third_Party_Volatile_Matter_(Adb)_%", "Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg",  "Third_Party_Ash_(Arb)_%", "Third_Party_Volatile_Matter_(Arb)_%", "Third_Party_Fixed_Carbon_(Arb)_%", "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg", "Third_Party_Report_No"]
+                    result["labels"] = ["Sr.No","Mine","Lot_No","DO_No","DO_Qty", "Supplier", "Date", "Time","Id", "Total_Moisture_%", 
+                                        "Inherent_Moisture_(Adb)_%", "Ash_(Adb)_%", "Volatile_Matter_(Adb)_%", "Gross_Calorific_Value_(Adb)_Kcal/Kg", 
+                                        "Ash_(Arb)_%", "Volatile_Matter_(Arb)_%", "Fixed_Carbon_(Arb)_%", "Gross_Calorific_Value_(Arb)_Kcal/Kg",
+                                        "Third_Party_Total_Moisture_%", "Third_Party_Inherent_Moisture_(Adb)_%", "Third_Party_Ash_(Adb)_%",
+                                        "Third_Party_Volatile_Matter_(Adb)_%", "Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg",
+                                        "Third_Party_Ash_(Arb)_%", "Third_Party_Volatile_Matter_(Arb)_%",
+                                        "Third_Party_Fixed_Carbon_(Arb)_%", "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg", "Third_Party_Report_No"]
                     result["datasets"].append(log.payload())
-
-            result["total"] = (len(CoalTesting.objects(**data)))
-            console_logger.debug(f"-------- Road Coal Testing Response -------- {result}")
+            result["total"] = (len(CoalTesting.objects(data)))
+            # console_logger.debug(f"-------- Road Coal Testing Response -------- {result}")
             return result
 
         elif type and type == "download":
-            # console_logger.debug("download")
             del type
 
             file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
             target_directory = f"static_server/gmr_ai/{file}"
             os.umask(0)
             os.makedirs(target_directory, exist_ok=True, mode=0o777)
-
+            
+            data = Q()
             if start_timestamp:
-                data["receive_date__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(receive_date__gte = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M"))
 
             if end_timestamp:
-                data["receive_date__lte"] =  datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
-
-            # console_logger.debug(data)
+                data &= Q(receive_date__lte = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M"))
 
             if search_text:
                 if search_text.isdigit():
-                    data["rrNo__icontains"] = search_text
-                    del search_text
+                    data &= (Q(rrNo__icontains=search_text))
                 else:
-                    data["location__icontains"] = search_text
-                    del search_text
+                    data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
 
-            usecase_data = CoalTesting.objects(**data).order_by("-receive_date")
+            usecase_data = CoalTesting.objects(data).order_by("-receive_date")
             count = len(usecase_data)
             path = None
             if usecase_data:
@@ -2062,7 +2718,33 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
                     cell_format.set_align("center")
                     cell_format.set_align("vcenter")
 
-                    headers = ["Sr.No", "Mine", "Lot_No", "DO_No", "DO_Qty", "Supplier", "Total_Moisture_%", "Inherent_Moisture_(Adb)_%", "Ash_(Adb)_%", "Volatile_Matter_(Adb)_%", "Gross_Calorific_Value_(Adb)_Kcal/Kg", "Ash_(Arb)_%", "Volatile_Matter_(Arb)_%", "Fixed_Carbon_(Arb)_%", "Gross_Calorific_Value_(Arb)_Kcal/Kg", "Third_Party_Report_No", "Third_Party_Total_Moisture_%", "Third_Party_Inherent_Moisture_(Adb)_%", "Third_Party_Ash_(Adb)_%", "Third_Party_Volatile_Matter_(Adb)_%", "Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg",  "Third_Party_Ash_(Arb)_%", "Third_Party_Volatile_Matter_(Arb)_%", "Third_Party_Fixed_Carbon_(Arb)_%", "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg", "Date", "Time"]
+                    headers = ["Sr.No",
+                               "Mine",
+                               "Lot_No",
+                               "DO_No",
+                               "DO_Qty", 
+                               "Supplier", 
+                               "Total_Moisture_%", 
+                               "Inherent_Moisture_(Adb)_%", 
+                               "Ash_(Adb)_%", 
+                               "Volatile_Matter_(Adb)_%", 
+                               "Gross_Calorific_Value_(Adb)_Kcal/Kg", 
+                               "Ash_(Arb)_%", 
+                               "Volatile_Matter_(Arb)_%", 
+                               "Fixed_Carbon_(Arb)_%", 
+                               "Gross_Calorific_Value_(Arb)_Kcal/Kg", 
+                               "Third_Party_Report_No", 
+                               "Third_Party_Total_Moisture_%", 
+                               "Third_Party_Inherent_Moisture_(Adb)_%", 
+                               "Third_Party_Ash_(Adb)_%", 
+                               "Third_Party_Volatile_Matter_(Adb)_%", 
+                               "Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg",  
+                               "Third_Party_Ash_(Arb)_%", 
+                               "Third_Party_Volatile_Matter_(Arb)_%", 
+                               "Third_Party_Fixed_Carbon_(Arb)_%", 
+                               "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg", 
+                               "Date", 
+                               "Time"]
 
                     for index, header in enumerate(headers):
                         worksheet.write(0, index, header, cell_format2)
@@ -2147,9 +2829,9 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
                     search_text: Optional[str] = None,
                     start_timestamp: Optional[str] = None,
                     end_timestamp: Optional[str] = None,
+                    month_date: Optional[str] = None,
                     type: Optional[str] = "display"):
     try:
-        data={}
         result = {        
                 "labels": [],
                 "datasets": [],
@@ -2159,6 +2841,7 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
         
         if type and type == "display":
 
+            data = Q()
             page_no = 1
             page_len = result["page_size"]
 
@@ -2168,17 +2851,36 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
             if perPage:
                 page_len = perPage
                 result["page_size"] = perPage
-
-            if start_timestamp:
-                data["receive_date__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
-
-            if end_timestamp:
-                data["receive_date__lte"] =  datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
-
-            offset = (page_no - 1) * page_len
             
+            offset = (page_no - 1) * page_len
+
+            if month_date:
+                start_date = f'{month_date}-01'
+                startd_date=datetime.datetime.strptime(start_date,"%Y-%m-%d")
+                end_date = startd_date + relativedelta( day=31)
+                data &= Q(receive_date__gte = startd_date)
+                data &= Q(receive_date__lte = end_date)
+            else:
+                if start_timestamp:
+                    data &= Q(receive_date__gte = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M"))
+                else:
+                    start_timestamp = (datetime.datetime.now() - datetime.timedelta(days=31)).strftime("%Y-%m-%d")
+                    data &= Q(receive_date__gte = start_timestamp)
+
+                if end_timestamp:
+                    data &= Q(receive_date__lte = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M"))
+                else:
+                    end_timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
+                    data &= Q(receive_date__lte = end_timestamp)
+
+            if search_text:
+                if search_text.isdigit():
+                    data &= (Q(rrNo__icontains=search_text))
+                else:
+                    data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
+            console_logger.debug(data)
             logs = (
-                CoalTestingTrain.objects(**data)
+                CoalTestingTrain.objects(data)
                 .order_by("-ID")
                 .skip(offset)
                 .limit(page_len)                  
@@ -2187,10 +2889,36 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
             if any(logs):
                 for log in logs:
                     # result["labels"] = list(log.payload().keys())
-                    result["labels"] = ["Sr.No", "Mine", "Lot_No", "RR_No", "RR_Qty", "Supplier", "Date", "Time", "Id", "Total_Moisture_%", "Inherent_Moisture_(Adb)_%", "Ash_(Adb)_%", "Volatile_Matter_(Adb)_%", "Gross_Calorific_Value_(Adb)_Kcal/Kg", "Ash_(Arb)_%", "Volatile_Matter_(Arb)_%", "Fixed_Carbon_(Arb)_%", "Gross_Calorific_Value_(Arb)_Kcal/Kg", "Third_Party_Report_No", "Third_Party_Total_Moisture_%", "Third_Party_Inherent_Moisture_(Adb)_%", "Third_Party_Ash_(Adb)_%", "Third_Party_Volatile_Matter_(Adb)_%", "Third_Party_Ash_(Arb)_%", "Third_Party_Volatile_Matter_(Arb)_%", "Third_Party_Fixed_Carbon_(Arb)_%", "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]
+                    result["labels"] = ["Sr.No", 
+                    "Mine", 
+                    "Lot_No", 
+                    "RR_No", 
+                    "RR_Qty", 
+                    "Supplier", 
+                    "Date", 
+                    "Time", 
+                    "Id", 
+                    "Total_Moisture_%", 
+                    "Inherent_Moisture_(Adb)_%", 
+                    "Ash_(Adb)_%", 
+                    "Volatile_Matter_(Adb)_%", 
+                    "Gross_Calorific_Value_(Adb)_Kcal/Kg", 
+                    "Ash_(Arb)_%", 
+                    "Volatile_Matter_(Arb)_%", 
+                    "Fixed_Carbon_(Arb)_%", 
+                    "Gross_Calorific_Value_(Arb)_Kcal/Kg", 
+                    "Third_Party_Report_No", 
+                    "Third_Party_Total_Moisture_%", 
+                    "Third_Party_Inherent_Moisture_(Adb)_%", 
+                    "Third_Party_Ash_(Adb)_%", 
+                    "Third_Party_Volatile_Matter_(Adb)_%", 
+                    "Third_Party_Ash_(Arb)_%", 
+                    "Third_Party_Volatile_Matter_(Arb)_%",
+                    "Third_Party_Fixed_Carbon_(Arb)_%",
+                    "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]
                     result["datasets"].append(log.payload())
 
-            result["total"] = (len(CoalTestingTrain.objects(**data)))
+            result["total"] = (len(CoalTestingTrain.objects(data)))
             console_logger.debug(f"-------- Rail Coal Testing Response -------- {result}")
             return result
 
@@ -2202,23 +2930,21 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
             os.umask(0)
             os.makedirs(target_directory, exist_ok=True, mode=0o777)
 
+            data = Q()
+
             if start_timestamp:
-                data["receive_date__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(receive_date__gte = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M"))
 
             if end_timestamp:
-                data["receive_date__lte"] =  datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
-
-            # console_logger.debug(data)
+                data &= Q(receive_date__lte = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M"))
 
             if search_text:
                 if search_text.isdigit():
-                    data["rrNo__icontains"] = search_text
-                    del search_text
+                    data &= (Q(rrNo__icontains=search_text))
                 else:
-                    data["location__icontains"] = search_text
-                    del search_text
+                    data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
 
-            usecase_data = CoalTestingTrain.objects(**data).order_by("-receive_date")
+            usecase_data = CoalTestingTrain.objects(data).order_by("-receive_date")
             count = len(usecase_data)
             path = None
             if usecase_data:
@@ -2249,7 +2975,32 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
                     cell_format.set_align("vcenter")
 
 
-                    headers = ["Sr.No", "Mine", "Lot_No", "RR_No", "RR_Qty", "Supplier", "Total_Moisture_%", "Inherent_Moisture_(Adb)_%", "Ash_(Adb)_%", "Volatile_Matter_(Adb)_%", "Gross_Calorific_Value_(Adb)_Kcal/Kg", "Ash_(Arb)_%", "Volatile_Matter_(Arb)_%", "Fixed_Carbon_(Arb)_%", "Gross_Calorific_Value_(Arb)_Kcal/Kg", "Third_Party_Report_No", "Third_Party_Total_Moisture_%", "Third_Party_Inherent_Moisture_(Adb)_%", "Third_Party_Ash_(Adb)_%", "Third_Party_Volatile_Matter_(Adb)_%", "Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg",  "Third_Party_Ash_(Arb)_%", "Third_Party_Volatile_Matter_(Arb)_%", "Third_Party_Fixed_Carbon_(Arb)_%", "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg", "Date", "Time"]
+                    headers = ["Sr.No",
+                               "Mine",
+                               "Lot_No", 
+                               "RR_No", 
+                               "RR_Qty", 
+                               "Supplier", 
+                               "Total_Moisture_%", 
+                               "Inherent_Moisture_(Adb)_%", 
+                               "Ash_(Adb)_%", 
+                               "Volatile_Matter_(Adb)_%", 
+                               "Gross_Calorific_Value_(Adb)_Kcal/Kg", 
+                               "Ash_(Arb)_%", 
+                               "Volatile_Matter_(Arb)_%", 
+                               "Fixed_Carbon_(Arb)_%", 
+                               "Gross_Calorific_Value_(Arb)_Kcal/Kg", 
+                               "Third_Party_Report_No", 
+                               "Third_Party_Total_Moisture_%", 
+                               "Third_Party_Inherent_Moisture_(Adb)_%", 
+                               "Third_Party_Ash_(Adb)_%", "Third_Party_Volatile_Matter_(Adb)_%", 
+                               "Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg",
+                               "Third_Party_Ash_(Arb)_%", 
+                               "Third_Party_Volatile_Matter_(Arb)_%", 
+                               "Third_Party_Fixed_Carbon_(Arb)_%", 
+                               "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg", 
+                               "Date", 
+                               "Time"]
 
                     for index, header in enumerate(headers):
                         worksheet.write(0, index, header, cell_format2)
@@ -2339,7 +3090,6 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
                     end_timestamp: Optional[str] = None,
                     type: Optional[str] = "display"):
     try:
-        data={}
         result = {        
                 "labels": [],
                 "datasets": [],
@@ -2359,22 +3109,39 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
                 page_len = perPage
                 result["page_size"] = perPage
 
+            # if start_timestamp:
+            #     data["created_at__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+
+            # if end_timestamp:
+            #     data["created_at__lte"] = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
+
+            # if search_text:
+            #     if search_text.isdigit():
+            #         data["arv_cum_do_number__icontains"] = search_text
+            #     else:
+            #         data["vehicle_number__icontains"] = search_text
+
+             # Constructing the base for query
+            data = Q()
+
+            # based on condition for timestamp playing with & and | 
             if start_timestamp:
-                data["created_at__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(created_at__gte = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M"))
 
             if end_timestamp:
-                data["created_at__lte"] = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
-            
+                data &= Q(created_at__lte = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M"))
+
             if search_text:
                 if search_text.isdigit():
-                    data["arv_cum_do_number__icontains"] = search_text
+                    data &= Q(arv_cum_do_number__icontains=search_text) | Q(delivery_challan_number__icontains=search_text)
                 else:
-                    data["vehicle_number__icontains"] = search_text
+                    data &= (Q(vehicle_number__icontains=search_text))
 
             offset = (page_no - 1) * page_len
             
             logs = (
-                Gmrdata.objects(**data)
+                # Gmrdata.objects(**data)
+                Gmrdata.objects(data)
                 .order_by("-ID")
                 .skip(offset)
                 .limit(page_len)
@@ -2384,8 +3151,9 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
                     result["labels"] = list(log.payload().keys())
                     result["datasets"].append(log.payload())
 
-            result["total"]= len(Gmrdata.objects(**data))
-            console_logger.debug(f"-------- Road Journey Table Response -------- {result}")
+            # result["total"]= len(Gmrdata.objects(**data))
+            result["total"]= len(Gmrdata.objects(data))
+            # console_logger.debug(f"-------- Road Journey Table Response -------- {result}")
             return result
 
         elif type and type == "download":
@@ -2396,23 +3164,36 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
             os.umask(0)
             os.makedirs(target_directory, exist_ok=True, mode=0o777)
 
+            # if start_timestamp:
+            #     data["created_at__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+
+            # if end_timestamp:
+            #     data["created_at__lte"] = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
+
+            # console_logger.debug(data)
+
+            # if search_text:
+            #     if search_text.isdigit():
+            #         data["arv_cum_do_number__icontains"] = search_text
+            #     else:
+            #         data["vehicle_number__icontains"] = search_text
+
+            # Constructing the base for query
+            data = Q()
+
             if start_timestamp:
-                data["created_at__gte"] = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
-
+                data &= Q(created_at__gte = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M"))
             if end_timestamp:
-                data["created_at__lte"] = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
-
-            console_logger.debug(data)
+                data &= Q(created_at__lte = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M"))
 
             if search_text:
                 if search_text.isdigit():
-                    data["arv_cum_do_number__icontains"] = search_text
-                    del search_text
+                    data &= Q(arv_cum_do_number__icontains = search_text) | Q(delivery_challan_number__icontains = search_text)
                 else:
-                    data["vehicle_number__icontains"] = search_text
-                    del search_text
+                    data &= Q(vehicle_number__icontains = search_text)
 
-            usecase_data = Gmrdata.objects(**data).order_by("-created_at")
+            # usecase_data = Gmrdata.objects(**data).order_by("-created_at")
+            usecase_data = Gmrdata.objects(data).order_by("-created_at")
             count = len(usecase_data)
             path = None
             if usecase_data:
@@ -2515,8 +3296,8 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
                         worksheet.write(row, 28, str(result["Gate_Pass_No"]), cell_format)
                         worksheet.write(row, 29, str(result["Gate_verified_time"]), cell_format)
                         worksheet.write(row, 30, str(result["Vehicle_in_time"]), cell_format)
-                        worksheet.write(row, 31, str(result["Actual_gross_wt_time"]), cell_format)
-                        worksheet.write(row, 32, str(result["Actual_tare_wt_time"]), cell_format)
+                        worksheet.write(row, 31, str(result["GWEL_Gross_Time"]), cell_format)
+                        worksheet.write(row, 32, str(result["GWEL_Tare_Time"]), cell_format)
                         worksheet.write(row, 33, str(result["Transit_Loss"]), cell_format)
                         worksheet.write(row, 34, str(result["LOT"]), cell_format)
                         count-=1
@@ -2901,7 +3682,6 @@ def gmr_table(response: Response, currentPage: Optional[int] = None,
 
             result["total"] = Gmrdata.objects(**data).count()
 
-            console_logger.debug(f"-------- Road Journey Table Response -------- {result}")
             return result
 
 
@@ -3030,7 +3810,8 @@ def gmr_table(response: Response, currentPage: Optional[int] = None,
 @router.get("/road/vehicle_in_count", tags=["Road Map"])
 def daywise_in_vehicle_count(response:Response):
     try:
-        today = datetime.date.today()
+        current_time = datetime.datetime.now(IST)
+        today = current_time.date()
         startdate = f'{today} 00:00:00'
         from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
 
@@ -3057,7 +3838,8 @@ def daywise_in_vehicle_count(response:Response):
 @router.get("/road/vehicle_out_count", tags=["Road Map"])
 def daywise_out_vehicle_count(response:Response):
     try:
-        today = datetime.date.today()
+        current_time = datetime.datetime.now(IST)
+        today = current_time.date()
         startdate = f'{today} 00:00:00'
         from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
 
@@ -3084,7 +3866,8 @@ def daywise_out_vehicle_count(response:Response):
 @router.get("/road/grn_coal", tags=["Road Map"])
 def daywise_grn_receive(response:Response):
     try:
-        today = datetime.date.today()
+        current_time = datetime.datetime.now(IST)
+        today = current_time.date()
         startdate = f'{today} 00:00:00'
         from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
 
@@ -3133,7 +3916,8 @@ def daywise_grn_receive(response:Response):
 @router.get("/road/gwel_coal", tags=["Road Map"])
 def daywise_gwel_receive(response:Response):
     try:
-        today = datetime.date.today()
+        current_time = datetime.datetime.now(IST)
+        today = current_time.date()
         startdate = f'{today} 00:00:00'
         from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
 
@@ -3184,7 +3968,8 @@ def road_report(response:Response,start_timestamp: Optional[str] = None,
                 end_timestamp: Optional[str] = None,
                 type: Optional[str] = "display"):
     try:
-        today = datetime.date.today()
+        current_time = datetime.datetime.now(IST)
+        today = current_time.date()
         startdate = f'{today} 00:00:00'
         from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
 
@@ -3437,7 +4222,6 @@ if __name__ == "__main__":
     usecase_handler_object.handler.send_status(True)
     pre_processing()
     import uvicorn
-    uvicorn.run("main:router",reload=False, host="0.0.0.0",port=7705)
+    uvicorn.run("main:router",reload=False, host="0.0.0.0",port=7704)
     # sched.add_job(scheduled_job, "interval", seconds=10)
     # sched.start()
-

@@ -158,6 +158,7 @@ class CoalTesting(Document):
     parameters = ListField(DictField())
     receive_date = DateTimeField()
     ID = IntField(min_value=1)
+    third_party_report_no = StringField(null=True)
     created_at = DateTimeField(default=datetime.datetime.utcnow())
 
     meta = {"db_alias" : "gmrDB-alias" , "collection" : "coaltesting"}
@@ -170,24 +171,19 @@ class CoalTesting(Document):
         payload_dict = {
             "Sr.No": self.ID,
             "Mine": self.location,
-            "Lot_No.": self.rake_no,
-            "DO_No.": self.rrNo,
+            "Lot_No": self.rake_no,
+            "DO_No": self.rrNo,
             "DO_Qty": self.rR_Qty,
             "Supplier": self.supplier,
+            "Third_Party_Report_No": self.third_party_report_no,
             "Date": local_timestamp.strftime("%Y-%m-%d"),
             "Time": local_timestamp.strftime("%H:%M:%S"),
             "Id": str(self.pk)}
 
         for param in self.parameters:
-            console_logger.debug(param)
+            # console_logger.debug(param)
             param_name = f"{param['parameter_Name']}_{param['unit_Val'].replace(' ','')}"
             payload_dict[param_name] = param["val1"]
-            # console_logger.debug(param.get("Third_Party_Gcv"))
-            # if param.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
-            #     if param.get("Third_Party_Gcv"):
-            #         payload_dict["Third_Party_Gcv"] = param.get("Third_Party_Gcv")
-            #     else:
-            #         payload_dict[f"Third_Party_Gcv"] = None
 
         return payload_dict
     
@@ -204,10 +200,10 @@ class CoalTesting(Document):
         }
 
         for single_param in self.parameters:
-            console_logger.debug(single_param)
+            # console_logger.debug(single_param)
             param_name = f"Gross_Calorific_Value_(Adb)"
             if single_param["parameter_Name"] == "Gross_Calorific_Value_(Adb)":
-                console_logger.debug("inside gcv")
+                # console_logger.debug("inside gcv")
                 payload_data[param_name] = single_param["val1"]
                 if single_param.get("grade"):
                     payload_data[f"grade"] = single_param["grade"]
@@ -217,10 +213,10 @@ class CoalTesting(Document):
                     payload_data["gcv_difference"] = single_param["gcv_difference"]
                 else:
                     payload_data["gcv_difference"] = None
-                if single_param.get("Third_Party_Gcv"):
-                    payload_data["Third_Party_Gcv"] = single_param["Third_Party_Gcv"]
+                if single_param.get("Third_Party_Gross_Calorific_Value_(Adb)"):
+                    payload_data["Third_Party_Gross_Calorific_Value_(Adb)"] = single_param["Third_Party_Gross_Calorific_Value_(Adb)"]
                 else:
-                    payload_data["Third_Party_Gcv"] = None
+                    payload_data["Third_Party_Gross_Calorific_Value_(Adb)"] = None
                 if single_param.get("thrd_grade"):
                     payload_data["thrd_grade"] = single_param["thrd_grade"]
                 else:
@@ -229,12 +225,30 @@ class CoalTesting(Document):
                     payload_data["grade_diff"] = single_param["grade_diff"]
                 else:
                     payload_data["grade_diff"] = None
+            if single_param.get("parameter_Name") == "Third_Party_Total_Moisture":
+                payload_data["Third_Party_Total_Moisture"] = single_param.get("val1")
+            if single_param.get("parameter_Name") == "Third_Party_Volatile_Matter_(Arb)":
+                payload_data["Third_Party_Volatile_Matter_(Arb)"] = single_param.get("val1")
+            if single_param.get("parameter_Name") == "Third_Party_Ash_(Arb)":
+                payload_data["Third_Party_Ash_(Arb)"] = single_param.get("val1")
+            if single_param.get("parameter_Name") == "Third_Party_Fixed_Carbon_(Arb)":   
+                payload_data["Third_Party_Fixed_Carbon_(Arb)"] = single_param.get("val1")
+            if single_param.get("parameter_Name") == "Third_Party_Gross_Calorific_Value_(Arb)":  
+                payload_data["Third_Party_Gross_Calorific_Value_(Arb)"] = single_param.get("val1")
+            if single_param.get("parameter_Name") == "Third_Party_Inherent_Moisture_(Adb)":
+                payload_data["Third_Party_Inherent_Moisture_(Adb)"] = single_param.get("val1")
+            if single_param.get("parameter_Name") == "Third_Party_Volatile_Matter_(Adb)":
+                payload_data["Third_Party_Volatile_Matter_(Adb)"] = single_param.get("val1")
+            if single_param.get("parameter_Name") == "Third_Party_Volatile_Matter_(Arb)":
+                payload_data["Third_Party_Ash_(Adb)"] = single_param.get("val1")
+            if single_param.get("parameter_Name") == "Third_Party_Gross_Calorific_Value_(Adb)":
+                payload_data["Third_Party_Gross_Calorific_Value_(Adb)"] = single_param.get("val1")
 
         payload_data["Date"] = local_timestamp.strftime("%Y-%m-%d")
         payload_data["Time"] = local_timestamp.strftime("%H:%M:%S")
 
             
-        console_logger.debug(payload_data)
+        # console_logger.debug(payload_data)
         return payload_data
 
 
@@ -248,6 +262,7 @@ class CoalTestingTrain(Document):
     parameters = ListField(DictField())
     receive_date = DateTimeField()
     ID = IntField(min_value=1)
+    third_party_report_no = StringField(null=True)
     created_at = DateTimeField(default=datetime.datetime.utcnow())
 
     meta = {"db_alias" : "gmrDB-alias" , "collection" : "coaltestingtrain"}
@@ -260,10 +275,11 @@ class CoalTestingTrain(Document):
         payload_dict = {
             "Sr.No": self.ID,
             "Mine": self.location,
-            "Lot_No.": self.rake_no,
-            "DO_No.": self.rrNo,
-            "DO_Qty": self.rR_Qty,
+            "Lot_No": self.rake_no,
+            "RR_No": self.rrNo,
+            "RR_Qty": self.rR_Qty,
             "Supplier": self.supplier,
+            "Third_Party_Report_No": self.third_party_report_no,
             "Date": local_timestamp.strftime("%Y-%m-%d"),
             "Time": local_timestamp.strftime("%H:%M:%S"),
             "Id": str(self.pk)}
@@ -283,14 +299,14 @@ class CoalTestingTrain(Document):
             "id": str(self.pk),
             "Sr.No": self.ID,
             "Mine": self.location,
-            "DO_Qty": self.rR_Qty,
+            "RR_Qty": self.rR_Qty,
         }
 
         for single_param in self.parameters:
-            console_logger.debug(single_param)
+            # console_logger.debug(single_param)
             param_name = f"Gross_Calorific_Value_(Adb)"
             if single_param["parameter_Name"] == "Gross_Calorific_Value_(Adb)":
-                console_logger.debug("inside gcv")
+                # console_logger.debug("inside gcv")
                 payload_data[param_name] = single_param["val1"]
                 if single_param.get("grade"):
                     payload_data[f"grade"] = single_param["grade"]
@@ -300,10 +316,10 @@ class CoalTestingTrain(Document):
                     payload_data["gcv_difference"] = single_param["gcv_difference"]
                 else:
                     payload_data["gcv_difference"] = None
-                if single_param.get("Third_Party_Gcv"):
-                    payload_data["Third_Party_Gcv"] = single_param["Third_Party_Gcv"]
+                if single_param.get("Third_Party_Gross_Calorific_Value_(Adb)"):
+                    payload_data["Third_Party_Gross_Calorific_Value_(Adb)"] = single_param["Third_Party_Gross_Calorific_Value_(Adb)"]
                 else:
-                    payload_data["Third_Party_Gcv"] = None
+                    payload_data["Third_Party_Gross_Calorific_Value_(Adb)"] = None
                 if single_param.get("thrd_grade"):
                     payload_data["thrd_grade"] = single_param["thrd_grade"]
                 else:
@@ -313,11 +329,30 @@ class CoalTestingTrain(Document):
                 else:
                     payload_data["grade_diff"] = None
 
+            if single_param.get("parameter_Name") == "Third_Party_Total_Moisture":
+                payload_data["Third_Party_Total_Moisture"] = single_param.get("val1")
+            if single_param.get("parameter_Name") == "Third_Party_Volatile_Matter_(Arb)":
+                payload_data["Third_Party_Volatile_Matter_(Arb)"] = single_param.get("val1")
+            if single_param.get("parameter_Name") == "Third_Party_Ash_(Arb)":
+                payload_data["Third_Party_Ash_(Arb)"] = single_param.get("val1")
+            if single_param.get("parameter_Name") == "Third_Party_Fixed_Carbon_(Arb)":   
+                payload_data["Third_Party_Fixed_Carbon_(Arb)"] = single_param.get("val1")
+            if single_param.get("parameter_Name") == "Third_Party_Gross_Calorific_Value_(Arb)":  
+                payload_data["Third_Party_Gross_Calorific_Value_(Arb)"] = single_param.get("val1")
+            if single_param.get("parameter_Name") == "Third_Party_Inherent_Moisture_(Adb)":
+                payload_data["Third_Party_Inherent_Moisture_(Adb)"] = single_param.get("val1")
+            if single_param.get("parameter_Name") == "Third_Party_Volatile_Matter_(Adb)":
+                payload_data["Third_Party_Volatile_Matter_(Adb)"] = single_param.get("val1")
+            if single_param.get("parameter_Name") == "Third_Party_Volatile_Matter_(Arb)":
+                payload_data["Third_Party_Ash_(Adb)"] = single_param.get("val1")
+            if single_param.get("parameter_Name") == "Third_Party_Gross_Calorific_Value_(Adb)":
+                payload_data["Third_Party_Gross_Calorific_Value_(Adb)"] = single_param.get("val1")
+
         payload_data["Date"] = local_timestamp.strftime("%Y-%m-%d")
         payload_data["Time"] = local_timestamp.strftime("%H:%M:%S")
 
             
-        console_logger.debug(payload_data)
+        # console_logger.debug(payload_data)
         return payload_data
 
 
@@ -335,7 +370,7 @@ class Gmrdata(Document):
     vehicle_image = StringField()
     out_vehicle_image = StringField()
     vehicle_out_time = DateTimeField(null=True)
-
+    out_time = DateTimeField(default=None, null=True)
     delivery_challan_number = StringField()
     arv_cum_do_number = StringField()
     mine = StringField()
@@ -380,8 +415,6 @@ class Gmrdata(Document):
 
     gate_verified_time = DateTimeField(default=None)
     vehicle_in_time = DateTimeField(null=True)
-    actual_gross_wt_time = DateTimeField(default=None)
-    actual_tare_wt_time = DateTimeField(default=None)
     lot = StringField()
     line_item = StringField(null=True)
     GWEL_Gross_Time = DateTimeField(null=True)
@@ -406,7 +439,7 @@ class Gmrdata(Document):
                 "PO_Date":self.po_date,
                 "PO_Qty":self.po_qty, 
                 "Delivery_Challan_No":self.delivery_challan_number,
-                "Arv_Cum_DO_No":self.arv_cum_do_number,
+                "DO_No":self.arv_cum_do_number,
                 "Grade":self.grade,
                 "Type_of_consumer":self.type_consumer,
                 "DC_Date":self.delivery_challan_date,
@@ -433,8 +466,6 @@ class Gmrdata(Document):
                 "Gate_verified_time" : self.gate_verified_time.strftime("%Y-%m-%d:%H:%M:%S") if self.gate_verified_time else None,
                 "Vehicle_in_time" : self.vehicle_in_time.strftime("%Y-%m-%d:%H:%M:%S") if self.vehicle_in_time else None,
                 "Vehicle_out_time" : self.vehicle_out_time.strftime("%Y-%m-%d:%H:%M:%S") if self.vehicle_out_time else None,
-                "Actual_gross_wt_time" : self.actual_gross_wt_time.strftime("%Y-%m-%d:%H:%M:%S") if self.actual_gross_wt_time else None,
-                "Actual_tare_wt_time" : self.actual_tare_wt_time.strftime("%Y-%m-%d:%H:%M:%S") if self.actual_tare_wt_time else None, 
                 "Challan_image" : self.challan_file if self.challan_file else None,
                 "Fitness_image": self.fitness_file if self.fitness_file else None,
                 "Face_image": self.fr_file if self.fr_file else None,
@@ -442,7 +473,7 @@ class Gmrdata(Document):
                 "LOT":self.lot,
                 "Line_Item" : self.line_item if self.line_item else None,
                 "GWEL_Gross_Time" : self.GWEL_Gross_Time.strftime("%Y-%m-%d:%H:%M:%S") if self.GWEL_Gross_Time else None,
-                "GWEL_Tare_Time" : self.GWEL_Tare_Time.strftime("%Y-%m-%d:%H:%M:%S") if self.GWEL_Gross_Time else None,
+                "GWEL_Tare_Time" : self.GWEL_Tare_Time.strftime("%Y-%m-%d:%H:%M:%S") if self.GWEL_Tare_Time else None,
                 }
     
 
@@ -459,4 +490,3 @@ class CoalGrades(Document):
             "start_value": self.start_value,
             "end_value": self.end_value,
         }
-    

@@ -1,0 +1,193 @@
+.header {
+    position: fixed;
+    top: -1cm;
+    right: 0mm;
+    width: 100%;
+  }
+  
+  .header-image-top {
+    width: 120px;
+    height: 120px;
+    object-fit: contain;
+  }
+  .header-sticky-top {
+    width: 50px;
+    height: 50px;
+    float: right;
+    object-fit: contain;
+  }
+  
+  /* .graph-image {
+      width: 300px;
+      height: 300px;
+    } */
+  
+  .pie-chart-img {
+    width: 300px;
+    height: 300px;
+    object-fit: cover;
+  }
+  
+  /* .table-container {
+      column-count: 3;
+      column-gap: 20px;
+    } */
+  
+  .table-container table {
+    margin-bottom: 20px;
+    break-inside: avoid;
+  }
+  
+  .wrapper-data {
+    display: flex;
+  }
+  
+  .box-div {
+    width: 10px;
+    height: 10px;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+  }
+  
+  .color-green {
+    background: #90ee90;
+  }
+  
+  .color-red {
+    background: #ffcccb;
+  }
+  
+  .parent {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .child {
+    flex: 1 0 10%;
+    margin: 5px;
+    height: 60px;
+    width: 100px;
+    background-color: #fff;
+    text-align: center;
+    box-shadow: rgba(0, 0, 0, 0.19) 0px 10px 20px, rgba(0, 0, 0, 0.23) 0px 6px 6px;
+  }
+  
+  .border-gradient {
+    background: linear-gradient(#fff, #fff) padding-box,
+      linear-gradient(-138deg, #FFC46D 0%, #FA0055 100%) border-box;
+    box-shadow: inset 0 0 16px 0 #FF6767;  
+    border: 1px solid transparent;
+    border-radius: 8px;
+  }
+  
+  .child h1 {
+    padding: 0px;
+    margin: 10px;
+  }
+  
+  .child p {
+    padding: 0px;
+    margin: 0px 0px 10px 0px;
+  }
+  
+  h1.sixth {
+    text-align: center;
+    font-family: arial, sans-serif;
+    font-size: 15px;
+  }
+  
+  h1.sixth:before,
+  h1.sixth:after {
+    content: "[";
+    display: inline-block;
+    position: relative;
+    top: 1px;
+    height: 100%;
+    font-size: 1.25em;
+    color: tomato;
+  
+    transition: all 0.5s ease;
+  }
+  
+  h1.sixth:after {
+    content: "]";
+  }
+  
+  h1.sixth:hover:before {
+    transform: translateX(-5px);
+  }
+  
+  h1.sixth:hover:after {
+    transform: translateX(5px);
+  }
+  
+  .divdata-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5vw;
+  }
+  
+  .divdata {
+    flex-grow: 1;
+    flex-basis: 50%;
+  }
+  
+  
+  footer {
+    position: fixed;
+    bottom: -1cm;
+    width: 100%;
+    text-align: center;
+  }
+  
+  hr {
+    background-color: #fff;
+    padding: 0;
+    margin: 80px;
+  }
+  
+  hr.hr-1 {
+    border: 0;
+    height: 1px;
+    background-image: linear-gradient(to right, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0));
+  }
+
+  .logistic_report_data, .logic_table_th, .logic_table_td {
+    border: 1px solid black;
+    border-collapse: collapse;
+  }
+  
+  
+  *{
+    font-family: inter;
+  }
+  
+  @page {
+    /* @top-center {
+      content: element(header);
+      width: 100%;
+      margin-top: 0cm !important;
+      margin-bottom: 0cm !important;
+    } */
+    @bottom-center {
+      content: element(footer);
+      width: 100%;
+    }
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      width: 50%;
+      font-size: 8px;
+      font-family: arial, sans-serif;
+    }
+    size: A4 landscape;
+    margin : 1cm 0.5cm 1cm 0.5cm;
+  }
+  
+  
+  /* @page :first {
+    margin: 1cm;
+    @top-center {
+      content: "This content is only on the first page";
+    }
+  } */

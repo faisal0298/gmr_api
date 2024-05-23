@@ -3,7 +3,11 @@ from helpers.logger import console_logger
 import datetime
 import uuid
 from mongoengine import signals
+import pytz
+from dateutil import tz
 
+to_zone = tz.gettz("Asia/Kolkata")
+file = str(datetime.datetime.utcnow().strftime("%d-%m-%Y"))
 
 class UsecaseParameters(Document):
     Camera_id = StringField()
@@ -164,9 +168,6 @@ class CoalTesting(Document):
     meta = {"db_alias" : "gmrDB-alias" , "collection" : "coaltesting"}
         
     def payload(self):
-        local_timestamp = self.receive_date.replace(
-            tzinfo=datetime.timezone.utc
-        ).astimezone(tz=None)
         
         payload_dict = {
             "Sr.No": self.ID,
@@ -176,8 +177,13 @@ class CoalTesting(Document):
             "DO_Qty": self.rR_Qty,
             "Supplier": self.supplier,
             "Third_Party_Report_No": self.third_party_report_no,
-            "Date": local_timestamp.strftime("%Y-%m-%d"),
-            "Time": local_timestamp.strftime("%H:%M:%S"),
+            "Date": datetime.datetime.fromisoformat(
+                    self.receive_date.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d") if self.receive_date else None,
+                    
+            "Time": datetime.datetime.fromisoformat(
+                    self.receive_date.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%H:%M:%S") if self.receive_date else None,
             "Id": str(self.pk)}
 
         for param in self.parameters:
@@ -188,13 +194,10 @@ class CoalTesting(Document):
         return payload_dict
     
     def gradepayload(self):
-        local_timestamp = self.receive_date.replace(
-            tzinfo=datetime.timezone.utc
-        ).astimezone(tz=None)
-
         payload_data = {
             "id": str(self.pk),
             "Sr.No": self.ID,
+            "DO_No": self.rrNo,
             "Mine": self.location,
             "DO_Qty": self.rR_Qty,
         }
@@ -244,8 +247,13 @@ class CoalTesting(Document):
             if single_param.get("parameter_Name") == "Third_Party_Gross_Calorific_Value_(Adb)":
                 payload_data["Third_Party_Gross_Calorific_Value_(Adb)"] = single_param.get("val1")
 
-        payload_data["Date"] = local_timestamp.strftime("%Y-%m-%d")
-        payload_data["Time"] = local_timestamp.strftime("%H:%M:%S")
+        payload_data["Date"] = datetime.datetime.fromisoformat(
+                    self.receive_date.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d")
+        
+        payload_data["Time"] = datetime.datetime.fromisoformat(
+                    self.receive_date.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%H:%M:%S")
 
             
         # console_logger.debug(payload_data)
@@ -268,10 +276,7 @@ class CoalTestingTrain(Document):
     meta = {"db_alias" : "gmrDB-alias" , "collection" : "coaltestingtrain"}
         
     def payload(self):
-        local_timestamp = self.created_at.replace(
-            tzinfo=datetime.timezone.utc
-        ).astimezone(tz=None)
-        
+
         payload_dict = {
             "Sr.No": self.ID,
             "Mine": self.location,
@@ -280,8 +285,12 @@ class CoalTestingTrain(Document):
             "RR_Qty": self.rR_Qty,
             "Supplier": self.supplier,
             "Third_Party_Report_No": self.third_party_report_no,
-            "Date": local_timestamp.strftime("%Y-%m-%d"),
-            "Time": local_timestamp.strftime("%H:%M:%S"),
+            "Date": datetime.datetime.fromisoformat(
+                    self.receive_date.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d") if self.receive_date else None,
+            "Time": datetime.datetime.fromisoformat(
+                    self.receive_date.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%H:%M:%S") if self.receive_date else None,
             "Id": str(self.pk)}
 
         for param in self.parameters:
@@ -348,8 +357,13 @@ class CoalTestingTrain(Document):
             if single_param.get("parameter_Name") == "Third_Party_Gross_Calorific_Value_(Adb)":
                 payload_data["Third_Party_Gross_Calorific_Value_(Adb)"] = single_param.get("val1")
 
-        payload_data["Date"] = local_timestamp.strftime("%Y-%m-%d")
-        payload_data["Time"] = local_timestamp.strftime("%H:%M:%S")
+        payload_data["Date"] = datetime.datetime.fromisoformat(
+                    self.receive_date.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d")
+        
+        payload_data["Time"] = datetime.datetime.fromisoformat(
+                    self.receive_date.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%H:%M:%S")
 
             
         # console_logger.debug(payload_data)
@@ -380,7 +394,7 @@ class Gmrdata(Document):
     delivery_challan_date = StringField()
     type_consumer = StringField()
     grade = StringField()
-    weightment_date = StringField()
+    weightment_date = StringField() 
     weightment_time = StringField()
     total_net_amount = StringField() 
     challan_file = StringField()
@@ -463,17 +477,37 @@ class Gmrdata(Document):
                 "Transporter_LR_No": self.transporter_lr_no,
                 "Transporter_LR_Date": self.transporter_lr_date,
                 "Eway_bill_No": self.e_way_bill_no,
-                "Gate_verified_time" : self.gate_verified_time.strftime("%Y-%m-%d:%H:%M:%S") if self.gate_verified_time else None,
-                "Vehicle_in_time" : self.vehicle_in_time.strftime("%Y-%m-%d:%H:%M:%S") if self.vehicle_in_time else None,
-                "Vehicle_out_time" : self.vehicle_out_time.strftime("%Y-%m-%d:%H:%M:%S") if self.vehicle_out_time else None,
+
+                "Gate_verified_time" : datetime.datetime.fromisoformat(
+                                    self.gate_verified_time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.gate_verified_time else None,
+
+                "Vehicle_in_time" : datetime.datetime.fromisoformat(
+                                    self.vehicle_in_time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.vehicle_in_time else None,
+
+                "Vehicle_out_time" : datetime.datetime.fromisoformat(
+                                    self.vehicle_out_time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.vehicle_out_time else None,
+                
                 "Challan_image" : self.challan_file if self.challan_file else None,
                 "Fitness_image": self.fitness_file if self.fitness_file else None,
                 "Face_image": self.fr_file if self.fr_file else None,
                 "Transit_Loss": transit_loss if transit_loss else 0,
                 "LOT":self.lot,
                 "Line_Item" : self.line_item if self.line_item else None,
-                "GWEL_Gross_Time" : self.GWEL_Gross_Time.strftime("%Y-%m-%d:%H:%M:%S") if self.GWEL_Gross_Time else None,
-                "GWEL_Tare_Time" : self.GWEL_Tare_Time.strftime("%Y-%m-%d:%H:%M:%S") if self.GWEL_Tare_Time else None,
+
+                "GWEL_Gross_Time" : datetime.datetime.fromisoformat(
+                                    self.GWEL_Gross_Time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.GWEL_Gross_Time else None,
+
+                "GWEL_Tare_Time" : datetime.datetime.fromisoformat(
+                                    self.GWEL_Tare_Time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.GWEL_Tare_Time else None,
+
+                "Scanned_Time" : datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None
                 }
     
 
@@ -489,4 +523,56 @@ class CoalGrades(Document):
             "grade": self.grade,
             "start_value": self.start_value,
             "end_value": self.end_value,
+        }
+    
+class ReportScheduler(Document):
+    report_name = StringField()
+    recipient_list = ListField()
+    filter = StringField()
+    schedule = StringField(default=None)
+    time = StringField()
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "reportscheduler"}
+
+    def payload(self):
+        return {
+            "report_name": self.report_name,
+            "recipient_list": self.recipient_list,
+            "filter": self.filter,
+            "schedule": self.schedule,
+            "time": self.time,
+        }
+    
+class SmtpSettings(Document):
+    Smtp_ssl = BooleanField()
+    Smtp_port = IntField()
+    Smtp_host = StringField()
+    Smtp_user = StringField()
+    Smtp_password = StringField()
+    Emails_from_email = EmailField()
+    Emails_from_name = StringField()
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "SmtpSettings"}
+
+    def payload(self):
+        return {
+            "smtp_ssl": self.Smtp_ssl,
+            "smtp_port": self.Smtp_port,
+            "smtp_host": self.Smtp_host,
+            "smtp_user": self.Smtp_user,
+            "smtp_password": self.Smtp_password,
+            "emails_from_email": self.Emails_from_email,
+            "emails_from_name": self.Emails_from_name,
+        }
+
+class AopTarget(Document):
+    source_name = StringField()
+    aop_target = StringField()
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "AopTarget"}
+
+    def payload(self):
+        return {
+            "source_name": self.source_name,
+            "aop_target": self.aop_target,
         }

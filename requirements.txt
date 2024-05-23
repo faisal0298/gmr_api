@@ -10,7 +10,7 @@ pymongo
 python-engineio==4.4.0
 python-socketio==5.1.0
 pytz==2022.7.1
-rdx==0.0.4
+#rdx==0.0.4
 requests
 shapely
 six==1.16.0
@@ -25,3 +25,12 @@ xlsxwriter==3.1.1
 dateutils==0.6.12
 openpyxl
 schedule
+pandas
+tabula-py==2.9.0
+JPype1==1.3.0
+weasyprint==60.1
+pypdf2==3.0.1
+matplotlib==3.7.3
+reportlab==4.0.6
+cryptocode==0.1
+pydantic

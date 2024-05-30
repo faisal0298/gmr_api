@@ -79,7 +79,6 @@ class AopTargetData(BaseModel):
     source_name: str
     aop_target: str
 
-
 class SmtpSettingsPostIn(BaseModel):
     Smtp_ssl: bool
     Smtp_port: int
@@ -88,4 +87,9 @@ class SmtpSettingsPostIn(BaseModel):
     Smtp_password: str
     Emails_from_email: EmailStr
     Emails_from_name: str
+
+class LatLongPostIn(BaseModel):
+    name: str
+    latlong: List[float]
+    type: str
 

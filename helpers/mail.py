@@ -11,42 +11,36 @@ import cryptocode
 def send_email(sender_email, subject, password, smtp_host, smtp_port, receiver_email, body, file_path):
     # Create a MIMEMultipart object for the email
 
-    console_logger.debug(sender_email)
-    console_logger.debug(password)
-    console_logger.debug(subject)
-    console_logger.debug(receiver_email)
-    console_logger.debug(body)
-    console_logger.debug(file_path)
+    try:
+        # Create a MIMEMultipart object for the email
+        message = MIMEMultipart()
+        message["Subject"] = subject
+        message["From"] = sender_email
+        message["To"] = receiver_email
 
-    decrypt_password = cryptocode.decrypt(password, "8tFXLF46fRUkRFqJrfMjIbYAYeEJKyqB")
+        # Attach the body of the email
+        message.attach(MIMEText(body, "plain"))
 
-    message = MIMEMultipart()
-    message["Subject"] = subject
-    message["From"] = sender_email
-    message["To"] = receiver_email
+        # Attach the file
+        with open(file_path, "rb") as attachment:
+            part = MIMEBase("application", "octet-stream")
+            part.set_payload(attachment.read())
+        encoders.encode_base64(part)
+        part.add_header(
+            "Content-Disposition",
+            f"attachment; filename= {file_path}",
+        )
+        message.attach(part)
 
-    # Attach the body of the email
-    message.attach(MIMEText(body, "plain"))
-
-    # Attach the file
-    with open(file_path, "rb") as attachment:
-        part = MIMEBase("application", "octet-stream")
-        part.set_payload(attachment.read())
-    encoders.encode_base64(part)
-    part.add_header(
-        "Content-Disposition",
-        f"attachment; filename= {file_path}",
-    )
-    message.attach(part)
-
-    # Connect to SMTP server and send email
-    context = ssl.create_default_context()
-    # with smtplib.SMTP("smtp.gmail.com", 587) as server:
-    with smtplib.SMTP(smtp_host, smtp_port) as server:
-        server.starttls(context=context)
-        server.login(sender_email, decrypt_password)
-        server.sendmail(sender_email, receiver_email, message.as_string())
-    console_logger.debug("Email Sent!")
+        # Connect to SMTP server and send email
+        context = ssl.create_default_context()
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls(context=context)
+            server.login(sender_email, password)
+            server.sendmail(sender_email, receiver_email, message.as_string())
+        console_logger.debug("Email Sent!")
+    except Exception as e:
+        console_logger.error(f"Failed to send email: {e}")
 
 def send_test_email(payload):
     console_logger.debug(payload.dict())

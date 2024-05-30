@@ -152,7 +152,6 @@ class Historian(Document):
             }
 
 
-
 class CoalTesting(Document):
     location = StringField()
     rrNo = StringField()
@@ -451,7 +450,7 @@ class Gmrdata(Document):
                 "Mines_Name":self.mine,
                 "PO_No":self.po_no,
                 "PO_Date":self.po_date,
-                "PO_Qty":self.po_qty, 
+                "DO_Qty":self.po_qty, 
                 "Delivery_Challan_No":self.delivery_challan_number,
                 "DO_No":self.arv_cum_do_number,
                 "Grade":self.grade,
@@ -524,7 +523,8 @@ class CoalGrades(Document):
             "start_value": self.start_value,
             "end_value": self.end_value,
         }
-    
+
+
 class ReportScheduler(Document):
     report_name = StringField()
     recipient_list = ListField()
@@ -536,12 +536,20 @@ class ReportScheduler(Document):
 
     def payload(self):
         return {
+            "id": str(self.id),
             "report_name": self.report_name,
             "recipient_list": self.recipient_list,
             "filter": self.filter,
             "schedule": self.schedule,
             "time": self.time,
         }
+    
+    def report_payload(self):
+        return{
+            "id": str(self.id),
+            "name": self.report_name,
+        } 
+
     
 class SmtpSettings(Document):
     Smtp_ssl = BooleanField()
@@ -573,6 +581,70 @@ class AopTarget(Document):
 
     def payload(self):
         return {
+            "id": str(self.id),
             "source_name": self.source_name,
             "aop_target": self.aop_target,
+        }
+    
+class SapRecords(Document):
+    slno = StringField()
+    source = StringField()
+    mine_name = StringField()
+    sap_po = StringField()
+    line_item = StringField()
+    do_no = StringField()
+    do_qty = StringField()
+    created_at = DateTimeField(default=datetime.datetime.utcnow())
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "SapRecords"}
+
+    def payload(self):
+        return {
+            "id": str(self.id),
+            "slno": self.slno,
+            "source": self.source,
+            "mine_name": self.mine_name,
+            "sap_po": self.sap_po,
+            "line_item": self.line_item,
+            "do_no": self.do_no,
+            "do_qty": self.do_qty,
+        }
+    
+
+class SchedulerError(Document):
+    JobId = StringField()
+    ErrorMsg = StringField()
+    Created_at = DateTimeField(default=datetime.datetime.utcnow())
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "SchedulerError"}
+
+
+class SelectedLocation(Document):
+    name = StringField()
+    latlong = ListField()
+    type = StringField()
+    Created_at = DateTimeField(default=datetime.datetime.utcnow())
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "SelectedLocation"}
+
+    def payload(self):
+        return {
+            "id": str(self.id),
+            "name": self.name,
+            "latlong": self.latlong,
+            "type": self.type,
+        }
+    
+
+class PdfReportName(Document):
+    name = StringField()
+    created_at = DateTimeField(default=datetime.datetime.utcnow())
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "PdfReportName"}
+
+    def payload(self):
+        return {
+            "id": str(self.id),
+            "name": self.name,
+            "created_at": self.created_at,
         }

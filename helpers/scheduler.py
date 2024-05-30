@@ -1,7 +1,20 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.events import EVENT_JOB_ERROR
 from typing import Union
-import apscheduler
+import apscheduler 
+from service import client
+from apscheduler.jobstores.mongodb import MongoDBJobStore
+from apscheduler.events import EVENT_JOB_ERROR
+
+
+def ApscheulerListener(event):
+    from database.models import SchedulerError
+    print(f'Job {event.job_id} raised {event.exception.__class__.__name__}')
+    SchedulerError(JobId=event.job_id, ErrorMsg = event.exception.__class__.__name__).save()
+    if len(SchedulerError.objects()) > 1000:
+        for i in SchedulerError.objects()[-1:100]:
+            i.delete()
+
 
 
 class BackgroundTaskHandler:
@@ -16,7 +29,7 @@ class BackgroundTaskHandler:
         #         27017,
         #         # config.DATABASE_AUTHENTICATION_SOURCE,
         #         # config.DATABASE_REPLICA_SET_NAME,
-        #     )
+            # )
         # )
         self.scheduler = BackgroundScheduler(
             daemon=False,
@@ -27,19 +40,20 @@ class BackgroundTaskHandler:
             timezone="utc",
             job_defaults={
                 "coalesce": True,
-                "max_instances": 3,
-                "misfire_grace_time": 60 * 60 * 24,
+                "max_instances": 10,
+                "misfire_grace_time": 60 * 60 * 2,
             },
         )
-        # self.scheduler.add_jobstore(
-        #     MongoDBJobStore(
-        #         client=client,
-        #         database="schedule_management_db",
-        #         collection="jobs",
-        #     ),
-        #     alias="default",
-        # )
+        self.scheduler.add_jobstore(
+            MongoDBJobStore(
+                client=client,
+                database="gmrDB",
+                collection="jobs",
+            ),
+            alias="default",
+        )
         # try:
+        self.scheduler.add_listener(ApscheulerListener, EVENT_JOB_ERROR)
         self.scheduler.start()
         # except errors.NotPrimaryError as e:
         #     console_logger.debug(e)
@@ -50,6 +64,8 @@ class BackgroundTaskHandler:
     # def event_listener(self, event):
     #     console_logger.debug("The job crashed")
     #     console_logger.debug(event.exception)
+
+    
 
     def get_job(self, task_name: str):
         try:

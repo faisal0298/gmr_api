@@ -33,6 +33,7 @@ from dateutil.relativedelta import *
 from pandas.tseries.offsets import DateOffset
 import requests
 from pathlib import Path
+import matplotlib.patches as mpatches
 
 
 # client = MongoClient(f"mongodb://{host}:{db_port}/")
@@ -504,6 +505,8 @@ def logistic_report_table(data):
 
 
 def bubbleSort(arr, dependency_arr_1, dependency_arr_2):
+
+
     n = len(arr)
     # optimize code, so if the array is already sorted, it doesn't need
     # to go through the entire process
@@ -524,13 +527,12 @@ def bubbleSort(arr, dependency_arr_1, dependency_arr_2):
                 arr[j], arr[j + 1] = arr[j + 1], arr[j]
                 dependency_arr_1[j], dependency_arr_1[j + 1] = dependency_arr_1[j + 1], dependency_arr_1[j]
                 dependency_arr_2[j], dependency_arr_2[j + 1] = dependency_arr_2[j + 1], dependency_arr_2[j]
-
         if not swapped:
             # if we haven't needed to make a single swap, we
             # can just exit the main loop.
             return arr, dependency_arr_1, dependency_arr_2
-
-    return 
+        
+    return arr, dependency_arr_1, dependency_arr_2
 
 def bar_graph_gcv_wise(rrNo_values, aopList, month_date):
     try:
@@ -538,7 +540,8 @@ def bar_graph_gcv_wise(rrNo_values, aopList, month_date):
             # Extract rrNo and their aggregated values
             rrNo = list(rrNo_values.keys())
             values = list(rrNo_values.values())
-            indexes = [rrNo.index(item) for item in rrNo_values.keys()]
+            # indexes = [rrNo.index(item) for item in rrNo_values.keys()]
+            indexes = list(range(len(rrNo)))
 
             if aopList:
 
@@ -549,18 +552,26 @@ def bar_graph_gcv_wise(rrNo_values, aopList, month_date):
                 for _not_present_index in list(set(indexes)-set(line_x)):
                     line_x.append(_not_present_index)
                     line_y.append(0)
-                line_x, line_y, values =  bubbleSort(line_x, line_y, values)
+                
+                # line_x, line_y, values =  bubbleSort(line_x, line_y, values)
+                sorted_indices = sorted(range(len(line_x)), key=lambda k: line_x[k])
+                line_x = [line_x[i] for i in sorted_indices]
+                line_y = [line_y[i] for i in sorted_indices]
 
 
             # Create the bar graph
             plt.figure(figsize=(10, 6))
             bars = plt.bar(rrNo, values, color='#3a62ff')
-            plt.xlabel('Mine Name')
-            plt.ylabel('Average GCV Value (Arb)')
+            plt.xlabel('Mines', fontsize=15)
+            plt.ylabel('Average GCV Value (Arb)', fontsize=15)
             plt.xticks(rotation=45, ha='right')
             plt.tight_layout()
             plt.grid()
 
+            pop_a = mpatches.Patch(color='#3a62ff', label='Mines') 
+            pop_b = mpatches.Patch(color='red', label='Target') 
+            plt.legend(handles=[pop_a, pop_b], facecolor='white', framealpha=1)   
+            title_font = {'size':'12', 'color':'#000', 'weight':'bold', 'verticalalignment':'bottom'}
             if aopList:
                 # Plot the line
                 plt.plot(line_x, line_y, marker='o', linestyle='-', color='red')
@@ -572,7 +583,7 @@ def bar_graph_gcv_wise(rrNo_values, aopList, month_date):
             for bar, value in zip(bars, values):
                 height = bar.get_height()
                 # plt.text(bar.get_x() + bar.get_width() / 2, height, f'{value:.2f}', ha='center', va='bottom')
-                plt.text(bar.get_x() + bar.get_width() / 2, 2, f'{value:.2f}', color="#000", horizontalalignment='center')
+                plt.text(bar.get_x() + bar.get_width() / 2, 2, f'{value:.2f}', horizontalalignment='center', **title_font)
 
             file = "reports_img"
             # store_file = f"static_server/gmr_ai/{file}"
@@ -603,17 +614,21 @@ def profit_loss_gmr_data(data):
 
             # Creating the bar plot
             plt.figure(figsize=(8, 6))
-            bars = plt.bar(mine_names, profit_loss_values, color=['red' if value < 0 else 'green' for value in profit_loss_values])
+            # bars = plt.bar(mine_names, profit_loss_values, color=['red' if value < 0 else 'green' for value in profit_loss_values])
+            bars = plt.bar(mine_names, profit_loss_values, color='red')
 
             # Adding labels and title
-            plt.xlabel('Mine')
-            plt.ylabel('Gain/Loss')
+            plt.xlabel('Mine', fontsize=15)
+            plt.ylabel('Gain/Loss (MT)', fontsize=15)
             # plt.title('Profit/Loss per Mine')
             plt.grid(True)
-
+            plt.title('')
+            pop_a = mpatches.Patch(color='red', label='Mines') 
+            lgd = plt.legend(handles=[pop_a], facecolor='white', framealpha=1, loc='upper center', bbox_to_anchor=(0.5, 1.10), fancybox=True, shadow=True, ncol=3)   
+            title_font = {'size':'18', 'color':'#000', 'weight':'bold', 'verticalalignment':'bottom'}
             for bar, value in zip(bars, profit_loss_values):
                 height = bar.get_height()
-                plt.text(bar.get_x() + bar.get_width() / 2, height, f'{value:.2f}', ha='center', va='bottom')
+                plt.text(bar.get_x() + bar.get_width() / 2, height, f'{value:.2f}', ha='center', va='bottom', **title_font)
 
             file = "reports_img"
             # store_file = f"static_server/gmr_ai/{file}"
@@ -621,7 +636,7 @@ def profit_loss_gmr_data(data):
             os.umask(0)
             os.makedirs(store_file, exist_ok=True, mode=0o777)
             image_total_file = f"profit_loss_bar_gmr_{random_string}.png"
-            plt.savefig(f"{store_file}/{image_total_file}")
+            plt.savefig(f"{store_file}/{image_total_file}", bbox_extra_artists=(lgd,), bbox_inches='tight')
             image_total_file_name = f"{store_file}/{image_total_file}"
             plt.close()
 
@@ -646,23 +661,30 @@ def profit_loss_final_data(yearly_final_data):
 
             # Create gain-loss bar graph
             plt.figure(figsize=(6, 6))
-            bars = plt.bar(['Road mode'], [net_qty], color='green' if net_qty >= 0 else 'red')
+            # bars = plt.bar(['Road mode'], [net_qty], color='green' if net_qty >= 0 else 'red')
+            bars = plt.bar(['Road mode'], [net_qty], color='red')
             # plt.title('Yearly Gain-Loss Bar Graph')
             # plt.xlabel('Year')
             # plt.ylabel('Net Quantity')
             # Add text labels at the bottom of each bar
+            title_font = {'size':'18', 'color':'#000', 'weight':'bold', 'verticalalignment':'bottom'}
             for bar in bars:
                 height = bar.get_height()
-                plt.text(bar.get_x() + bar.get_width() / 2.0, -abs(height), f"{height:.2f}", ha='center', va='bottom')
+                plt.text(bar.get_x() + bar.get_width() / 2.0, -abs(height), f"{height:.2f}", ha='center', va='bottom', **title_font)
+
+            plt.title('')
             plt.grid(axis='y', linestyle='--', alpha=0.7)
             plt.tight_layout()
+            plt.ylabel('Gain/Loss (MT)', fontsize=15)
+            pop_a = mpatches.Patch(color='red', label='Road Mode') 
+            lgd = plt.legend(handles=[pop_a], facecolor='white', framealpha=1, loc='upper center', bbox_to_anchor=(0.5, 1.10), fancybox=True, shadow=True, ncol=3)  
             # plt.show()
             file = "reports_img"
             store_file = os.path.join(os.getcwd(),"static_server", "gmr_ai", file)
             os.umask(0)
             os.makedirs(store_file, exist_ok=True, mode=0o777)
             image_total_file = f"yearly_loss_gain_road_mode_{random_string}.png"
-            plt.savefig(f"{store_file}/{image_total_file}")
+            plt.savefig(f"{store_file}/{image_total_file}", bbox_extra_artists=(lgd,), bbox_inches='tight')
             image_total_file_name = f"{store_file}/{image_total_file}"
             plt.close()
 
@@ -683,17 +705,22 @@ def transit_loss_gain_road_mode_month(total_monthly_final_net_qty):
             months = list(total_monthly_final_net_qty.keys())
             net_qty = list(total_monthly_final_net_qty.values())
 
-            console_logger.debug(months)
-
             # Create gain-loss bar graph
             plt.figure(figsize=(10, 6))
-            plt.bar(months, net_qty, color=['green' if x >= 0 else 'red' for x in net_qty])
-            plt.title('Gain-Loss Bar Graph')
-            plt.xlabel('Month')
-            plt.ylabel('Net Quantity')
+            # bars = plt.bar(months, net_qty, color=['green' if x >= 0 else 'red' for x in net_qty])
+            bars = plt.bar(months, net_qty, color="red")
+            plt.title('')
+            plt.xlabel('Months', fontsize=15)
+            plt.ylabel('Gain/Loss (MT)', fontsize=15)
             plt.xticks(rotation=45)
             plt.grid(axis='y', linestyle='--', alpha=0.7)
             plt.tight_layout()
+            pop_a = mpatches.Patch(color="red", label='Months') 
+            lgd = plt.legend(handles=[pop_a], facecolor='white', framealpha=1, loc='upper center', bbox_to_anchor=(0.5, 1.10), fancybox=True, shadow=True, ncol=3)  
+            title_font = {'size':'18', 'color':'#000', 'weight':'bold', 'verticalalignment':'bottom'}
+            for bar in bars:
+                height = bar.get_height()
+                plt.text(bar.get_x() + bar.get_width() / 2.0, -abs(height), f"{height:.2f}", ha='center', va='bottom', **title_font)
             # plt.show()
             
             file = "reports_img"
@@ -701,7 +728,7 @@ def transit_loss_gain_road_mode_month(total_monthly_final_net_qty):
             os.umask(0)
             os.makedirs(store_file, exist_ok=True, mode=0o777)
             image_total_file = f"transit_loss_gain_road_mode_{random_string}.png"
-            plt.savefig(f"{store_file}/{image_total_file}")
+            plt.savefig(f"{store_file}/{image_total_file}", bbox_extra_artists=(lgd,), bbox_inches='tight')
             image_total_file_name = f"{store_file}/{image_total_file}"
             plt.close()
 
@@ -720,7 +747,6 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
         # supplierResult = supplier_collection.find({}, {"_id": 0})
         # consigneeResult = consignee_collection.find({}, {"_id": 0})
         # transportResult = transporter_collection.find({}, {"_id": 0})
-
         if rrNo_values:
             # Find the key-value pair with the highest value
             max_pair = max(rrNo_values.items(), key=lambda x: x[1])
@@ -819,6 +845,14 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
                                     <b style="color: #3a62ff;"> {min_value} </b>
                                 </td>
                             </tr>
+                            <tr style="height: 30px">
+                                <td style=" display: flex;justify-content:space-between;padding: 5px;font-size: 14px;">
+                                    <span style="font-weight: 500;">
+                                        Today's Transit loss:
+                                    </span>
+                                    <b style="color: #3a62ff;"> {round(dayWiseGrnReceive.get("data") - dayWiseGwelReceive.get("data"), 2)} </b>
+                                </td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
@@ -878,7 +912,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
             <br><br>
             <div class="body" style="margin-top:20px;">
                 <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;">
-                        Mine Wise Average GWEL GCV as received for current month till {datetime.strptime(month_date,"%Y-%m-%d").strftime("%d %B %Y")}
+                        Monthly - Mine v/s Average GWEL GCV v/s AOP Target
                         {gcv_bar_data}
                 </div>  
             </div>
@@ -886,7 +920,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
                 <div class="body" style="margin-top:20px; width:50% ; height: 300px;">
                     <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;display: flex; justify-content:center; flex-direction:column;  height: 300px;">
                     <p style="margin:1px; margin-bottom:5px;">
-                        SECL & WCL Source wise Transit Loss/Gain FTM 
+                        Monthly - Mine v/s Transit Loss/Gain
                     </p>
                         {profit_loss_gmr}
                 </div>  
@@ -894,7 +928,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
             <div class="body" style="margin-top:20px; width:50% ; height: 300px;">
                 <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;display: flex; justify-content:center; flex-direction:column;  height: 300px;">
                     <p style="margin:1px; margin-bottom:5px;">
-                        Transist Loss or Gain Mode
+                        Monthly - Month v/s Transit Loss/Gain
                     </p>
                         {transist_data_month}
                 </div>
@@ -902,7 +936,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
             <div class="body" style="margin-top:20px; width:50%  ; height: 300px;">
                 <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;display: flex; justify-content:center; flex-direction:column;  height: 300px;">
                     <p style="margin:1px; margin-bottom:5px;">
-                        Overall Transit Loss or Gain
+                        Annually - Road & Rail Mode v/s Transit Loss/Gain
                     </p>
                         {profit_loss_final}
                 </div>
@@ -933,19 +967,19 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
         if template_data.get("logo_as_watermark") == "title":
             data["wm_angle"] = "vertical"
             apply_pdf_watermark(pdf_file, output_file, text_watermark=text_watermark_pdf, data=data)
-            data_file = f"/static_server/gmr_ai/{file}/daily_coal_logistic_report_wm_{image_name}.pdf"
+            data_file = f"static_server/gmr_ai/{file}/daily_coal_logistic_report_wm_{image_name}.pdf"
             # deleting original generated pdf as we are getting here two pdf first without watermark and second with watermark
             os.remove(f"{store_data}/daily_coal_logistic_report_{image_name}.pdf")
         
         elif template_data.get("logo_as_watermark") == "logo":
             data["wm_angle"] = "vertical"
             apply_pdf_watermark(pdf_file, output_file, picture_path=f'{os.path.join(os.getcwd())}/{template_data["logo_path"]}', data=data)
-            data_file = f"/static_server/gmr_ai/{file}/daily_coal_logistic_report_wm_{image_name}.pdf"  
+            data_file = f"static_server/gmr_ai/{file}/daily_coal_logistic_report_wm_{image_name}.pdf"  
             # deleting original generated pdf as we are getting here two pdf first without watermark and second with watermark
             os.remove(f"{store_data}/daily_coal_logistic_report_{image_name}.pdf")
         
         elif template_data.get("logo_as_watermark") == "None":
-            data_file = f"/static_server/gmr_ai/{file}/daily_coal_logistic_report_{image_name}.pdf"
+            data_file = f"static_server/gmr_ai/{file}/daily_coal_logistic_report_{image_name}.pdf"
 
         console_logger.debug(data_file)
 

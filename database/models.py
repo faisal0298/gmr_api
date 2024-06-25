@@ -369,6 +369,77 @@ class CoalTestingTrain(Document):
         return payload_data
 
 
+class Gmrrequest(Document):
+    record_id = StringField(default=uuid.uuid4().hex, unique=True)
+    mine = StringField()
+    vehicle_number = StringField()
+    delivery_challan_number = StringField()
+    arv_cum_do_number = StringField()
+    vehicle_chassis_number = StringField()
+    certificate_expiry = StringField()
+    delivery_challan_date = StringField()
+    net_qty = StringField()
+    total_net_amount = StringField()
+    expiry_validation = BooleanField(default = True)
+    request = StringField(null=True)
+    approved_at = DateTimeField(null=True)
+    remark = StringField(null=True)
+    created_at = DateTimeField(default=datetime.datetime.utcnow())
+    ID = IntField(min_value=1)
+
+    meta = {"db_alias" : "gmrDB-alias" , "collection" : "gmrrequest"}
+
+    def payload(self):
+        return {
+                "Sr.No.":self.ID,
+                "Request_type": self.request.replace("_", " "),
+                "Mine":self.mine,
+                "Vehicle_Number":self.vehicle_number,
+                "Delivery_Challan_No":self.delivery_challan_number,
+                "DO_No":self.arv_cum_do_number,
+                "Vehicle_Chassis_No":self.vehicle_chassis_number,
+                "Fitness_Expiry":self.certificate_expiry,
+                "DC_Date":self.delivery_challan_date,
+                "Challan_Net_Wt(MT)" : self.net_qty,
+                "Total_net_amount":self.total_net_amount,
+                "Request_Time" : datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+                "Comment" : self.remark,
+                }
+
+    def history_payload(self):
+
+        tat = None
+        if self.created_at and self.approved_at:
+            tat_delta = self.approved_at - self.created_at
+            tat = str(tat_delta)
+
+        return {
+                "Sr.No.":self.ID,
+                "Request_type": self.request.replace("_", " "),
+                "Mine":self.mine,
+                "Vehicle_Number":self.vehicle_number,
+                "Delivery_Challan_No":self.delivery_challan_number,
+                "DO_No":self.arv_cum_do_number,
+                "Vehicle_Chassis_No":self.vehicle_chassis_number,
+                "Fitness_Expiry":self.certificate_expiry,
+                "DC_Date":self.delivery_challan_date,
+                "Challan_Net_Wt(MT)" : self.net_qty,
+                "Total_net_amount":self.total_net_amount,
+                "Remark" : self.remark,
+
+                "Request_Time" : datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+
+                "Approval_Time" : datetime.datetime.fromisoformat(
+                    self.approved_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.approved_at else None,
+
+                "TAT":tat                # Turn Around Time
+                }
+
 
 class Gmrdata(Document):
     record_id = StringField(default=uuid.uuid4().hex, unique=True)
@@ -424,9 +495,14 @@ class Gmrdata(Document):
     po_no = StringField(null=True)
     po_date = StringField(null=True)
     po_qty = StringField(null=True)
-    created_at = DateTimeField(default=datetime.datetime.utcnow)
 
-    gate_verified_time = DateTimeField(default=None)
+    gross_weighbridge = StringField(null=True)
+    tare_weighbridge = StringField(null=True)
+
+    created_at = DateTimeField(default=datetime.datetime.utcnow())
+
+    # remark = StringField(null=True)
+  
     vehicle_in_time = DateTimeField(null=True)
     lot = StringField()
     line_item = StringField(null=True)
@@ -437,16 +513,35 @@ class Gmrdata(Document):
 
     meta = {"db_alias" : "gmrDB-alias" , "collection" : "gmrdata"}
 
-
     def payload(self):
 
         Loss = None
         transit_loss=None
+        vehicle_time_count=None
         if self.net_qty is not None and self.actual_net_qty is not None:
             Loss = float(self.actual_net_qty) - float(self.net_qty)
             transit_loss = round(Loss,5)
+        if self.vehicle_in_time is not None and self.vehicle_out_time is not None:
+            diff = self.vehicle_out_time - self.vehicle_in_time
+            days = diff.days
+            seconds = diff.seconds
+            hours = seconds // 3600
+            minutes = (seconds % 3600) // 60
+            seconds = seconds % 60
+            components = []
+            if days > 0:
+                components.append(f"{days} days")
+            if hours > 0:
+                components.append(f"{hours} hours")
+            if minutes > 0:
+                components.append(f"{minutes} minutes")
+            if seconds > 0:
+                components.append(f"{seconds} seconds")
+            
+            vehicle_time_count = ", ".join(components)
 
-        return {"Sr.No.":self.ID,
+        return {"record_id":self.record_id,
+                "Sr.No.":self.ID,
                 "Mines_Name":self.mine,
                 "PO_No":self.po_no,
                 "PO_Date":self.po_date,
@@ -477,9 +572,9 @@ class Gmrdata(Document):
                 "Transporter_LR_Date": self.transporter_lr_date,
                 "Eway_bill_No": self.e_way_bill_no,
 
-                "Gate_verified_time" : datetime.datetime.fromisoformat(
-                                    self.gate_verified_time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
-                                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.gate_verified_time else None,
+                # "Gate_verified_time" : datetime.datetime.fromisoformat(
+                #                     self.gate_verified_time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                #                     ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.gate_verified_time else None,
 
                 "Vehicle_in_time" : datetime.datetime.fromisoformat(
                                     self.vehicle_in_time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
@@ -506,7 +601,13 @@ class Gmrdata(Document):
 
                 "Scanned_Time" : datetime.datetime.fromisoformat(
                     self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
-                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+
+                "mine_date" : datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+
+                "TAT_difference": vehicle_time_count,
                 }
     
 
@@ -527,10 +628,12 @@ class CoalGrades(Document):
 
 class ReportScheduler(Document):
     report_name = StringField()
-    recipient_list = ListField()
-    filter = StringField()
-    schedule = StringField(default=None)
-    time = StringField()
+    recipient_list = ListField(StringField(unique=True), default=[])
+    cc_list = ListField(StringField(unique=True), default=[])
+    bcc_list = ListField(StringField(unique=True), default=[])
+    filter = StringField(default="")
+    schedule = StringField(default="")
+    time = StringField(default="")
 
     meta = {"db_alias": "gmrDB-alias", "collection": "reportscheduler"}
 
@@ -539,6 +642,8 @@ class ReportScheduler(Document):
             "id": str(self.id),
             "report_name": self.report_name,
             "recipient_list": self.recipient_list,
+            "cc_list": self.cc_list,
+            "bcc_list": self.bcc_list,
             "filter": self.filter,
             "schedule": self.schedule,
             "time": self.time,
@@ -576,12 +681,20 @@ class SmtpSettings(Document):
 class AopTarget(Document):
     source_name = StringField()
     aop_target = StringField()
+    created_at = DateTimeField(default=datetime.datetime.utcnow())
 
     meta = {"db_alias": "gmrDB-alias", "collection": "AopTarget"}
 
     def payload(self):
         return {
             "id": str(self.id),
+            "source_name": self.source_name,
+            "aop_target": self.aop_target,
+            "created_at": self.created_at,
+        }
+
+    def reportpayload(self):
+        return {
             "source_name": self.source_name,
             "aop_target": self.aop_target,
         }

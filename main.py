@@ -662,23 +662,34 @@ def extract_historian_data(start_date: Optional[str] = None, end_date: Optional[
         
         consumption_url = f"http://{historian_ip}/api/REST/HistoryData/LoadTagData"
         # consumption_url = "http://10.100.12.28:8093/api/REST/HistoryData/LoadTagData"
-        
-        response = requests.request("POST", url=consumption_url, headers=consumption_headers, data=payload, proxies=proxies)
-        console_logger.debug(response)
-        data = json.loads(response.text)
-        console_logger.debug(data)
+        try:
+            response = requests.request("POST", url=consumption_url, headers=consumption_headers, data=payload, proxies=proxies)
+            console_logger.debug(response)
+            data = json.loads(response.text)
+            console_logger.debug(data)
 
-        for item in data["Data"]:
-            tag_id = item["Data"]["TagID"]
-            sum = item["Data"]["SUM"]
-            created_date = item["Data"]["CreatedDate"] 
-
-            Historian(
-                tagid = tag_id,
-                sum = sum,
-                created_date = created_date,
-                ID = Historian.objects.count() + 1).save()
-
+            for item in data["Data"]:
+                tag_id = item["Data"]["TagID"]
+                sum = item["Data"]["SUM"]
+                created_date = item["Data"]["CreatedDate"]
+                console_logger.debug(tag_id)
+                console_logger.debug(created_date)
+                if Historian.objects.filter(tagid = tag_id, created_date=created_date):
+                    console_logger.debug("data there historian")
+                    pass
+                else:
+                    console_logger.debug("adding data")
+                    Historian(
+                        tagid = tag_id,
+                        sum = sum,
+                        created_date = created_date,
+                        ID = Historian.objects.count() + 1).save()
+                
+            success = "completed"
+        except requests.exceptions.Timeout:
+            console_logger.debug("Request timed out!")
+        except requests.exceptions.ConnectionError:
+            console_logger.debug("Connection error")
     
     except Exception as e:
         success = False
@@ -833,7 +844,7 @@ def coal_generation_analysis(response:Response, type: Optional[str] = "Daily",
         elif type == "Year":
 
             date=Year
-            console_logger.debug(date)
+            # console_logger.debug(date)
             end_date =f'{date}-12-31 23:59:59'
             start_date = f'{date}-01-01 00:00:00'
             format_data = "%Y-%m-%d %H:%M:%S"
@@ -1055,7 +1066,7 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
         elif type == "Year":
 
             date=Year
-            console_logger.debug(date)
+            # console_logger.debug(date)
             end_date =f'{date}-12-31 23:59:59'
             start_date = f'{date}-01-01 00:00:00'
             format_data = "%Y-%m-%d %H:%M:%S"
@@ -1422,112 +1433,116 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
 
         coal_testing_url = f"http://{testing_ip}/limsapi/api/SampleDetails/GetSampleRecord/GetSampleRecord?Fromdate={start_date}&todate={end_date}"
         # coal_testing_url = f"http://172.21.96.145/limsapi/api/SampleDetails/GetSampleRecord/GetSampleRecord?Fromdate={start_date}&todate={end_date}"
+        try:
+            response = requests.request("GET", url=coal_testing_url, headers=headers, data=payload, proxies=proxies)
+            
+            testing_data = json.loads(response.text)
 
-        response = requests.request("GET", url=coal_testing_url, headers=headers, data=payload, proxies=proxies)
-        
-        testing_data = json.loads(response.text)
+            wcl_extracted_data = []
+            secl_extracted_data = []
 
-        wcl_extracted_data = []
-        secl_extracted_data = []
+            for entry in testing_data["responseData"]:
+                if entry.get("supplier") == "WCL" and entry.get("rrNo") != "" and entry.get("rrNo") != "NA":
 
-        for entry in testing_data["responseData"]:
-            if entry.get("supplier") == "WCL" and entry.get("rrNo") != "" and entry.get("rrNo") != "NA":
-
-                data = {
-                    "sample_Desc": entry.get("sample_Desc"),
-                    "rrNo": entry.get("rrNo"),
-                    "rR_Qty": entry.get("rR_Qty"),
-                    "rake_No": entry.get("rake_No"),
-                    "supplier": entry.get("supplier"),
-                    "receive_date": entry.get("sample_Received_Date"),
-                    "parameters": [],
-                }
-
-                for param in entry.get("sample_Parameters"):
-                    param_info = {
-                        "parameter_Name": param.get("parameter_Name")
-                        .title()
-                        .replace(" ", "_"),
-                        "unit_Val": param.get("unit_Val").title().replace(" ",""),
-                        "test_Method": param.get("test_Method"),
-                        "val1": param.get("val1"),
+                    data = {
+                        "sample_Desc": entry.get("sample_Desc"),
+                        "rrNo": entry.get("rrNo"),
+                        "rR_Qty": entry.get("rR_Qty"),
+                        "rake_No": entry.get("rake_No"),
+                        "supplier": entry.get("supplier"),
+                        "receive_date": entry.get("sample_Received_Date"),
+                        "parameters": [],
                     }
 
-                    if param.get("parameter_Name").title() == "Gross Calorific Value (Adb)":
-                        if param.get("val1"):
-                            fetchCoalGrades = CoalGrades.objects()
-                            for single_coal_grades in fetchCoalGrades:
-                                if (
-                                    single_coal_grades["start_value"]
-                                    <= param.get("val1")
-                                    <= single_coal_grades["end_value"]
-                                    and single_coal_grades["start_value"] != ""
-                                    and single_coal_grades["end_value"] != ""
-                                ):
-                                    param_info["grade"] = single_coal_grades["grade"]
-                                elif param.get("val1") > "7001":
-                                    # console_logger.debug("G-1")
-                                    param_info["grade"] = "G-1"
-                                    break
+                    for param in entry.get("sample_Parameters"):
+                        param_info = {
+                            "parameter_Name": param.get("parameter_Name")
+                            .title()
+                            .replace(" ", "_"),
+                            "unit_Val": param.get("unit_Val").title().replace(" ",""),
+                            "test_Method": param.get("test_Method"),
+                            "val1": param.get("val1"),
+                        }
 
-                    data["parameters"].append(param_info)
-                wcl_extracted_data.append(data)
+                        if param.get("parameter_Name").title() == "Gross Calorific Value (Adb)":
+                            if param.get("val1"):
+                                fetchCoalGrades = CoalGrades.objects()
+                                for single_coal_grades in fetchCoalGrades:
+                                    if (
+                                        single_coal_grades["start_value"]
+                                        <= param.get("val1")
+                                        <= single_coal_grades["end_value"]
+                                        and single_coal_grades["start_value"] != ""
+                                        and single_coal_grades["end_value"] != ""
+                                    ):
+                                        param_info["grade"] = single_coal_grades["grade"]
+                                    elif param.get("val1") > "7001":
+                                        # console_logger.debug("G-1")
+                                        param_info["grade"] = "G-1"
+                                        break
 
-            if (
-                entry["supplier"] == "SECL"
-                and entry["rrNo"] != ""
-                and entry["rrNo"] != "NA"
-            ):
+                        data["parameters"].append(param_info)
+                    wcl_extracted_data.append(data)
 
-                secl_data = {
-                    "sample_Desc": entry.get("sample_Desc"),
-                    "rrNo": entry.get("rrNo"),
-                    "rR_Qty": entry.get("rR_Qty"),
-                    "rake_No": entry.get("rake_No"),
-                    "supplier": entry.get("supplier"),
-                    "receive_date": entry.get("sample_Received_Date"),
-                    "parameters": [],
-                }
+                if (
+                    entry["supplier"] == "SECL"
+                    and entry["rrNo"] != ""
+                    and entry["rrNo"] != "NA"
+                ):
 
-                for secl_param in entry["sample_Parameters"]:
-                    param_info = {
-                        "parameter_Name": secl_param.get("parameter_Name")
-                        .title()
-                        .replace(" ", "_"),
-                        "unit_Val": secl_param.get("unit_Val").title().replace(" ",""),
-                        "test_Method": secl_param.get("test_Method"),
-                        "val1": secl_param.get("val1"),
+                    secl_data = {
+                        "sample_Desc": entry.get("sample_Desc"),
+                        "rrNo": entry.get("rrNo"),
+                        "rR_Qty": entry.get("rR_Qty"),
+                        "rake_No": entry.get("rake_No"),
+                        "supplier": entry.get("supplier"),
+                        "receive_date": entry.get("sample_Received_Date"),
+                        "parameters": [],
                     }
-                    secl_data["parameters"].append(param_info)
-                secl_extracted_data.append(secl_data)
 
-        for entry in wcl_extracted_data:
-            if re.sub(r'\t', '', entry.get("sample_Desc").upper().strip()) != "":
-                # first re removes \t from string and second re will remove multiple space and will keep only single space
-                CoalTesting(
-                    location=re.sub(r'\t', '', re.sub(' +', ' ', entry.get("sample_Desc").upper().strip())),
-                    rrNo=entry.get("rrNo").strip(),
-                    rR_Qty=entry.get("rR_Qty").strip(),
-                    rake_no=entry.get("rake_No").upper().strip(),
-                    supplier=entry.get("supplier").strip(),
-                    receive_date=entry.get("receive_date"),
-                    parameters=entry.get("parameters"),
-                    ID=CoalTesting.objects.count() + 1,
-                ).save()
+                    for secl_param in entry["sample_Parameters"]:
+                        param_info = {
+                            "parameter_Name": secl_param.get("parameter_Name")
+                            .title()
+                            .replace(" ", "_"),
+                            "unit_Val": secl_param.get("unit_Val").title().replace(" ",""),
+                            "test_Method": secl_param.get("test_Method"),
+                            "val1": secl_param.get("val1"),
+                        }
+                        secl_data["parameters"].append(param_info)
+                    secl_extracted_data.append(secl_data)
 
-        for secl_entry in secl_extracted_data:
-            if re.sub(r'\t', '', secl_entry.get("sample_Desc").upper().strip()) != "":
-                CoalTestingTrain(
-                    location=re.sub(r'\t', '', re.sub(' +', ' ', secl_entry.get("sample_Desc").upper().strip())),
-                    rrNo=secl_entry.get("rrNo").strip(),
-                    rR_Qty=secl_entry.get("rR_Qty").strip(),
-                    rake_no=secl_entry.get("rake_No").strip(),
-                    supplier=secl_entry.get("supplier").strip(),
-                    receive_date=secl_entry.get("receive_date"),
-                    parameters=secl_entry.get("parameters"),
-                    ID=CoalTestingTrain.objects.count() + 1,
-                ).save()
-        success = "completed"
+            for entry in wcl_extracted_data:
+                if re.sub(r'\t', '', entry.get("sample_Desc")) != "":
+                    # first re removes \t from string and second re will remove multiple space and will keep only single space
+                    CoalTesting(
+                        location=re.sub(r'\t', '', re.sub(' +', ' ', entry.get("sample_Desc").upper().strip())),
+                        rrNo=entry.get("rrNo").strip(),
+                        rR_Qty=entry.get("rR_Qty").strip(),
+                        rake_no=entry.get("rake_No").upper().strip(),
+                        supplier=entry.get("supplier").strip(),
+                        receive_date=entry.get("receive_date"),
+                        parameters=entry.get("parameters"),
+                        ID=CoalTesting.objects.count() + 1,
+                    ).save()
+
+            for secl_entry in secl_extracted_data:
+                if re.sub(r'\t', '', secl_entry.get("sample_Desc")) != "":
+                    CoalTestingTrain(
+                        location=re.sub(r'\t', '', re.sub(' +', ' ', secl_entry.get("sample_Desc").upper().strip())),
+                        rrNo=secl_entry.get("rrNo").strip(),
+                        rR_Qty=secl_entry.get("rR_Qty").strip(),
+                        rake_no=secl_entry.get("rake_No").strip(),
+                        supplier=secl_entry.get("supplier").strip(),
+                        receive_date=secl_entry.get("receive_date"),
+                        parameters=secl_entry.get("parameters"),
+                        ID=CoalTestingTrain.objects.count() + 1,
+                    ).save()
+            success = "completed"
+        except requests.exceptions.Timeout:
+            console_logger.debug("Request timed out!")
+        except requests.exceptions.ConnectionError:
+            console_logger.debug("Connection error")
         
     except Exception as e:
         success = False
@@ -2037,7 +2052,7 @@ def coal_wcl_gcv_table(
                     if filtered_data:
                         data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
                         for mine, values in data.items():
-                            console_logger.debug(values)
+                            # console_logger.debug(values)
                             dictData = {}
                             dictData['Mine'] = mine
                             dictData['RR_Qty'] = str(values['average_RR_Qty'])
@@ -3025,7 +3040,7 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
 
 
 @router.get("/road_journey_table", tags=["Road Map"])
-def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Optional[int] = None,
+def gmr_table(response:Response, filter_data: Optional[List[str]] = Query([]), currentPage: Optional[int] = None, perPage: Optional[int] = None,
                     search_text: Optional[str] = None,
                     start_timestamp: Optional[str] = None,
                     end_timestamp: Optional[str] = None,
@@ -3159,84 +3174,19 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
                     cell_format.set_font_size(10)
                     cell_format.set_align("center")
                     cell_format.set_align("vcenter")
-
-                    headers = [
-                        "Sr.No.",
-                        "PO No",
-                        "PO Date",
-                        "PO Qty",
-                        "Delivery Challan No.",
-                        "DO No",
-                        "Mines Name",
-                        "Grade",
-                        "Type of consumer",
-                        "DC Date",
-                        "Vehicle No.",
-                        "Vehicle Chassis No.",
-                        "Fitness Expiry",
-                        "Weightment Date",
-                        "Weightment Time",
-                        "Gross Wt. as per challan (MT)",
-                        "Tare Wt. as per challan (MT)",
-                        "Net Wt. as per challan (MT)",
-                        "Gross Wt. as per actual (MT)",
-                        "Tare Wt. as per actual (MT)",
-                        "Net Wt. as per actual (MT)",
-                        "Wastage",
-                        "Transporter LR No.",
-                        "Transporter LR Date",
-                        "E-way bill No.",
-                        "Vehicle Out Time",
-                        "Total Net Amount",
-                        "Driver Name",
-                        "Gate Pass No",
-                        "Gate Verified Time",
-                        "Vehicle In Time",
-                        "Actual Gross Wt Time",
-                        "Actual Tare Wt Time",
-                        "Transit Loss",
-                        "LOT"
-                    ]
-
+                    # console_logger.debug(filter_data)
+                    headers = filter_data
+                    header_indexes = {header: index for index, header in enumerate(headers)}
+                    headers = [header.capitalize().replace("_", " ") for header in headers]
                     for index, header in enumerate(headers):
                         worksheet.write(0, index, header, cell_format2)
                     for row, query in enumerate(usecase_data,start=1):
                         result = query.payload()
-                        worksheet.write(row, 0, count, cell_format)
-                        worksheet.write(row, 1, str(result["PO_No"]), cell_format)
-                        worksheet.write(row, 2, str(result["PO_Date"]), cell_format)
-                        worksheet.write(row, 3, str(result["DO_Qty"]), cell_format)
-                        worksheet.write(row, 4, str(result["Delivery_Challan_No"]), cell_format)
-                        worksheet.write(row, 5, str(result["DO_No"]), cell_format)
-                        worksheet.write(row, 6, str(result["Mines_Name"]), cell_format)
-                        worksheet.write(row, 7, str(result["Grade"]), cell_format)
-                        worksheet.write(row, 8, str(result["Type_of_consumer"]), cell_format)
-                        worksheet.write(row, 9, str(result["DC_Date"]), cell_format)
-                        worksheet.write(row, 10, str(result["vehicle_number"]), cell_format)
-                        worksheet.write(row, 11, str(result["Vehicle_Chassis_No"]), cell_format)
-                        worksheet.write(row, 12, str(result["Fitness_Expiry"]), cell_format)
-                        worksheet.write(row, 13, str(result["Weightment_Date"]), cell_format)
-                        worksheet.write(row, 14, str(result["Weightment_Time"]), cell_format)
-                        worksheet.write(row, 15, str(result["Challan_Gross_Wt(MT)"]), cell_format)
-                        worksheet.write(row, 16, str(result["Challan_Tare_Wt(MT)"]), cell_format)
-                        worksheet.write(row, 17, str(result["Challan_Net_Wt(MT)"]), cell_format)
-                        worksheet.write(row, 18, str(result["GWEL_Gross_Wt(MT)"]), cell_format)
-                        worksheet.write(row, 19, str(result["GWEL_Tare_Wt(MT)"]), cell_format)
-                        worksheet.write(row, 20, str(result["GWEL_Net_Wt(MT)"]), cell_format)
-                        worksheet.write(row, 21, str(result["Wastage"]), cell_format)
-                        worksheet.write(row, 22, str(result["Transporter_LR_No"]), cell_format)
-                        worksheet.write(row, 23, str(result["Transporter_LR_Date"]), cell_format)
-                        worksheet.write(row, 24, str(result["Eway_bill_No"]), cell_format)
-                        worksheet.write(row, 25, str(result["Vehicle_out_time"]), cell_format)
-                        worksheet.write(row, 26, str(result["Total_net_amount"]), cell_format)
-                        worksheet.write(row, 27, str(result["Driver_Name"]), cell_format)
-                        worksheet.write(row, 28, str(result["Gate_Pass_No"]), cell_format)
-                        worksheet.write(row, 29, str(result["Gate_verified_time"]), cell_format)
-                        worksheet.write(row, 30, str(result["Vehicle_in_time"]), cell_format)
-                        worksheet.write(row, 31, str(result["GWEL_Gross_Time"]), cell_format)
-                        worksheet.write(row, 32, str(result["GWEL_Tare_Time"]), cell_format)
-                        worksheet.write(row, 33, str(result["Transit_Loss"]), cell_format)
-                        worksheet.write(row, 34, str(result["LOT"]), cell_format)
+                        worksheet.write(row, 0, count, cell_format)     
+                        for header in filter_data:
+                            if header in result:
+                                worksheet.write(row, header_indexes[header], str(result[header]), cell_format)                        
+                        
                         count-=1
                         
                     workbook.close()
@@ -3273,27 +3223,357 @@ def gmr_table(response:Response,currentPage: Optional[int] = None, perPage: Opti
         return e
 
 
+@router.get("/road/fitness_validation_table", tags=["Road Map"])
+def fitness_dc_validation(
+    response: Response,
+    currentPage: Optional[int] = None,
+    perPage: Optional[int] = None,
+    search_text: Optional[str] = None,
+    start_timestamp: Optional[str] = None,
+    end_timestamp: Optional[str] = None
+):
+    try:
+        result = {
+            "labels": [],
+            "datasets": [],
+            "total": 0,
+            "page_size": 15
+        }
+
+        page_no = 1
+        page_len = result["page_size"]
+
+        if currentPage:
+            page_no = currentPage
+
+        if perPage:
+            page_len = perPage
+            result["page_size"] = perPage
+
+        data = Q(expiry_validation = True)
+        # data = Q()
+
+        if start_timestamp:
+            start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M", "Asia/Kolkata", False)
+            data &= Q(created_at__gte=start_date)
+
+        if end_timestamp:
+            end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M", "Asia/Kolkata", False)
+            data &= Q(created_at__lte=end_date)
+
+        if search_text:
+            if search_text.isdigit():
+                data &= Q(arv_cum_do_number__icontains=search_text) | Q(delivery_challan_number__icontains=search_text)
+            else:
+                data &= Q(vehicle_number__icontains=search_text)
+
+        offset = (page_no - 1) * page_len
+
+        logs = (
+            Gmrrequest.objects(data)
+            .order_by("-created_at")
+            .skip(offset)
+            .limit(page_len)
+        )
+
+        if any(logs):
+            for log in logs:
+                result["labels"] = list(log.payload().keys())
+                result["datasets"].append(log.payload())
+
+        result["total"] = Gmrrequest.objects(data).count()
+        return result
+
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.get("/road/record_table", tags=["Road Map"])
+def fitness_dc_record(
+    response: Response,
+    currentPage: Optional[int] = None,
+    perPage: Optional[int] = None,
+    search_text: Optional[str] = None,
+    start_timestamp: Optional[str] = None,
+    end_timestamp: Optional[str] = None,
+    type: Optional[str] = "display"
+):
+    try:
+        result = {
+            "labels": [],
+            "datasets": [],
+            "total": 0,
+            "page_size": 15
+        }
+        if type and type == "display":
+            page_no = 1
+            page_len = result["page_size"]
+
+            if currentPage:
+                page_no = currentPage
+
+            if perPage:
+                page_len = perPage
+                result["page_size"] = perPage
+
+            data = Q(approved_at__ne=None)
+            # data = Q()
+
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M", "Asia/Kolkata", False)
+                data &= Q(approved_at__gte=start_date)
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M", "Asia/Kolkata", False)
+                data &= Q(approved_at__lte=end_date)
+
+            if search_text:
+                if search_text.isdigit():
+                    data &= Q(arv_cum_do_number__icontains=search_text) | Q(delivery_challan_number__icontains=search_text)
+                else:
+                    data &= Q(vehicle_number__icontains=search_text)
+
+            offset = (page_no - 1) * page_len
+
+            logs = (
+                Gmrrequest.objects(data)
+                .order_by("-approved_at")
+                .skip(offset)
+                .limit(page_len)
+            )
+
+            if any(logs):
+                for log in logs:
+                    result["labels"] = list(log.history_payload().keys())
+                    result["datasets"].append(log.history_payload())
+
+            result["total"] = Gmrrequest.objects(data).count()
+            return result
+
+        elif type and type == "download":
+            del type
+
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+            data = Q(approved_at__ne=None)
+
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M", "Asia/Kolkata", False)
+                data &= Q(approved_at__gte = start_date)
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
+                data &= Q(approved_at__lte = end_date)
+            
+            if search_text:
+                if search_text.isdigit():
+                    data &= Q(arv_cum_do_number__icontains = search_text) | Q(delivery_challan_number__icontains = search_text)
+                else:
+                    data &= Q(vehicle_number__icontains = search_text)
+
+            usecase_data = Gmrrequest.objects(data).order_by("-approved_at")
+            count = len(usecase_data)
+            path = None
+            if usecase_data:
+                try:
+                    path = os.path.join(
+                        "static_server",
+                        "gmr_ai",
+                        file,
+                        "Approval_Report_{}.xlsx".format(
+                            datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                        ),
+                    )
+                    filename = os.path.join(os.getcwd(), path)
+                    workbook = xlsxwriter.Workbook(filename)
+                    workbook.use_zip64()
+                    cell_format2 = workbook.add_format()
+                    cell_format2.set_bold()
+                    cell_format2.set_font_size(10)
+                    cell_format2.set_align("center")
+                    cell_format2.set_align("vjustify")
+
+                    worksheet = workbook.add_worksheet()
+                    worksheet.set_column("A:AZ", 20)
+                    worksheet.set_default_row(50)
+                    cell_format = workbook.add_format()
+                    cell_format.set_font_size(10)
+                    cell_format.set_align("center")
+                    cell_format.set_align("vcenter")
+
+                    headers = [
+                        "Sr.No",
+                        "Request Type",
+                        "Mines Name",
+                        "Vehicle No.",
+                        "Challan No",
+                        "DO No",
+                        "Chassis No",
+                        "Fitness Expiry",
+                        "DC Date",
+                        "Net Wt. as per challan (MT)",
+                        "Total Net Amount",
+                        "Remark",
+                        "Request Time",
+                        "Approval Time",
+                        "TAT"
+                    ]
+
+                    for index, header in enumerate(headers):
+                        worksheet.write(0, index, header, cell_format2)
+                    for row, query in enumerate(usecase_data,start=1):
+                        result = query.history_payload()
+                        worksheet.write(row, 0, count, cell_format)
+                        worksheet.write(row, 1, str(result["Request_type"]), cell_format)
+                        worksheet.write(row, 2, str(result["Mine"]), cell_format)
+                        worksheet.write(row, 3, str(result["Vehicle_Number"]), cell_format)
+                        worksheet.write(row, 4, str(result["Delivery_Challan_No"]), cell_format)
+                        worksheet.write(row, 5, str(result["DO_No"]), cell_format)
+                        worksheet.write(row, 6, str(result["Vehicle_Chassis_No"]), cell_format)
+                        worksheet.write(row, 7, str(result["Fitness_Expiry"]), cell_format)
+                        worksheet.write(row, 8, str(result["DC_Date"]), cell_format)
+                        worksheet.write(row, 9, str(result["Challan_Net_Wt(MT)"]), cell_format)
+                        worksheet.write(row, 10, str(result["Total_net_amount"]), cell_format)
+                        worksheet.write(row, 11, str(result["Remark"]), cell_format)
+                        worksheet.write(row, 12, str(result["Request_Time"]), cell_format)
+                        worksheet.write(row, 13, str(result["Approval_Time"]), cell_format)
+                        worksheet.write(row, 14, str(result["TAT"]), cell_format)
+                        count-=1
+                        
+                    workbook.close()
+                    console_logger.debug("Successfully {} report generated".format(service_id))
+                    console_logger.debug("sent data {}".format(path))
+
+                    return {
+                            "Type": "Request_Approval_download_event",
+                            "Datatype": "Report",
+                            "File_Path": path,
+                            }
+                
+                except Exception as e:
+                    console_logger.debug(e)
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+                    console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            else:
+                console_logger.error("No data found")
+                return {
+                        "Type": "Request_Approval_download_event",
+                        "Datatype": "Report",
+                        "File_Path": path,
+                        }    
+            
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+def add_days_to_date(date_str, days):
+    date_format = "%d-%m-%Y"
+    date_obj = datetime.datetime.strptime(date_str, date_format)
+    new_date_obj = date_obj + timedelta(days=days)
+    return new_date_obj.strftime(date_format)
+
+
+@router.put("/road/update_expiry_date", tags=["Road Map"])
+async def update_expiry_date(vehicle_number: str, remark: Optional[str] = None):
+    try:
+        record = Gmrdata.objects(vehicle_number = vehicle_number).order_by("-created_at").first()
+        request_record = Gmrrequest.objects(vehicle_number = vehicle_number, expiry_validation=True).order_by("-created_at").first()
+
+        if remark == None:
+            remark = "Fitness Extended For 7 days"
+
+        if request_record:
+            request_record.expiry_validation = False
+            request_record.approved_at =  datetime.datetime.utcnow()
+            request_record.remark = remark
+            request_record.save()
+
+        if not record:
+            raise HTTPException(status_code=404, detail="Record not found")
+        
+        record.certificate_expiry = add_days_to_date(record.certificate_expiry, 7)
+        # record.fitness_verify = False
+        record.save()
+
+        return {"message": "Record updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/road/pass_expiry_date", tags=["Road Map"])
+async def pass_expiry_date(vehicle_number: str, remark: Optional[str] = None):
+    try:
+        record = Gmrdata.objects(vehicle_number = vehicle_number).order_by("-created_at").first()
+        request_record = Gmrrequest.objects(vehicle_number = vehicle_number, expiry_validation=True).order_by("-created_at").first()
+
+        if remark == None:
+            remark = "Fitness Extension Declined"
+
+        if request_record:
+            request_record.expiry_validation = False
+            request_record.approved_at =  datetime.datetime.utcnow()
+            request_record.remark = remark
+            request_record.save()
+
+        if not record:
+            raise HTTPException(status_code=404, detail="Record not found")
+            
+        return {"message": "Record updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/delete_expiry", tags=["Road Map"])
+def delete_fitness_expiry(delivery_challan_number: str):
+    try:
+        challan = Gmrrequest.objects.get(delivery_challan_number = delivery_challan_number)
+        challan.delete()
+        return {"message": "Fitness Expired Entry deleted successfully"}
+    except DoesNotExist:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+
 @router.get("/road/minewise_road_graph", tags=["Road Map"])
 def minewise_road_analysis(response:Response,type: Optional[str] = "Daily",
                             Month: Optional[str] = None, Daily: Optional[str] = None, 
                             Year: Optional[str] = None):
     try:
         data={}
+        timezone = pytz.timezone('Asia/Kolkata')
+        current_time = datetime.datetime.now(timezone)
         UTC_OFFSET_TIMEDELTA = datetime.datetime.utcnow() - datetime.datetime.now()
 
         basePipeline = [
             {
                 "$match": {
-                    "created_at": {
+                    "GWEL_Tare_Time": {
                         "$gte": None,
                     },
                 },
             },
             {
                 "$project": {
-                    "ts": {
-                        "$hour": {"date": "$created_at", "timezone": timezone},
-                    },
+                    # "ts": {
+                    #     "$hour": {"date": "$GWEL_Tare_Time", "timezone": timezone},
+                    # },
+                    "ts": None,
                     "mine": "$mine",
                     "actual_net_qty": "$actual_net_qty",
                     "_id": 0
@@ -3314,15 +3594,19 @@ def minewise_road_analysis(response:Response,type: Optional[str] = "Daily",
 
         if type == "Daily":
 
-            date=Daily
-            end_date =f'{date} 23:59:59'
+            date = Daily
+            end_date = f'{date} 23:59:59'
             start_date = f'{date} 00:00:00'
             format_data = "%Y-%m-%d %H:%M:%S"
-            endd_date=datetime.datetime.strptime(end_date,format_data)
-            startd_date=datetime.datetime.strptime(start_date,format_data)
+            endd_date = convert_to_utc_format(end_date.__str__(), format_data)
+            startd_date = convert_to_utc_format(start_date.__str__(), format_data)
+            # console_logger.debug(startd_date)
+            # console_logger.debug(endd_date)
 
-            basePipeline[0]["$match"]["created_at"]["$lte"] = (endd_date)
-            basePipeline[0]["$match"]["created_at"]["$gte"] = (startd_date)
+            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$lte"] = endd_date
+            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
+
+            basePipeline[1]["$project"]["ts"] = {"$hour": {"date": "$GWEL_Tare_Time", "timezone": "Asia/Kolkata"}}
             
 
             result = {
@@ -3339,17 +3623,20 @@ def minewise_road_analysis(response:Response,type: Optional[str] = "Daily",
             }
 
         elif type == "Week":
-            basePipeline[0]["$match"]["created_at"]["$gte"] = (
-                datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-                + UTC_OFFSET_TIMEDELTA
+            start_date = (
+                datetime.datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
                 - datetime.timedelta(days=7)
             )
-            basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$created_at"}
+            end_date = datetime.datetime.utcnow().replace(hour=23, minute=59, second=59, microsecond=0)
+            endd_date = end_date-datetime.timedelta(days=1)
+
+            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"] = convert_to_utc_format(start_date.__str__(), "%Y-%m-%d %H:%M:%S")
+            basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": {"date": "$GWEL_Tare_Time", "timezone": "Asia/Kolkata"}}
             result = {
                 "data": {
                     "labels": [
                         (
-                            basePipeline[0]["$match"]["created_at"]["$gte"]
+                            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"]
                             + datetime.timedelta(days=i + 1)
                         ).strftime("%d")
                         for i in range(1, 8)
@@ -3365,24 +3652,24 @@ def minewise_road_analysis(response:Response,type: Optional[str] = "Daily",
             }
 
         elif type == "Month":
-
-            date=Month
+            date = Month
             format_data = "%Y - %m-%d"
-
             start_date = f'{date}-01'
-            startd_date=datetime.datetime.strptime(start_date,format_data)
-            
-            end_date = startd_date + relativedelta( day=31)
-            end_label = (end_date).strftime("%d")
+            startd_date = timezone.localize(datetime.datetime.strptime(start_date, format_data))
 
-            basePipeline[0]["$match"]["created_at"]["$lte"] = (end_date)
-            basePipeline[0]["$match"]["created_at"]["$gte"] = (startd_date)
-            basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$created_at"}
+            end_date = startd_date + relativedelta(day=31)
+            end_label = end_date.strftime("%d")
+
+            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$lte"] = end_date
+            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
+            # basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$GWEL_Tare_Time"}
+            basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": {"date": "$GWEL_Tare_Time", "timezone": "Asia/Kolkata"}}
+
             result = {
                 "data": {
                     "labels": [
                         (
-                            basePipeline[0]["$match"]["created_at"]["$gte"]
+                            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"]
                             + datetime.timedelta(days=i + 1)
                         ).strftime("%d")
                         for i in range(-1, (int(end_label))-1)
@@ -3399,26 +3686,23 @@ def minewise_road_analysis(response:Response,type: Optional[str] = "Daily",
 
         elif type == "Year":
 
-            date=Year
-            end_date =f'{date}-12-31 23:59:59'
+            date = Year
+            end_date = f'{date}-12-31 23:59:59'
             start_date = f'{date}-01-01 00:00:00'
             format_data = "%Y-%m-%d %H:%M:%S"
-            endd_date=datetime.datetime.strptime(end_date,format_data)
-            startd_date=datetime.datetime.strptime(start_date,format_data)
+            endd_date = timezone.localize(datetime.datetime.strptime(end_date, format_data))
+            startd_date = timezone.localize(datetime.datetime.strptime(start_date, format_data))
 
-            basePipeline[0]["$match"]["created_at"]["$lte"] = (
-                endd_date
-            )
-            basePipeline[0]["$match"]["created_at"]["$gte"] = (
-                startd_date          
-            )
+            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$lte"] = endd_date
+            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
 
-            basePipeline[1]["$project"]["ts"] = {"$month": "$created_at"}
+            # basePipeline[1]["$project"]["ts"] = {"$month": "$GWEL_Tare_Time"}
+            basePipeline[1]["$project"]["ts"] = {"$month": {"date": "$GWEL_Tare_Time", "timezone": "Asia/Kolkata"}}
             result = {
                 "data": {
                     "labels": [
                         (
-                            basePipeline[0]["$match"]["created_at"]["$gte"]
+                            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"]
                             + relativedelta(months=i)
                         ).strftime("%m")
                         for i in range(0, 12)
@@ -3467,7 +3751,7 @@ def minewise_road_analysis(response:Response,type: Optional[str] = "Daily",
             if type == "Week":
                 modified_labels = [
                     (
-                        basePipeline[0]["$match"]["created_at"]["$gte"]
+                        basePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"]
                         + datetime.timedelta(days=i + 1)
                     ).strftime("%d-%m-%Y,%a")
                     for i in range(1, 8)
@@ -3476,7 +3760,7 @@ def minewise_road_analysis(response:Response,type: Optional[str] = "Daily",
             elif type == "Month":
                 modified_labels = [
                     (
-                        basePipeline[0]["$match"]["created_at"]["$gte"]
+                        basePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"]
                         + datetime.timedelta(days=i + 1)
                     ).strftime("%d/%m")
                     for i in range(-1, (int(end_label))-1)
@@ -3485,7 +3769,7 @@ def minewise_road_analysis(response:Response,type: Optional[str] = "Daily",
             elif type == "Year":
                 modified_labels = [
                     (
-                        basePipeline[0]["$match"]["created_at"]["$gte"]
+                        basePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"]
                         + relativedelta(months=i)
                     ).strftime("%b %y")
                     for i in range(0, 12)
@@ -3738,8 +4022,8 @@ def gmr_table(response: Response, currentPage: Optional[int] = None,
         return e
 
 
-@router.get("/road/vehicle_in_count", tags=["Road Map"])
-def daywise_in_vehicle_count(response:Response):
+@router.get("/road/vehicle_scanned_count", tags=["Road Map"])
+def daywise_vehicle_scanned_count(response:Response):
     try:
         current_time = datetime.datetime.now(IST)
         today = current_time.date()
@@ -3747,14 +4031,16 @@ def daywise_in_vehicle_count(response:Response):
         # from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
         from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
 
-        vehicle_count = Gmrdata.objects(vehicle_in_time__gte=from_ts, vehicle_in_time__ne=None).count()
+        # vehicle_count = Gmrdata.objects(created_at__gte=from_ts, created_at__ne=None).count()
+        vehicle_count = Gmrdata.objects(GWEL_Tare_Time__gte=from_ts, GWEL_Tare_Time__ne=None).count()
 
-        return {"title": "Vehicle in count",
+        return {"title": "Today's Mine Vehicle Scanned",
+                "icon" : "vehicle",
                 "data": vehicle_count,
                 "last_updated": today}
 
     except Exception as e:
-        console_logger.debug("----- Road Vehicle Count Error -----",e)
+        console_logger.debug("----- Vehicle Scanned Count Error -----",e)
         response.status_code = 400
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -3763,8 +4049,34 @@ def daywise_in_vehicle_count(response:Response):
         return e
 
 
-@router.get("/road/vehicle_out_count", tags=["Road Map"])
-def daywise_out_vehicle_count(response:Response):
+# @router.get("/road/vehicle_in_count", tags=["Road Map"])
+# def daywise_in_vehicle_count(response:Response):
+#     try:
+#         current_time = datetime.datetime.now(IST)
+#         today = current_time.date()
+#         startdate = f'{today} 00:00:00'
+#         # from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
+#         from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
+
+#         vehicle_in_count = Gmrdata.objects(vehicle_in_time__gte=from_ts, vehicle_in_time__ne=None).count()
+
+#         return {"title": "Today's Gate Vehicle In",
+#                 "icon" : "vehicle",
+#                 "data": vehicle_count,
+#                 "last_updated": today}
+
+#     except Exception as e:
+#         console_logger.debug("----- Road Vehicle Count Error -----",e)
+#         response.status_code = 400
+#         exc_type, exc_obj, exc_tb = sys.exc_info()
+#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#         return e
+
+
+@router.get("/road/vehicle_count", tags=["Road Map"])
+def daywise_vehicle_count(response:Response):
     try:
         current_time = datetime.datetime.now(IST)
         today = current_time.date()
@@ -3772,10 +4084,12 @@ def daywise_out_vehicle_count(response:Response):
         # from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
         from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
 
-        vehicle_count = Gmrdata.objects(GWEL_Tare_Time__gte=from_ts, GWEL_Tare_Time__ne=None).count()
+        vehicle_in_count = Gmrdata.objects(GWEL_Tare_Time__gte=from_ts, GWEL_Tare_Time__ne=None).count()
+        vehicle_out_count = Gmrdata.objects(GWEL_Tare_Time__gte=from_ts, GWEL_Tare_Time__ne=None).count()
 
-        return {"title": "Vehicle out count",
-                "data": vehicle_count,
+        return {"title": "Today's Gate Vehicle",
+                "icon" : "vehicle",
+                "data":f"In: {vehicle_in_count} | Out: {vehicle_out_count}",
                 "last_updated": today}
 
     except Exception as e:
@@ -3801,7 +4115,7 @@ def daywise_grn_receive(response:Response):
         pipeline = [
                     {
                         "$match": {
-                            "created_at": {"$gte": from_ts},
+                            "GWEL_Tare_Time": {"$gte": from_ts},
                             "net_qty": {"$ne": None}
                         }
                     },
@@ -3822,8 +4136,73 @@ def daywise_grn_receive(response:Response):
         for doc in result:
             total_coal = doc["total_net_qty"]
 
-        return {"title": "Total GRN Coal(MT)",
+        return {"title": "Today's Total GRN Coal(MT)",
+                "icon" : "coal",
                 "data": round(total_coal,2),
+                "last_updated": today}
+
+    except Exception as e:
+        console_logger.debug("----- Gate Vehicle Count Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+    
+
+@router.get("/road/transit_loss_card", tags=["Road Map"])
+def daywise_transit_loss(response:Response):
+    try:
+        current_time = datetime.datetime.now(IST)
+        today = current_time.date()
+        startdate = f'{today} 00:00:00'
+        # from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
+        from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
+    
+        pipeline = [
+            {
+                '$match': {
+                    'GWEL_Tare_Time': {
+                        '$gte': from_ts
+                    }
+                }
+            }, {
+                '$group': {
+                    '_id': None, 
+                    'net_qty': {
+                        '$sum': {
+                            '$toDouble': '$net_qty'
+                        }
+                    }, 
+                    'actual_net_qty': {
+                        '$sum': {
+                            '$toDouble': '$actual_net_qty'
+                        }
+                    }
+                }
+            }, {
+                '$project': {
+                    'net_qty': 1, 
+                    'actual_net_qty': 1, 
+                    'transit_loss': {
+                        '$subtract': [
+                            '$actual_net_qty', '$net_qty'
+                        ]
+                    }
+                }
+            }
+        ]
+        
+        result = Gmrdata.objects.aggregate(pipeline)
+
+        transit_loss = 0
+        for doc in result:
+            transit_loss = doc["transit_loss"]
+
+        return {"title": "Today's Total Transit Loss (MT)",
+                "icon" : "coal",
+                "data": round(transit_loss, 2),
                 "last_updated": today}
 
     except Exception as e:
@@ -3849,7 +4228,7 @@ def daywise_gwel_receive(response:Response):
         pipeline = [
                     {
                         "$match": {
-                            "created_at": {"$gte": from_ts},
+                            "GWEL_Tare_Time": {"$gte": from_ts},
                             "actual_net_qty": {"$ne": None}
                         }
                     },
@@ -3870,7 +4249,8 @@ def daywise_gwel_receive(response:Response):
         for doc in result:
             total_coal = doc["total_actual_net_qty"]
 
-        return {"title": "Total GWEL Coal(MT)",
+        return {"title": "Today's Total GWEL Coal(MT)",
+                "icon" : "coal",
                 "data": round(total_coal,2),
                 "last_updated": today}
 
@@ -3925,10 +4305,13 @@ def daywise_coal_generation(response: Response):
         total_sum = 0
         for doc in result:
             total_sum = doc["total_sum_all"]
+        
+        result = total_sum / 10000
 
         return {
-            "title": "Coal Generation (MT)",
-            "data": round(total_sum, 2),
+            "title": "Today's Total Generation(MW)",
+            "icon" : "energy",
+            "data": round(result, 2),
             "last_updated": today
         }
 
@@ -3983,10 +4366,13 @@ def daywise_coal_consumption(response: Response):
         total_sum = 0
         for doc in result:
             total_sum = doc["total_sum_all"]
+        
+        result = total_sum / 10000
 
         return {
-            "title": "Coal Consumption (MT)",
-            "data": round(total_sum, 2),
+            "title": "Today's Total Coal Consumption(MT)",
+            "icon" : "coal",
+            "data": round(result, 2),
             "last_updated": today
         }
 
@@ -4012,63 +4398,184 @@ def road_report(response:Response,start_timestamp: Optional[str] = None,
         from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
 
 
-        data = {"data": {}, "Total": {"vehicle_count": 0, "Challan_Net_Wt(MT)": 0, "GWEL_Net_Wt(MT)": 0}}
+        data = {"data": {}, "Total": {"mine_vehicle_scanned": 0, 
+                                      "Gate_vehicle_in":0,
+                                      "Gate_vehicle_out":0,
+                                      "GRN_Coal(MT)": 0, 
+                                      "GWEL_Coal(MT)": 0, 
+                                      "Transit_Loss(MT)": 0}}
 
-        mine_pipeline = [
-                    {
-                        "$match": {
-                            "created_at": {"$gte": from_ts},
-                        }
-                    },
-                    {
-                        "$group": {
-                            "_id": "$mine",
-                            "vehicle_count": {
-                                "$sum": 1
-                            },
-                            "net_qty": {
-                                "$sum": {
-                                    "$toDouble": "$net_qty"
+        pipeline = [
+            {
+                "$facet": {
+                    "weight": [
+                        {
+                            "$match": {
+                                "GWEL_Tare_Time": {"$gte": from_ts}
+                            }
+                        },
+                        {
+                            "$group": {
+                                "_id": "$mine",
+                                "net_qty": {
+                                    "$sum": {
+                                        "$toDouble": "$net_qty"
+                                    }
+                                },
+                                "actual_net_qty": {
+                                    "$sum": {
+                                        "$toDouble": "$actual_net_qty"
+                                    }
                                 }
-                            },
-                            "actual_net_qty": {
-                                "$sum": {
-                                    "$toDouble": "$actual_net_qty"
+                            }
+                        },
+                        {
+                            "$project": {
+                                "net_qty": 1,
+                                "actual_net_qty": 1,
+                                "transit": {
+                                    "$subtract": [
+                                        "$actual_net_qty", "$net_qty"
+                                    ]
                                 }
                             }
                         }
-                    }
-                ]
+                    ],
+                    "scanned": [
+                        {
+                            "$match": {
+                                "GWEL_Tare_Time": {"$gte": from_ts}
+                            }
+                        },
+                        {
+                            "$group": {
+                                "_id": "$mine",
+                                "vehicle_count": {
+                                    "$sum": 1
+                                }
+                            }
+                        },
+                        {
+                            "$project": {
+                                "vehicle_count": "$vehicle_count"
+                            }
+                        }
+                    ],
+                    "vehicle_in": [
+                        {
+                            "$match": {
+                                "GWEL_Tare_Time": {"$gte": from_ts}
+                            }
+                        },
+                        {
+                            "$group": {
+                                "_id": "$mine",
+                                "vehicle_count": {
+                                    "$sum": 1
+                                }
+                            }
+                        },
+                        {
+                            "$project": {
+                                "mine": "$_id",
+                                "vehicle_in_count": "$vehicle_count",
+                                "_id": 0
+                            }
+                        }
+                    ],
+                    "vehicle_out": [
+                        {
+                            "$match": {
+                                "GWEL_Tare_Time": {"$gte": from_ts}
+                            }
+                        },
+                        {
+                            "$group": {
+                                "_id": "$mine",
+                                "vehicle_count": {
+                                    "$sum": 1
+                                }
+                            }
+                        },
+                        {
+                            "$project": {
+                                "mine": "$_id",
+                                "vehicle_out_count": "$vehicle_count",
+                                "_id": 0
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "$project": {
+                    "weight": 1,
+                    "scanned": 1,
+                    "vehicle_in": 1,
+                    "vehicle_out": 1
+                }
+            }
+        ]
 
         if type == "display":
-
             if start_timestamp:
-                end_date =f'{start_timestamp} 23:59:59'
+                end_date = f'{start_timestamp} 23:59:59'
                 start_date = f'{start_timestamp} 00:00:00'
                 format_data = "%Y-%m-%d %H:%M:%S"
 
                 startd_date = convert_to_utc_format(start_date, format_data)
                 endd_date = convert_to_utc_format(end_date, format_data)
 
-                mine_pipeline[0]["$match"]["created_at"]["$lte"] = (endd_date)
-                mine_pipeline[0]["$match"]["created_at"]["$gte"] = (startd_date)
+                pipeline[0]["$facet"]["weight"][0]["$match"]["GWEL_Tare_Time"]["$lte"] = endd_date
+                pipeline[0]["$facet"]["weight"][0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
 
-            mine_data = list(Gmrdata.objects.aggregate(mine_pipeline))
+                pipeline[0]["$facet"]["scanned"][0]["$match"]["GWEL_Tare_Time"]["$lte"] = endd_date
+                pipeline[0]["$facet"]["scanned"][0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
 
-            for mine in mine_data:
+                pipeline[0]["$facet"]["vehicle_in"][0]["$match"]["GWEL_Tare_Time"]["$lte"] = endd_date
+                pipeline[0]["$facet"]["vehicle_in"][0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
+
+                pipeline[0]["$facet"]["vehicle_out"][0]["$match"]["GWEL_Tare_Time"]["$lte"] = endd_date
+                pipeline[0]["$facet"]["vehicle_out"][0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
+
+            combined_pipeline_data = list(Gmrdata.objects.aggregate(pipeline))[0]
+            # mine_data = list(Gmrdata.objects.aggregate(mine_pipeline))
+
+            weight_data = combined_pipeline_data.get("weight", [])
+            scanned_data = combined_pipeline_data.get("scanned", [])
+            vehicle_in_data = combined_pipeline_data.get("vehicle_in", [])
+            vehicle_out_data = combined_pipeline_data.get("vehicle_out", [])
+
+            scanned_dict = {item["_id"]: item["vehicle_count"] for item in scanned_data}
+            vehicle_in_dict = {item["mine"]: item["vehicle_in_count"] for item in vehicle_in_data}
+            vehicle_out_dict = {item["mine"]: item["vehicle_out_count"] for item in vehicle_out_data}
+
+            for mine in weight_data:
                 mine_name = mine["_id"]
-                vehicle_count = mine["vehicle_count"]
                 net_qty = mine["net_qty"]
                 actual_net_qty = mine["actual_net_qty"]
+                transit_loss = mine["transit"]
+
+                scanned_count = scanned_dict.get(mine_name, 0)
+                vehicle_in_count = vehicle_in_dict.get(mine_name, 0)
+                vehicle_out_count = vehicle_out_dict.get(mine_name, 0)
 
                 data["data"][mine_name] = {
-                    "vehicle_count": vehicle_count,
-                    "Challan_Net_Wt(MT)": round(net_qty,2),
-                    "GWEL_Net_Wt(MT)": round(actual_net_qty,2)}
-                
-                data["Total"]["vehicle_count"] += vehicle_count
-                data["Total"]["Challan_Net_Wt(MT)"] += round(net_qty,2)
-                data["Total"]["GWEL_Net_Wt(MT)"] += round(actual_net_qty,2)
+                    "mine_vehicle_scanned": scanned_count,
+                    "Gate_vehicle_in": vehicle_in_count,
+                    "Gate_vehicle_out": vehicle_out_count,
+                    "GRN_Coal(MT)": round(net_qty, 2),
+                    "GWEL_Coal(MT)": round(actual_net_qty, 2),
+                    "Transit_Loss(MT)": round(transit_loss, 2)
+                }
+
+                data["Total"]["mine_vehicle_scanned"] += scanned_count
+                data["Total"]["Gate_vehicle_in"] += vehicle_in_count
+                data["Total"]["Gate_vehicle_out"] += vehicle_out_count
+                data["Total"]["GRN_Coal(MT)"] += round(net_qty, 2)
+                data["Total"]["GWEL_Coal(MT)"] += round(actual_net_qty, 2)
+                data["Total"]["Transit_Loss(MT)"] += round(transit_loss, 2)
+
 
             return data
 
@@ -4090,35 +4597,65 @@ def road_report(response:Response,start_timestamp: Optional[str] = None,
                     )
 
             if start_timestamp and end_timestamp:
-                end_date =f'{end_timestamp} 23:59:59'
+                end_date = f'{start_timestamp} 23:59:59'
                 start_date = f'{start_timestamp} 00:00:00'
                 format_data = "%Y-%m-%d %H:%M:%S"
-                
+
                 startd_date = convert_to_utc_format(start_date, format_data)
                 endd_date = convert_to_utc_format(end_date, format_data)
 
-                mine_pipeline[0]["$match"]["created_at"]["$lte"] = (endd_date)
-                mine_pipeline[0]["$match"]["created_at"]["$gte"] = (startd_date)
+                pipeline[0]["$facet"]["weight"][0]["$match"]["GWEL_Tare_Time"]["$lte"] = endd_date
+                pipeline[0]["$facet"]["weight"][0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
 
-            mine_data = list(Gmrdata.objects.aggregate(mine_pipeline))
+                pipeline[0]["$facet"]["scanned"][0]["$match"]["GWEL_Tare_Time"]["$lte"] = endd_date
+                pipeline[0]["$facet"]["scanned"][0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
 
-            for mine in mine_data:
+                pipeline[0]["$facet"]["vehicle_in"][0]["$match"]["GWEL_Tare_Time"]["$lte"] = endd_date
+                pipeline[0]["$facet"]["vehicle_in"][0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
+
+                pipeline[0]["$facet"]["vehicle_out"][0]["$match"]["GWEL_Tare_Time"]["$lte"] = endd_date
+                pipeline[0]["$facet"]["vehicle_out"][0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
+
+            combined_pipeline_data = list(Gmrdata.objects.aggregate(pipeline))[0]
+            # mine_data = list(Gmrdata.objects.aggregate(mine_pipeline))
+
+            weight_data = combined_pipeline_data.get("weight", [])
+            scanned_data = combined_pipeline_data.get("scanned", [])
+            vehicle_in_data = combined_pipeline_data.get("vehicle_in", [])
+            vehicle_out_data = combined_pipeline_data.get("vehicle_out", [])
+
+            scanned_dict = {item["_id"]: item["vehicle_count"] for item in scanned_data}
+            vehicle_in_dict = {item["mine"]: item["vehicle_in_count"] for item in vehicle_in_data}
+            vehicle_out_dict = {item["mine"]: item["vehicle_out_count"] for item in vehicle_out_data}
+
+            for mine in weight_data:
                 mine_name = mine["_id"]
-                vehicle_count = mine["vehicle_count"]
                 net_qty = mine["net_qty"]
                 actual_net_qty = mine["actual_net_qty"]
+                transit_loss = mine["transit"]
+
+                scanned_count = scanned_dict.get(mine_name, 0)
+                vehicle_in_count = vehicle_in_dict.get(mine_name, 0)
+                vehicle_out_count = vehicle_out_dict.get(mine_name, 0)
 
                 data["data"][mine_name] = {
-                    "vehicle_count": vehicle_count,
-                    "Challan_Net_Wt(MT)": net_qty,
-                    "GWEL_Net_Wt(MT)": actual_net_qty}
-                
-                data["Total"]["vehicle_count"] += vehicle_count
-                data["Total"]["Challan_Net_Wt(MT)"] += net_qty
-                data["Total"]["GWEL_Net_Wt(MT)"] += actual_net_qty
+                    "mine_vehicle_scanned": scanned_count,
+                    "Gate_vehicle_in": vehicle_in_count,
+                    "Gate_vehicle_out": vehicle_out_count,
+                    "GRN_Coal(MT)": round(net_qty, 2),
+                    "GWEL_Coal(MT)": round(actual_net_qty, 2),
+                    "Transit_Loss(MT)": round(transit_loss, 2)
+                }
+
+                data["Total"]["mine_vehicle_scanned"] += scanned_count
+                data["Total"]["Gate_vehicle_in"] += vehicle_in_count
+                data["Total"]["Gate_vehicle_out"] += vehicle_out_count
+                data["Total"]["GRN_Coal(MT)"] += round(net_qty, 2)
+                data["Total"]["GWEL_Coal(MT)"] += round(actual_net_qty, 2)
+                data["Total"]["Transit_Loss(MT)"] += round(transit_loss, 2)
 
             df_data = pd.DataFrame.from_dict(data['data'], orient='index')
-            
+
             total_df = pd.DataFrame.from_dict({'Total': data['Total']}).T
             df_data = pd.concat([df_data, total_df], axis=0)
             df_data.columns = df_data.columns.str.replace('_', ' ')
@@ -4161,7 +4698,7 @@ def daywise_in_vehicle_count_datewise(date):
         from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
         to_ts = convert_to_utc_format(enddate, "%Y-%m-%d %H:%M:%S")
 
-        vehicle_count = Gmrdata.objects(vehicle_in_time__gte=from_ts, vehicle_in_time__lte=to_ts, vehicle_in_time__ne=None).count()
+        vehicle_count = Gmrdata.objects(GWEL_Tare_Time__gte=from_ts, GWEL_Tare_Time__lte=to_ts, GWEL_Tare_Time__ne=None).count()
 
         return {"title": "Vehicle in count",
                 "data": vehicle_count}
@@ -4177,7 +4714,7 @@ def daywise_in_vehicle_count_datewise(date):
 def daywise_grn_receive_datewise(date):
     try:
         startdate = f'{date} 00:00:00'
-        enddate = f'{date} 00:00:00'
+        enddate = f'{date} 23:59:59'
         # from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
         # to_ts = datetime.datetime.strptime(enddate,"%Y-%m-%d %H:%M:%S")
         from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
@@ -4186,10 +4723,9 @@ def daywise_grn_receive_datewise(date):
         pipeline = [
                     {
                         "$match": {
-                            "vehicle_in_time": {"$gte": from_ts},
-                            "vehicle_in_time": {"$lte": to_ts},
-                            "net_qty": {"$ne": None}
-                        }
+                            "GWEL_Tare_Time": {"$gte": from_ts, "$lte": to_ts},
+                                "net_qty": {"$ne": None}
+                            }
                     },
                     {
                         "$group": {
@@ -4208,8 +4744,8 @@ def daywise_grn_receive_datewise(date):
         for doc in result:
             total_coal = doc["total_net_qty"]
 
-        console_logger.debug({"title": "Total GRN Coal(MT)",
-                "data": round(total_coal,2)})
+        # console_logger.debug({"title": "Total GRN Coal(MT)",
+        #         "data": round(total_coal,2)})
 
         return {"title": "Total GRN Coal(MT)",
                 "data": round(total_coal,2)}
@@ -4227,45 +4763,79 @@ def daywise_gwel_receive_pdf_datewise(date):
     try:
         startdate = f'{date} 00:00:00'
         enddate = f'{date} 23:59:59'
-        # from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
-        # to_ts = datetime.datetime.strptime(enddate,"%Y-%m-%d %H:%M:%S")
         from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
         to_ts = convert_to_utc_format(enddate, "%Y-%m-%d %H:%M:%S")
+        # console_logger.debug(from_ts)
+        # console_logger.debug(to_ts)
         pipeline = [
-                    {
-                        "$match": {
-                            "vehicle_in_time": {"$gte": from_ts},
-                            "vehicle_in_time": {"$lte": to_ts},
-                            "actual_net_qty": {"$ne": None}
+            {
+                "$match": {
+                    "GWEL_Tare_Time": {"$gte": from_ts, "$lte": to_ts},  # Combine conditions into one
+                    "actual_net_qty": {"$ne": None}
+                }
+            },
+            {
+                "$group": {
+                    "_id": None,
+                    "total_actual_net_qty": {
+                        "$sum": {
+                            "$toDouble": "$actual_net_qty"  # Convert actual_net_qty to a numeric type before summing
                         }
-                    },
-                    {
-                        "$group": {
-                            "_id": None,
-                            "total_actual_net_qty": {
-                                "$sum": {
-                                    "$toDouble": "$actual_net_qty"  # Convert actual_net_qty to a numeric type before summing
-                                }
-                            }
-                        }
-                    }]
+                    }
+                }
+            }
+        ]
+        # pipeline = [
+        #     {
+        #         "$match": {
+        #             "GWEL_Tare_Time": {"$gte": from_ts, "$lte": to_ts},
+        #             "actual_net_qty": {"$ne": None}
+        #         }
+        #     },
+        #     {
+        #         "$addFields": {
+        #             "actual_net_qty": {
+        #                 "$cond": {
+        #                     "if": {"$isNumber": "$actual_net_qty"},
+        #                     "then": "$actual_net_qty",
+        #                     "else": 0
+        #                 }
+        #             }
+        #         }
+        #     },
+        #     {
+        #         "$group": {
+        #             "_id": None,
+        #             "total_actual_net_qty": {
+        #                 "$sum": {
+        #                     "$toDouble": {
+        #                         "$ifNull": ["$actual_net_qty", 0]  # Handle NaN values
+        #                     }
+        #                 }
+        #             }
+        #         }
+        #     }
+        # ]
         
         result = Gmrdata.objects.aggregate(pipeline)
 
         total_coal = 0
         for doc in result:
+            # console_logger.debug(doc["total_actual_net_qty"])
             total_coal = doc["total_actual_net_qty"]
 
+        # console_logger.debug(total_coal)
+
         return {"title": "Total GWEL Coal(MT)",
-                "data": round(total_coal,2)}
+                "data": round(total_coal, 2)}
 
     except Exception as e:
-        console_logger.debug("----- Gate Vehicle Count Error -----",e)
+        console_logger.debug("----- Gate Vehicle Count Error -----", e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
-        return e
+        return "Error occurred: {}".format(e)
 
 
 def daywise_out_vehicle_count_datewise(date):
@@ -4295,7 +4865,7 @@ def daywise_out_vehicle_count_datewise(date):
 def bar_graph_data(specified_date):
     try:
         if specified_date:
-
+            
             specified_date = datetime.datetime.strptime(specified_date, "%Y-%m-%d")
             # specified_date = convert_to_utc_format(specified_date, "%Y-%m-%d")
             start_of_month = specified_date.replace(day=1)
@@ -4310,14 +4880,22 @@ def bar_graph_data(specified_date):
             fetchCoalTestingTrain = CoalTestingTrain.objects(
                 receive_date__gte = datetime.datetime.strptime(start_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
             )
+
+            # console_logger.debug(start_of_month)
+            # console_logger.debug(end_of_month)
             # Query for GMRData objects
-            fetchGmrData = Gmrdata.objects(created_at__gte=datetime.datetime.strptime(start_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), created_at__lte=datetime.datetime.strptime(end_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"))
-            
+            # fetchGmrData = Gmrdata.objects(created_at__gte=datetime.datetime.strptime(start_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), created_at__lte=datetime.datetime.strptime(end_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"))
+            fetchGmrData = Gmrdata.objects(
+                created_at__gte=f"{start_of_month}",
+                created_at__lte=f"{end_of_month}"
+            )
+
             rrNo_values = {}
 
             # Iterate through fetched CoalTesting objects
             for single_coal_testing in fetchCoalTesting:
                 rrNo = single_coal_testing.rrNo
+                # console_logger.debug(rrNo)
                 location = single_coal_testing.location
                 for param in single_coal_testing.parameters:
                     if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
@@ -4351,6 +4929,8 @@ def bar_graph_data(specified_date):
                 else:
                     rrNo_values[location] = calorific_value
             
+            # console_logger.debug(rrNo_values)
+            
             # fetch data from AopTarget
             aopList = []
             fetchAopTarget = AopTarget.objects()
@@ -4368,24 +4948,23 @@ def bar_graph_data(specified_date):
                 mine_name = single_gmr_data.mine
                 net_qty = single_gmr_data.net_qty
                 actual_net_qty = single_gmr_data.actual_net_qty
-                
-                # Update net_qty totals dictionary
+
+                # net_qty_totals[mine_name] += float(net_qty)
                 if mine_name in net_qty_totals:
                     net_qty_totals[mine_name] += float(net_qty)
                 else:
                     net_qty_totals[mine_name] = float(net_qty)
                 if actual_net_qty:
-                    # Update actual_net_qty totals dictionary
+                    # actual_net_qty_totals[mine_name] += float(actual_net_qty)
                     if mine_name in actual_net_qty_totals:
                         actual_net_qty_totals[mine_name] += float(actual_net_qty)
                     else:
                         actual_net_qty_totals[mine_name] = float(actual_net_qty)
 
-            # Perform clubbing - subtract actual_net_qty from net_qty for each mine
-            clubbed_data = {}
-            
-            for mine in net_qty_totals:
-                clubbed_data[mine] = actual_net_qty_totals.get(mine, 0) - net_qty_totals[mine]
+            clubbed_data = {
+                mine: actual_net_qty_totals[mine] - net_qty_totals[mine]
+                for mine in net_qty_totals
+            }
 
             return rrNo_values, clubbed_data, aopList
     except Exception as e:
@@ -4401,7 +4980,7 @@ def get_financial_year(datestring):
     try:
         # date = datetime.datetime.strptime(datestring, "%Y-%m-%d").date()
         date = convert_to_utc_format(datestring, "%Y-%m-%d").date()
-        console_logger.debug(date)
+        # console_logger.debug(date)
         # Initialize the current year
         year_of_date = date.year
         # Initialize the current financial year start date
@@ -4418,8 +4997,7 @@ def get_financial_year(datestring):
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
 
-
-def transit_loss_gain_road_mode():
+def transit_loss_gain_road_mode_month(specified_date):
     try:
         data = {}
         result = {
@@ -4429,13 +5007,13 @@ def transit_loss_gain_road_mode():
             "total": 0,
             "page_size": 15,
         }
-
+        
         financial_year = get_financial_year(datetime.date.today().strftime("%Y-%m-%d"))
 
         logs = (
-            Gmrdata.objects(vehicle_in_time__gte=financial_year.get("start_date"), vehicle_in_time__lte=financial_year.get("end_date"))
-            .order_by("mine", "arv_cum_do_number", "-created_at")
+            Gmrdata.objects(created_at__gte=financial_year.get("start_date"), created_at__lte=specified_date)
         )
+
 
         if any(logs):
             aggregated_data = defaultdict(
@@ -4451,29 +5029,25 @@ def transit_loss_gain_road_mode():
 
             start_dates = {}
             for log in logs:
-                if log.vehicle_in_time!=None:
-                    month = log.vehicle_in_time.strftime("%Y-%m")
+                if log.created_at is not None:
+                    month = log.created_at.strftime("%Y-%m")
                     payload = log.payload()
                     result["labels"] = list(payload.keys())
                     mine_name = payload.get("Mines_Name")
                     do_no = payload.get("DO_No")
-                    # If start_date is None or the current GWEL_Tare_Time is earlier than start_date, update start_date
+
                     if do_no not in start_dates:
                         start_dates[do_no] = month
                     elif month < start_dates[do_no]:
                         start_dates[do_no] = month
-                    if payload.get("GWEL_Net_Wt(MT)"):
-                        aggregated_data[month][do_no]["actual_net_qty"] += float(
-                            payload["GWEL_Net_Wt(MT)"]
-                        )
-                    if payload.get("Challan_Net_Wt(MT)"):
-                        aggregated_data[month][do_no]["net_qty"] += float(
-                            payload.get("Challan_Net_Wt(MT)")
-                        )
+
+                    if payload.get("GWEL_Net_Wt(MT)") and payload.get("GWEL_Net_Wt(MT)") != "NaN":
+                        aggregated_data[month][do_no]["actual_net_qty"] += float(payload["GWEL_Net_Wt(MT)"])
+                    if payload.get("Challan_Net_Wt(MT)") and payload.get("Challan_Net_Wt(MT)") != "NaN":
+                        aggregated_data[month][do_no]["net_qty"] += float(payload.get("Challan_Net_Wt(MT)"))
                     if payload.get("Mines_Name"):
-                        aggregated_data[month][do_no]["mine_name"] = payload[
-                            "Mines_Name"
-                        ]
+                        aggregated_data[month][do_no]["mine_name"] = payload["Mines_Name"]
+
                     aggregated_data[month][do_no]["count"] += 1 
 
             dataList = [
@@ -4481,7 +5055,7 @@ def transit_loss_gain_road_mode():
                     "month": month,
                     "data": {
                         do_no: {
-                            "final_net_qty": data["actual_net_qty"]-data["net_qty"],
+                            "final_net_qty": data["actual_net_qty"] - data["net_qty"],
                             "mine_name": data["mine_name"],
                             "month": month,
                         }
@@ -4495,26 +5069,122 @@ def transit_loss_gain_road_mode():
             yearly_final_data = {}
             for data in dataList:
                 month = data["month"]
-
-                total_monthly_final_net_qty[month] = 0
-
-                for entry in data["data"].values():
-                    total_monthly_final_net_qty[month] += entry["final_net_qty"]
+                total_monthly_final_net_qty[month] = sum(
+                    entry["final_net_qty"] for entry in data["data"].values()
+                )
 
             total_monthly_final_net = dict(sorted(total_monthly_final_net_qty.items()))
 
-            for key, single_count in total_monthly_final_net_qty.items():
-                if datetime.datetime.strptime(key, "%Y-%m").year in yearly_final_data:
-                    yearly_final_data[datetime.datetime.strptime(key, "%Y-%m").year] += single_count
+            for key, single_count in total_monthly_final_net.items():
+                year = datetime.datetime.strptime(key, "%Y-%m").year
+                if year in yearly_final_data:
+                    yearly_final_data[year] += single_count
                 else:
-                    yearly_final_data[datetime.datetime.strptime(key, "%Y-%m").year] = single_count
-                    
+                    yearly_final_data[year] = single_count
+
             yearly_final_data_sort = dict(sorted(yearly_final_data.items()))
 
-        return total_monthly_final_net, yearly_final_data_sort
+        return total_monthly_final_net
 
     except Exception as e:
-        console_logger.debug("----- Gate Vehicle Count Error -----",e)
+        console_logger.debug("----- Gate Vehicle Count Error -----", e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+def transit_loss_gain_road_mode():
+    try:
+        data = {}
+        result = {
+            "labels": [],
+            "datasets": [],
+            "weight_total": [],
+            "total": 0,
+            "page_size": 15,
+        }
+        
+        financial_year = get_financial_year(datetime.date.today().strftime("%Y-%m-%d"))
+
+        logs = (
+            Gmrdata.objects(created_at__gte=financial_year.get("start_date"), created_at__lte=financial_year.get("end_date"))
+        )
+
+
+        if any(logs):
+            aggregated_data = defaultdict(
+                lambda: defaultdict(
+                    lambda: {
+                        "net_qty": 0,
+                        "mine_name": "",
+                        "actual_net_qty": 0,
+                        "count": 0,
+                    }
+                )
+            )
+
+            start_dates = {}
+            for log in logs:
+                if log.created_at is not None:
+                    month = log.created_at.strftime("%Y-%m")
+                    payload = log.payload()
+                    result["labels"] = list(payload.keys())
+                    mine_name = payload.get("Mines_Name")
+                    do_no = payload.get("DO_No")
+
+                    if do_no not in start_dates:
+                        start_dates[do_no] = month
+                    elif month < start_dates[do_no]:
+                        start_dates[do_no] = month
+
+                    if payload.get("GWEL_Net_Wt(MT)") and payload.get("GWEL_Net_Wt(MT)") != "NaN":
+                        aggregated_data[month][do_no]["actual_net_qty"] += float(payload["GWEL_Net_Wt(MT)"])
+                    if payload.get("Challan_Net_Wt(MT)") and payload.get("Challan_Net_Wt(MT)") != "NaN":
+                        aggregated_data[month][do_no]["net_qty"] += float(payload.get("Challan_Net_Wt(MT)"))
+                    if payload.get("Mines_Name"):
+                        aggregated_data[month][do_no]["mine_name"] = payload["Mines_Name"]
+
+                    aggregated_data[month][do_no]["count"] += 1 
+
+            dataList = [
+                {
+                    "month": month,
+                    "data": {
+                        do_no: {
+                            "final_net_qty": data["actual_net_qty"] - data["net_qty"],
+                            "mine_name": data["mine_name"],
+                            "month": month,
+                        }
+                        for do_no, data in aggregated_data[month].items()
+                    },
+                }
+                for month in aggregated_data
+            ]
+
+            total_monthly_final_net_qty = {}
+            yearly_final_data = {}
+            for data in dataList:
+                month = data["month"]
+                total_monthly_final_net_qty[month] = sum(
+                    entry["final_net_qty"] for entry in data["data"].values()
+                )
+
+            total_monthly_final_net = dict(sorted(total_monthly_final_net_qty.items()))
+
+            for key, single_count in total_monthly_final_net.items():
+                year = datetime.datetime.strptime(key, "%Y-%m").year
+                if year in yearly_final_data:
+                    yearly_final_data[year] += single_count
+                else:
+                    yearly_final_data[year] = single_count
+
+            yearly_final_data_sort = dict(sorted(yearly_final_data.items()))
+
+        return yearly_final_data_sort
+
+    except Exception as e:
+        console_logger.debug("----- Gate Vehicle Count Error -----", e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
@@ -4551,7 +5221,7 @@ def gmr_main_graph():
         
         for mine in net_qty_all_totals:
             clubbed_data_final[mine] = actual_net_qty_all_totals.get(mine, 0) - net_qty_all_totals[mine]
-        
+
         return clubbed_data_final
     except Exception as e:
         console_logger.debug("----- Gate Vehicle Count Error -----",e)
@@ -4582,8 +5252,8 @@ def generate_gmr_report(
             if mine and mine != "All":
                 data["mine__icontains"] = mine.upper()
 
-            specified_change_date = datetime.datetime.strptime(specified_date, "%Y-%m-%d")
-            # specified_change_date = convert_to_utc_format(specified_date, "%Y-%m-%d")
+            # specified_change_date = datetime.datetime.strptime(specified_date, "%Y-%m-%d")
+            specified_change_date = convert_to_utc_format(specified_date, "%Y-%m-%d")
 
             start_of_month = specified_change_date.replace(day=1)
 
@@ -4594,7 +5264,7 @@ def generate_gmr_report(
                 Gmrdata.objects()
                 .order_by("mine", "arv_cum_do_number", "-created_at")
             )
-            coal_testing = CoalTesting.objects(receive_date__gte=start_date, receive_date__lte=end_date).order_by("-ID")
+            # coal_testing = CoalTesting.objects(receive_date__gte=start_date, receive_date__lte=end_date).order_by("-ID")
             if any(logs):
                 aggregated_data = defaultdict(
                     lambda: defaultdict(
@@ -4612,25 +5282,26 @@ def generate_gmr_report(
                     )
                 )
 
-                aggregated_coal_data = defaultdict(
-                    lambda: defaultdict(
-                        lambda: {
-                            "Gross_Calorific_Value_(Adb)": 0,
-                            "coal_count": 0,
-                        }
-                    )
-                )
+                # aggregated_coal_data = defaultdict(
+                #     lambda: defaultdict(
+                #         lambda: {
+                #             "Gross_Calorific_Value_(Adb)": 0,
+                #             "coal_count": 0,
+                #         }
+                #     )
+                # )
 
-                for single_log in coal_testing:
-                    coal_date = single_log.receive_date.strftime("%Y-%m")
-                    coal_payload = single_log.gradepayload()
-                    mine = coal_payload["Mine"]
-                    doNo = coal_payload["DO_No"]
-                    if coal_payload.get("Gross_Calorific_Value_(Adb)"):
-                        aggregated_coal_data[coal_date][doNo]["Gross_Calorific_Value_(Adb)"] += float(coal_payload["Gross_Calorific_Value_(Adb)"])
-                        aggregated_coal_data[coal_date][doNo]["coal_count"] += 1
+                # for single_log in coal_testing:
+                #     coal_date = single_log.receive_date.strftime("%Y-%m")
+                #     coal_payload = single_log.gradepayload()
+                #     mine = coal_payload["Mine"]
+                #     doNo = coal_payload["DO_No"]
+                #     if coal_payload.get("Gross_Calorific_Value_(Adb)"):
+                #         aggregated_coal_data[coal_date][doNo]["Gross_Calorific_Value_(Adb)"] += float(coal_payload["Gross_Calorific_Value_(Adb)"])
+                #         aggregated_coal_data[coal_date][doNo]["coal_count"] += 1
 
                 start_dates = {}
+                grade = 0
                 for log in logs:
                     if log.vehicle_in_time!=None:
                         month = log.vehicle_in_time.strftime("%Y-%m")
@@ -4639,15 +5310,24 @@ def generate_gmr_report(
                         result["labels"] = list(payload.keys())
                         mine_name = payload.get("Mines_Name")
                         do_no = payload.get("DO_No")
+                        if payload.get("Grade") is not None:
+                            if '-' in payload.get("Grade"):
+                                grade = payload.get("Grade").split("-")[0]
+                            else:
+                                grade = payload.get("Grade")
+                        # console_logger.debug(payload["DO_Qty"])
+                        
                         # If start_date is None or the current vehicle_in_time is earlier than start_date, update start_date
                         if do_no not in start_dates:
                             start_dates[do_no] = date
                         elif date < start_dates[do_no]:
                             start_dates[do_no] = date
                         if payload.get("DO_Qty"):
-                            aggregated_data[date][do_no]["DO_Qty"] += float(
-                                payload["DO_Qty"]
-                            )
+                            aggregated_data[date][do_no]["DO_Qty"] = float(payload["DO_Qty"])
+                        # if payload.get("DO_Qty"):
+                        #     aggregated_data[date][do_no]["DO_Qty"] += float(
+                        #         payload["DO_Qty"]
+                        #     )
                         if payload.get("Challan_Net_Wt(MT)"):
                             aggregated_data[date][do_no]["challan_lr_qty"] += float(
                                 payload.get("Challan_Net_Wt(MT)")
@@ -4666,6 +5346,7 @@ def generate_gmr_report(
                                 "DO_Qty": data["DO_Qty"],
                                 "challan_lr_qty": data["challan_lr_qty"],
                                 "mine_name": data["mine_name"],
+                                "grade": grade,
                                 "date": date,
                             }
                             for do_no, data in aggregated_data[date].items()
@@ -4673,30 +5354,30 @@ def generate_gmr_report(
                     }
                     for date in aggregated_data
                 ]
+                # console_logger.debug(dataList)
+                # coalDataList = [
+                #     {"date": coal_date, "data": {
+                #         doNo: {
+                #             "average_Gross_Calorific_Value_(Adb)": data["Gross_Calorific_Value_(Adb)"] / data["coal_count"],
+                #         } for doNo, data in aggregated_coal_data[coal_date].items()
+                #     }} for coal_date in aggregated_coal_data
+                # ]
+                # console_logger.debug(coalDataList)
+                # coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
 
-                coalDataList = [
-                    {"date": coal_date, "data": {
-                        doNo: {
-                            "average_Gross_Calorific_Value_(Adb)": data["Gross_Calorific_Value_(Adb)"] / data["coal_count"],
-                        } for doNo, data in aggregated_coal_data[coal_date].items()
-                    }} for coal_date in aggregated_coal_data
-                ]
-
-                coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
-
-                # Iterate through each month's data
-                for month_data in coalDataList:
-                    for key, mine_data in month_data["data"].items():
-                        if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
-                            for single_coal_grades in coal_grades:
-                                if single_coal_grades["end_value"] != "":
-                                    if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
-                                        mine_data["average_GCV_Grade"] = single_coal_grades["grade"]
-                                    elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
-                                        mine_data["average_GCV_Grade"] = "G-1"
-                                        break
-                
-
+                # # Iterate through each month's data
+                # for month_data in coalDataList:
+                #     for key, mine_data in month_data["data"].items():
+                #         if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
+                #             for single_coal_grades in coal_grades:
+                #                 if single_coal_grades["end_value"] != "":
+                #                     if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                #                         mine_data["average_GCV_Grade"] = single_coal_grades["grade"]
+                #                     elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                #                         mine_data["average_GCV_Grade"] = "G-1"
+                #                         break
+                # console_logger.debug(mine_data["average_GCV_Grade"])
+                # console_logger.debug(coalDataList)
                 final_data = []
                 if specified_date:
                     filtered_data = [
@@ -4706,6 +5387,7 @@ def generate_gmr_report(
                         data = filtered_data[0]["data"]
                         # dictData["month"] = filtered_data[0]["month"]
                         for data_dom, values in data.items():
+                            # console_logger.debug(values)
                             dictData = {}
                             dictData["DO_No"] = data_dom
                             dictData["mine_name"] = values["mine_name"]
@@ -4716,6 +5398,7 @@ def generate_gmr_report(
                             dictData["balance_qty"] = 0
                             dictData["percent_supply"] = 0
                             dictData["asking_rate"] = 0
+                            dictData['average_GCV_Grade'] = values["grade"] 
                             if data_dom in start_dates:
                                 dictData["start_date"] = start_dates[data_dom]
                                 # a total of 45 days data is needed, so date + 44 days
@@ -4729,17 +5412,17 @@ def generate_gmr_report(
                                 dictData["balance_days"] = None
 
                             # Look for data_dom match in coalDataList and add average_GCV_Grade
-                            for coal_data in coalDataList:
-                                # if coal_data['date'] == specified_date and data_dom in coal_data['data']:
-                                if data_dom in coal_data['data']:
-                                    dictData['average_GCV_Grade'] = coal_data['data'][data_dom]['average_GCV_Grade']
-                                    break
-                            else:
-                                dictData['average_GCV_Grade'] = "-"
+                            # for coal_data in coalDataList:
+                            #     # if coal_data['date'] == specified_date and data_dom in coal_data['data']:
+                            #     if data_dom in coal_data['data']:
+                            #         dictData['average_GCV_Grade'] = coal_data['data'][data_dom]['average_GCV_Grade']
+                            #         break
+                            # else:
+                            #     dictData['average_GCV_Grade'] = "-"
                 
                             # append data
                             final_data.append(dictData)
-                    
+                    # console_logger.debug(final_data)
 
                     if final_data:
                         # Find the index of the month data in dataList
@@ -4783,7 +5466,8 @@ def generate_gmr_report(
                 
                 rrNo_values, clubbed_data, aopList = bar_graph_data(specified_date)
                 clubbed_data_final = gmr_main_graph()
-                total_monthly_final_net_qty, yearly_final_data = transit_loss_gain_road_mode()
+                total_monthly_final_net_qty = transit_loss_gain_road_mode_month(specified_date)
+                yearly_final_data = transit_loss_gain_road_mode()
 
                 # counter data
                 dayWiseVehicleInCount = daywise_in_vehicle_count_datewise(specified_date)
@@ -4820,6 +5504,8 @@ def endpoint_to_add_scheduler(response: Response, payload: MisReportData):
         try:
             reportScheduler = ReportScheduler.objects.get(report_name=dataName.get("report_name"))
             reportScheduler.recipient_list = dataName.get("recipient_list")
+            reportScheduler.cc_list = dataName.get("cc_list")
+            reportScheduler.bcc_list = dataName.get("bcc_list")
             reportScheduler.filter = dataName.get("filter")
             reportScheduler.schedule = dataName.get("schedule")
             # time_fetch_data = datetime.datetime.strptime(dataName.get("time"), "%H:%M") + timedelta(hours=5, minutes=30)
@@ -4829,20 +5515,32 @@ def endpoint_to_add_scheduler(response: Response, payload: MisReportData):
 
         except DoesNotExist as e:
             # time_fetch_data = datetime.datetime.strptime(dataName.get("time"), "%H:%M") + timedelta(hours=5, minutes=30)
-            reportScheduler = ReportScheduler(report_name=dataName.get("report_name"), recipient_list=dataName.get("recipient_list"), filter = dataName.get("filter"), schedule = dataName.get("schedule"), time=dataName.get("time"))
+            reportScheduler = ReportScheduler(report_name=dataName.get("report_name"), recipient_list=dataName.get("recipient_list"), cc_list=dataName.get("cc_list"), bcc_list=dataName.get("bcc_list"), filter = dataName.get("filter"), schedule = dataName.get("schedule"), time=dataName.get("time"))
             reportScheduler.save()
 
-        hh, mm = reportScheduler.time.split(":")
+        # hh, mm = reportScheduler.time.split(":")
+
+        # converting into ist start
+        time_format = "%H:%M"
+        given_time = datetime.datetime.strptime(reportScheduler.time, time_format)
+        # Time to subtract: 5 hours and 30 minutes
+        time_to_subtract = datetime.timedelta(hours=5, minutes=30)
+        # Subtract the time
+        new_time = given_time - time_to_subtract
+        new_time_str = new_time.strftime(time_format)
+        hh, mm = new_time_str.split(":")
+        # converting into ist finish
+        console_logger.debug("filter added : %s",reportScheduler.filter)
         if len(reportScheduler) > 0:
             if reportScheduler.filter == "daily":
-                backgroundTaskHandler.run_job(task_name=reportScheduler.report_name, func=send_report_generate, trigger="cron", **{"day": "*", "hour": hh, "minute": mm})
+                backgroundTaskHandler.run_job(task_name=reportScheduler.report_name, func=send_report_generate,trigger="cron", **{"day": "*", "hour": hh, "minute": mm}, func_kwargs={"report_name":payload.report_name})
                 # backgroundTaskHandler.run_job(task_name=reportScheduler.report_name, func=send_report_generate, trigger="cron", **{"day": "*", "second": 2})
             elif reportScheduler.filter == "weekly":
                 # backgroundTaskHandler.run_job(task_name=reportScheduler.report_name, func=send_report_generate, trigger="cron", **{"week": reportScheduler.schedule}) # week (int|str) - ISO week (1-53)
-                backgroundTaskHandler.run_job(task_name=reportScheduler.report_name, func=send_report_generate, trigger="cron", **{"day_of_week": reportScheduler.schedule, "hour": hh, "minute": mm})
+                backgroundTaskHandler.run_job(task_name=reportScheduler.report_name, func=send_report_generate, trigger="cron", **{"day_of_week": reportScheduler.schedule, "hour": hh, "minute": mm}, func_kwargs={"report_name":payload.report_name})
             elif reportScheduler.filter == "monthly":
                 # backgroundTaskHandler.run_job(task_name=reportScheduler.report_name, func=send_report_generate, trigger="cron", **{"month": reportScheduler.schedule}) # month (int|str) - month (1-12)
-                backgroundTaskHandler.run_job(task_name=reportScheduler.report_name, func=send_report_generate, trigger="cron", **{"day": reportScheduler.schedule, "hour": hh, "minute": mm})
+                backgroundTaskHandler.run_job(task_name=reportScheduler.report_name, func=send_report_generate, trigger="cron", **{"day": reportScheduler.schedule, "hour": hh, "minute": mm}, func_kwargs={"report_name":payload.report_name})
 
         return {"detail": "success"}
     except Exception as e:
@@ -4912,13 +5610,11 @@ async def add_smtp_settings(response: Response):
     try:
         headers = {}
         data = {}
-        url_data = f"http://192.168.1.57/api/v1/base/smtp/unprotected"
+        # url_data = f"http://192.168.1.57/api/v1/base/smtp/unprotected"
+        url_data = f"http://{host}/api/v1/base/smtp/unprotected"
         
         response = requests.request("GET", url=url_data, headers=headers, data=data, proxies=proxies)
-        console_logger.debug(response)
         data = json.loads(response.text)
-        console_logger.debug(data)
-
         if response.status_code == 200:
             smtp_settings = SmtpSettings(**data)
             smtp_settings.save()
@@ -4929,16 +5625,6 @@ async def add_smtp_settings(response: Response):
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug("Error on line {}".format(sys.exc_info()[-1].tb_lineno))
         return {"detail": "failed"} 
-    # if mail == "success":
-    #     payload = payload.dict(exclude_none=True, exclude_defaults=True)
-    #     payload["Smtp_password"] = encrypt_pass
-    #     smtp_settings = SmtpSettings(**payload)
-    #     smtp_settings.save()
-
-    #     raise HTTPException(status_code=200, detail="success")
-    # else:
-    #     console_logger.debug("Failed to Send")
-    #     raise HTTPException(status_code=400, detail="Invalid Smtp Settings")
 
 
 @router.get("/smtp", tags=["Mail"])
@@ -4973,26 +5659,6 @@ def endpoint_to_insert_aoptarget(response: Response, payload: AopTargetData):
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug("Error on line {}".format(sys.exc_info()[-1].tb_lineno))
         return {"detail": "failed"}
-    
-
-# @router.post("/insert/aoptarget", tags=["PDF Report"])
-# def endpoint_to_insert_aoptarget(response: Response, data: List[dict]):
-#     try:
-#         for single_data in data:
-#             try:
-#                 aopTargetData = AopTarget.objects.get(source_name=single_data.get("source_name"))
-#                 aopTargetData.aop_target = single_data.get("aop_target")
-#                 aopTargetData.save()
-#             except DoesNotExist as e:
-#                 aopTargetData = AopTarget(source_name=single_data.get("source_name"), aop_target=single_data.get("aop_target"))
-#                 aopTargetData.save()
-#         return {"detail": "success"}
-#     except Exception as e:
-#         console_logger.debug(e)
-#         exc_type, exc_obj, exc_tb = sys.exc_info()
-#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-#         console_logger.debug("Error on line {}".format(sys.exc_info()[-1].tb_lineno))
-#         return {"detail": "failed"}
 
 
 @router.get("/fetch/coallocation", tags=["PDF Report"])
@@ -5015,13 +5681,41 @@ def endpoint_to_fetch_coal_location(response: Response):
 
 
 @router.get("/fetch/aoptarget", tags=["PDF Report"])
-def endpoint_to_fetch_aoptarget(response: Response):
+def endpoint_to_fetch_aoptarget(response: Response, target_name: str=None):
     try:
         dataList = []
-        fetchAopTargetData = AopTarget.objects()
-        for singleAopTarget in fetchAopTargetData:
-            dataList.append(singleAopTarget.payload())
+        data = {"source_name": "", "aop_target": ""}
+        if target_name:
+            try:
+                fetchAopTargetData = AopTarget.objects.get(source_name=target_name)
+                # dataList.append(fetchAopTargetData.payload())
+                # if fetchAopTargetData:
+                dataList.append(fetchAopTargetData.reportpayload())
+            except DoesNotExist as e:
+                data["source_name"] = target_name
+                dataList.append(data)
+        else:
+            fetchAopTargetData = AopTarget.objects()
+            for singleAopTarget in fetchAopTargetData:
+                dataList.append(singleAopTarget.reportpayload())
         return dataList
+    except Exception as e:
+        console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug("Error on line {}".format(sys.exc_info()[-1].tb_lineno))
+        return {"detail": "failed"}
+
+@router.get("/fetch/similarminelocation", tags=["PDF Report"])
+def endpoint_to_fetch_aoptarget(response: Response, mine_name: str):
+    try:    
+        fetchCoalTestingLocation = CoalTesting.objects.filter(location__contains = mine_name)
+        fetchCoalTestingTrainLocation = CoalTestingTrain.objects.filter(location__contains = mine_name)
+
+        coalTestingData = [singlecoalTesting["location"] for singlecoalTesting in fetchCoalTestingLocation]
+        coalTestingTrainData = [singlecoalTestingTrain["location"] for singlecoalTestingTrain in fetchCoalTestingTrainLocation]
+
+        return list(set(coalTestingData)) + list(set(coalTestingTrainData))
     except Exception as e:
         console_logger.debug(e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -5058,21 +5752,74 @@ def endpoint_to_fetch_report_scheduler(response: Response):
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug("Error on line {}".format(sys.exc_info()[-1].tb_lineno))
         return {"detail": "failed"}
-    
 
-# def send_report_generate():
+
+def fetch_email_data():
+    try:
+        headers = {}
+        data = {}
+        url_data = f"http://192.168.1.57/api/v1/base/smtp/unprotected"
+        response = requests.request("GET", url=url_data, headers=headers, data=data, proxies=proxies)
+        data = json.loads(response.text)
+        return response.status_code, data
+    except Exception as e:
+        console_logger.debug(e)
+
+
+# def send_report_generate(**kwargs):
 #     try:
-#         console_logger.debug("scheduler report generate")
+#         console_logger.debug(("scheduler report generate",kwargs))
 #         reportSchedule = ReportScheduler.objects()
-#         for singleReportschedule in reportSchedule:
-#             if singleReportschedule["report_name"] == "daily_coal_logistic_report":
-#                 generateReportData = generate_gmr_report(Response, datetime.date.today().strftime("%Y-%m-%d"), "All")
-#                 console_logger.debug(f"{os.path.join(os.getcwd())}/{generateReportData}")
-#                 smtpData = SmtpSettings.objects.first()
-#                 for receiver_email in singleReportschedule.recipient_list:
+#         # for singleReportschedule in reportSchedule:
+#         # if singleReportschedule["report_name"] == "daily_coal_logistic_report":
+#         if kwargs["report_name"] == "daily_coal_logistic_report":
+#             generateReportData = generate_gmr_report(Response, datetime.date.today().strftime("%Y-%m-%d"), "All")
+#             console_logger.debug(f"{os.path.join(os.getcwd())}/{generateReportData}")
+#             response_code, fetch_email = fetch_email_data()
+#             if response_code == 200:
+#                 console_logger.debug(reportSchedule[0].recipient_list)
+#                 for receiver_email in reportSchedule[0].recipient_list:
 #                     subject = f"GMR Daily Coal Logistic Report {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
 #                     body = f"Daily Coal Logistic Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
-#                     send_email(smtpData.Smtp_user, subject, smtpData.Smtp_password, smtpData.Smtp_host, smtpData.Smtp_port, receiver_email, body, f"{os.path.join(os.getcwd())}{generateReportData}")
+#                     # send_email(smtpData.Smtp_user, subject, smtpData.Smtp_password, smtpData.Smtp_host, smtpData.Smtp_port, receiver_email, body, f"{os.path.join(os.getcwd())}{generateReportData}")
+#                     send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), receiver_email, body, f"{os.path.join(os.getcwd())}/{generateReportData}")
+#         elif kwargs["report_name"] == "certificate_expiry_notifications":
+#             generateExpiryData = endpoint_to_fetch_going_to_expiry_vehicle(Response)
+#             tabledata = ""
+#             for single_data in generateExpiryData["datasets"]:
+#                 tabledata +="<tr>"
+#                 tabledata +=f"<td>{single_data['vehicle_number']}</td>"
+#                 tabledata +=f"<td>{single_data['vehicle_chassis_number']}</td>"
+#                 tabledata +=f"<td>{single_data['expiry_date']}</td>"
+#                 tabledata +=f"<td>{single_data['days_to_go']}</td>"
+#                 tabledata +="</tr>"
+#             response_code, fetch_email = fetch_email_data()
+#             if response_code == 200:
+#                 console_logger.debug(reportSchedule[1].recipient_list)
+#                 for receiver_email in reportSchedule[1].recipient_list:
+#                     subject = f"Expiring Fitness Certificate for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+#                     body = f"""
+#                     <b>Expiring Fitness Certificate for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b>
+#                     <br>
+#                     <!doctype html>
+#                     <html>
+#                     <head>
+#                         <meta charset="utf-8">
+#                         <title>Expiry Certificate</title>
+#                     </head>
+#                     <body>
+#                         <table border='1'
+#                             <tr>
+#                                 <th>Vehicle Number</th>
+#                                 <th>Vehicle Chassis Number</th>
+#                                 <th>Certificate Expiry</th>
+#                                 <th>Days To Go</th>
+#                             </tr>
+#                             {tabledata}
+#                         </table>
+#                     </body>
+#                     </html>"""
+#                     send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), receiver_email, body, "")
 #         return "success"
 #     except Exception as e:
 #         console_logger.debug(e)
@@ -5082,37 +5829,61 @@ def endpoint_to_fetch_report_scheduler(response: Response):
 #         return {"detail": "failed"}
 
 
-def fetch_email_data():
+
+def send_report_generate(**kwargs):
     try:
-        headers = {}
-        data = {}
-        url_data = f"http://192.168.1.57/api/v1/base/smtp/unprotected"
-
-        response = requests.request("GET", url=url_data, headers=headers, data=data, proxies=proxies)
-        console_logger.debug(response)
-        data = json.loads(response.text)
-        console_logger.debug(data)
-        return response.status_code, data
-    except Exception as e:
-        console_logger.debug(e)
-
-
-def send_report_generate():
-    try:
-        console_logger.debug("scheduler report generate")
+        console_logger.debug(("scheduler report generate",kwargs))
         reportSchedule = ReportScheduler.objects()
-        for singleReportschedule in reportSchedule:
-            if singleReportschedule["report_name"] == "daily_coal_logistic_report":
-                generateReportData = generate_gmr_report(Response, datetime.date.today().strftime("%Y-%m-%d"), "All")
-                console_logger.debug(f"{os.path.join(os.getcwd())}/{generateReportData}")
-                # smtpData = SmtpSettings.objects.first()
-                response_code, fetch_email = fetch_email_data()
-                if response_code == 200:
-                    for receiver_email in singleReportschedule.recipient_list:
-                        subject = f"GMR Daily Coal Logistic Report {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
-                        body = f"Daily Coal Logistic Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
-                        # send_email(smtpData.Smtp_user, subject, smtpData.Smtp_password, smtpData.Smtp_host, smtpData.Smtp_port, receiver_email, body, f"{os.path.join(os.getcwd())}{generateReportData}")
-                        send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), receiver_email, body, f"{os.path.join(os.getcwd())}{generateReportData}")
+        # for singleReportschedule in reportSchedule:
+        # if singleReportschedule["report_name"] == "daily_coal_logistic_report":
+        if kwargs["report_name"] == "daily_coal_logistic_report":
+            generateReportData = generate_gmr_report(Response, datetime.date.today().strftime("%Y-%m-%d"), "All")
+            console_logger.debug(f"{os.path.join(os.getcwd())}/{generateReportData}")
+            response_code, fetch_email = fetch_email_data()
+            if response_code == 200:
+                console_logger.debug(reportSchedule[0].recipient_list)
+                subject = f"GMR Daily Coal Logistic Report {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                body = f"Daily Coal Logistic Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                # send_email(smtpData.Smtp_user, subject, smtpData.Smtp_password, smtpData.Smtp_host, smtpData.Smtp_port, receiver_email, body, f"{os.path.join(os.getcwd())}{generateReportData}")
+                send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[0].recipient_list, body, f"{os.path.join(os.getcwd())}/{generateReportData}", reportSchedule[0].cc_list, reportSchedule[0].bcc_list)
+        elif kwargs["report_name"] == "certificate_expiry_notifications":
+            generateExpiryData = endpoint_to_fetch_going_to_expiry_vehicle(Response)
+            tabledata = ""
+            for single_data in generateExpiryData["datasets"]:
+                tabledata +="<tr>"
+                tabledata +=f"<td>{single_data['vehicle_number']}</td>"
+                tabledata +=f"<td>{single_data['vehicle_chassis_number']}</td>"
+                tabledata +=f"<td>{single_data['expiry_date']}</td>"
+                tabledata +=f"<td>{single_data['days_to_go']}</td>"
+                tabledata +="</tr>"
+            response_code, fetch_email = fetch_email_data()
+            if response_code == 200:
+                console_logger.debug(reportSchedule[1].recipient_list)
+                # for receiver_email in reportSchedule[1].recipient_list:
+                subject = f"Expiring Fitness Certificate for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                body = f"""
+                <b>Expiring Fitness Certificate for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b>
+                <br>
+                <br>
+                <!doctype html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <title>Expiry Certificate</title>
+                </head>
+                <body>
+                    <table border='1'
+                        <tr>
+                            <th>Vehicle Number</th>
+                            <th>Vehicle Chassis Number</th>
+                            <th>Certificate Expiry</th>
+                            <th>Days To Go</th>
+                        </tr>
+                        {tabledata}
+                    </table>
+                </body>
+                </html>"""
+                send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[1].recipient_list, body, "", reportSchedule[1].cc_list, reportSchedule[1].bcc_list)
         return "success"
     except Exception as e:
         console_logger.debug(e)
@@ -5163,15 +5934,15 @@ def coal_logistics_report(
                 if search_text:
                     data = Q()
                     if search_text.isdigit():
-                        data &= (Q(po_no__icontains=search_text))
+                        data &= (Q(arv_cum_do_number__icontains=search_text))
                     else:
                         data &= (Q(mine__icontains=search_text))
-
+        
                     logs = (Gmrdata.objects(data).order_by("mine", "arv_cum_do_number", "-created_at"))
                 else:
                     logs = (Gmrdata.objects().order_by("mine", "arv_cum_do_number", "-created_at"))
 
-                coal_testing = CoalTesting.objects(receive_date__gte=start_date, receive_date__lte=end_date).order_by("-ID")
+                # coal_testing = CoalTesting.objects(receive_date__gte=start_date, receive_date__lte=end_date).order_by("-ID")
                 if any(logs):
                     aggregated_data = defaultdict(
                         lambda: defaultdict(
@@ -5189,25 +5960,26 @@ def coal_logistics_report(
                         )
                     )
 
-                    aggregated_coal_data = defaultdict(
-                        lambda: defaultdict(
-                            lambda: {
-                                "Gross_Calorific_Value_(Adb)": 0,
-                                "coal_count": 0,
-                            }
-                        )
-                    )
+                    # aggregated_coal_data = defaultdict(
+                    #     lambda: defaultdict(
+                    #         lambda: {
+                    #             "Gross_Calorific_Value_(Adb)": 0,
+                    #             "coal_count": 0,
+                    #         }
+                    #     )
+                    # )
 
-                    for single_log in coal_testing:
-                        coal_date = single_log.receive_date.strftime("%Y-%m")
-                        coal_payload = single_log.gradepayload()
-                        mine = coal_payload["Mine"]
-                        doNo = coal_payload["DO_No"]
-                        if coal_payload.get("Gross_Calorific_Value_(Adb)"):
-                            aggregated_coal_data[coal_date][doNo]["Gross_Calorific_Value_(Adb)"] += float(coal_payload["Gross_Calorific_Value_(Adb)"])
-                            aggregated_coal_data[coal_date][doNo]["coal_count"] += 1
+                    # for single_log in coal_testing:
+                    #     coal_date = single_log.receive_date.strftime("%Y-%m")
+                    #     coal_payload = single_log.gradepayload()
+                    #     mine = coal_payload["Mine"]
+                    #     doNo = coal_payload["DO_No"]
+                    #     if coal_payload.get("Gross_Calorific_Value_(Adb)"):
+                    #         aggregated_coal_data[coal_date][doNo]["Gross_Calorific_Value_(Adb)"] += float(coal_payload["Gross_Calorific_Value_(Adb)"])
+                    #         aggregated_coal_data[coal_date][doNo]["coal_count"] += 1
 
                     start_dates = {}
+                    grade = 0
                     for log in logs:
                         if log.vehicle_in_time!=None:
                             month = log.vehicle_in_time.strftime("%Y-%m")
@@ -5216,13 +5988,21 @@ def coal_logistics_report(
                             result["labels"] = list(payload.keys())
                             mine_name = payload.get("Mines_Name")
                             do_no = payload.get("DO_No")
+                            if payload.get("Grade") is not None:
+                                if '-' in payload.get("Grade"):
+                                    grade = payload.get("Grade").split("-")[0]
+                                else:
+                                    grade = payload.get("Grade")
                             # If start_date is None or the current vehicle_in_time is earlier than start_date, update start_date
                             if do_no not in start_dates:
                                 start_dates[do_no] = date
                             elif date < start_dates[do_no]:
                                 start_dates[do_no] = date
                             if payload.get("DO_Qty"):
-                                aggregated_data[date][do_no]["DO_Qty"] += float(
+                                # aggregated_data[date][do_no]["DO_Qty"] += float(
+                                #     payload["DO_Qty"]
+                                # )
+                                aggregated_data[date][do_no]["DO_Qty"] = float(
                                     payload["DO_Qty"]
                                 )
                             if payload.get("Challan_Net_Wt(MT)"):
@@ -5243,6 +6023,7 @@ def coal_logistics_report(
                                     "DO_Qty": data["DO_Qty"],
                                     "challan_lr_qty": data["challan_lr_qty"],
                                     "mine_name": data["mine_name"],
+                                    "grade": grade,
                                     "date": date,
                                 }
                                 for do_no, data in aggregated_data[date].items()
@@ -5251,27 +6032,27 @@ def coal_logistics_report(
                         for date in aggregated_data
                     ]
 
-                    coalDataList = [
-                        {"date": coal_date, "data": {
-                            doNo: {
-                                "average_Gross_Calorific_Value_(Adb)": data["Gross_Calorific_Value_(Adb)"] / data["coal_count"],
-                            } for doNo, data in aggregated_coal_data[coal_date].items()
-                        }} for coal_date in aggregated_coal_data
-                    ]
+                    # coalDataList = [
+                    #     {"date": coal_date, "data": {
+                    #         doNo: {
+                    #             "average_Gross_Calorific_Value_(Adb)": data["Gross_Calorific_Value_(Adb)"] / data["coal_count"],
+                    #         } for doNo, data in aggregated_coal_data[coal_date].items()
+                    #     }} for coal_date in aggregated_coal_data
+                    # ]
 
-                    coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
+                    # coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
 
-                    # Iterate through each month's data
-                    for month_data in coalDataList:
-                        for key, mine_data in month_data["data"].items():
-                            if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
-                                for single_coal_grades in coal_grades:
-                                    if single_coal_grades["end_value"] != "":
-                                        if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
-                                            mine_data["average_GCV_Grade"] = single_coal_grades["grade"]
-                                        elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
-                                            mine_data["average_GCV_Grade"] = "G-1"
-                                            break
+                    # # Iterate through each month's data
+                    # for month_data in coalDataList:
+                    #     for key, mine_data in month_data["data"].items():
+                    #         if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
+                    #             for single_coal_grades in coal_grades:
+                    #                 if single_coal_grades["end_value"] != "":
+                    #                     if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                    #                         mine_data["average_GCV_Grade"] = single_coal_grades["grade"]
+                    #                     elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                    #                         mine_data["average_GCV_Grade"] = "G-1"
+                    #                         break
                     
                     final_data = []
                     if specified_date:
@@ -5285,19 +6066,21 @@ def coal_logistics_report(
                                 dictData = {}
                                 dictData["DO_No"] = data_dom
                                 dictData["mine_name"] = values["mine_name"]
-                                dictData["DO_Qty"] = values["DO_Qty"]
-                                dictData["challan_lr_qty"] = values["challan_lr_qty"]
+                                dictData["DO_Qty"] = round(values["DO_Qty"], 2)
+                                dictData["challan_lr_qty"] = round(values["challan_lr_qty"], 2)
                                 dictData["date"] = values["date"]
                                 dictData["cumulative_challan_lr_qty"] = 0
                                 dictData["balance_qty"] = 0
                                 dictData["percent_supply"] = 0
                                 dictData["asking_rate"] = 0
+                                dictData['average_GCV_Grade'] = values["grade"]
                                 if data_dom in start_dates:
                                     dictData["start_date"] = start_dates[data_dom]
                                     # a total of 45 days data is needed, so date + 44 days
-                                    dictData["end_date"] = datetime.datetime.strptime(start_dates[data_dom], "%Y-%m-%d") + timedelta(days=44)
+                                    endDataVariable = datetime.datetime.strptime(start_dates[data_dom], "%Y-%m-%d") + timedelta(days=44)
                                     # dictData["balance_days"] = dictData["end_date"] - datetime.date.today()
-                                    balance_days = dictData["end_date"].date() - datetime.date.today()
+                                    balance_days = endDataVariable.date() - datetime.date.today()
+                                    dictData["end_date"] = endDataVariable.strftime("%Y-%m-%d")
                                     dictData["balance_days"] = balance_days.days
                                 else:
                                     dictData["start_date"] = None
@@ -5305,13 +6088,13 @@ def coal_logistics_report(
                                     dictData["balance_days"] = None
 
                                 # Look for data_dom match in coalDataList and add average_GCV_Grade
-                                for coal_data in coalDataList:
-                                    # if coal_data['date'] == specified_date and data_dom in coal_data['data']:
-                                    if data_dom in coal_data['data']:
-                                        dictData['average_GCV_Grade'] = coal_data['data'][data_dom]['average_GCV_Grade']
-                                        break
-                                else:
-                                    dictData['average_GCV_Grade'] = "-"
+                                # for coal_data in coalDataList:
+                                #     # if coal_data['date'] == specified_date and data_dom in coal_data['data']:
+                                #     if data_dom in coal_data['data']:
+                                #         dictData['average_GCV_Grade'] = coal_data['data'][data_dom]['average_GCV_Grade']
+                                #         break
+                                # else:
+                                #     dictData['average_GCV_Grade'] = "-"
                     
                                 # append data
                                 final_data.append(dictData)
@@ -5340,20 +6123,20 @@ def coal_logistics_report(
                                         cumulative_lr_qty += data['challan_lr_qty']
                                 
                                 # Update cumulative_challan_lr_qty in final_data
-                                entry['cumulative_challan_lr_qty'] = cumulative_lr_qty
+                                entry['cumulative_challan_lr_qty'] = round(cumulative_lr_qty, 2)
                                 if data["DO_Qty"] != 0 and entry["cumulative_challan_lr_qty"] != 0:
-                                    entry["percent_supply"] = (entry["cumulative_challan_lr_qty"] / data["DO_Qty"]) * 100
+                                    entry["percent_supply"] = round((entry["cumulative_challan_lr_qty"] / data["DO_Qty"]) * 100, 2)
                                 else:
                                     entry["percent_supply"] = 0
 
                                 if entry["cumulative_challan_lr_qty"] != 0 and data["DO_Qty"] != 0:
-                                    entry["balance_qty"] = (data["DO_Qty"] - entry["cumulative_challan_lr_qty"])
+                                    entry["balance_qty"] = round((data["DO_Qty"] - entry["cumulative_challan_lr_qty"]), 2)
                                 else:
                                     entry["balance_qty"] = 0
                                 
                                 if entry["balance_qty"] and entry["balance_qty"] != 0:
                                     if entry["balance_days"]:
-                                        entry["asking_rate"] = entry["balance_qty"] / entry["balance_days"]
+                                        entry["asking_rate"] = round(entry["balance_qty"] / entry["balance_days"], 2)
 
                     if final_data:
                         start_index = (page_no - 1) * page_len
@@ -5382,7 +6165,7 @@ def coal_logistics_report(
             if search_text:
                 data = Q()
                 if search_text.isdigit():
-                    data &= (Q(po_no__icontains=search_text))
+                    data &= (Q(arv_cum_do_number__icontains=search_text))
                 else:
                     data &= (Q(mine__icontains=search_text))
 
@@ -5390,35 +6173,10 @@ def coal_logistics_report(
             else:
                 logs = (Gmrdata.objects().order_by("mine", "arv_cum_do_number", "-created_at"))
 
-            coal_testing = CoalTesting.objects(receive_date__gte=start_date, receive_date__lte=end_date).order_by("-ID")
+            # coal_testing = CoalTesting.objects(receive_date__gte=start_date, receive_date__lte=end_date).order_by("-ID")
             count = len(logs)
+            path = None
             if any(logs):
-                path = os.path.join(
-                    "static_server",
-                    "gmr_ai",
-                    file,
-                    "Coal_Logistics_Report_{}.xlsx".format(
-                        datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
-                    ),
-                )
-
-                filename = os.path.join(os.getcwd(), path)
-                workbook = xlsxwriter.Workbook(filename)
-                workbook.use_zip64()
-                cell_format2 = workbook.add_format()
-                cell_format2.set_bold()
-                cell_format2.set_font_size(10)
-                cell_format2.set_align("center")
-                cell_format2.set_align("vjustify")
-
-                worksheet = workbook.add_worksheet()
-                worksheet.set_column("A:AZ", 20)
-                worksheet.set_default_row(50)
-                cell_format = workbook.add_format()
-                cell_format.set_font_size(10)
-                cell_format.set_align("center")
-                cell_format.set_align("vcenter")
-
                 aggregated_data = defaultdict(
                     lambda: defaultdict(
                         lambda: {
@@ -5435,23 +6193,23 @@ def coal_logistics_report(
                     )
                 )
 
-                aggregated_coal_data = defaultdict(
-                    lambda: defaultdict(
-                        lambda: {
-                            "Gross_Calorific_Value_(Adb)": 0,
-                            "coal_count": 0,
-                        }
-                    )
-                )
+                # aggregated_coal_data = defaultdict(
+                #     lambda: defaultdict(
+                #         lambda: {
+                #             "Gross_Calorific_Value_(Adb)": 0,
+                #             "coal_count": 0,
+                #         }
+                #     )
+                # )
 
-                for single_log in coal_testing:
-                    coal_date = single_log.receive_date.strftime("%Y-%m")
-                    coal_payload = single_log.gradepayload()
-                    mine = coal_payload["Mine"]
-                    doNo = coal_payload["DO_No"]
-                    if coal_payload.get("Gross_Calorific_Value_(Adb)"):
-                        aggregated_coal_data[coal_date][doNo]["Gross_Calorific_Value_(Adb)"] += float(coal_payload["Gross_Calorific_Value_(Adb)"])
-                        aggregated_coal_data[coal_date][doNo]["coal_count"] += 1
+                # for single_log in coal_testing:
+                #     coal_date = single_log.receive_date.strftime("%Y-%m")
+                #     coal_payload = single_log.gradepayload()
+                #     mine = coal_payload["Mine"]
+                #     doNo = coal_payload["DO_No"]
+                #     if coal_payload.get("Gross_Calorific_Value_(Adb)"):
+                #         aggregated_coal_data[coal_date][doNo]["Gross_Calorific_Value_(Adb)"] += float(coal_payload["Gross_Calorific_Value_(Adb)"])
+                #         aggregated_coal_data[coal_date][doNo]["coal_count"] += 1
 
                 start_dates = {}
                 for log in logs:
@@ -5462,13 +6220,21 @@ def coal_logistics_report(
                         result["labels"] = list(payload.keys())
                         mine_name = payload.get("Mines_Name")
                         do_no = payload.get("DO_No")
+                        if payload.get("Grade") is not None:
+                            if '-' in payload.get("Grade"):
+                                grade = payload.get("Grade").split("-")[0]
+                            else:
+                                grade = payload.get("Grade")
                         # If start_date is None or the current vehicle_in_time is earlier than start_date, update start_date
                         if do_no not in start_dates:
                             start_dates[do_no] = date
                         elif date < start_dates[do_no]:
                             start_dates[do_no] = date
                         if payload.get("DO_Qty"):
-                            aggregated_data[date][do_no]["DO_Qty"] += float(
+                            # aggregated_data[date][do_no]["DO_Qty"] += float(
+                            #     payload["DO_Qty"]
+                            # )
+                            aggregated_data[date][do_no]["DO_Qty"] = float(
                                 payload["DO_Qty"]
                             )
                         if payload.get("Challan_Net_Wt(MT)"):
@@ -5489,6 +6255,7 @@ def coal_logistics_report(
                                 "DO_Qty": data["DO_Qty"],
                                 "challan_lr_qty": data["challan_lr_qty"],
                                 "mine_name": data["mine_name"],
+                                "grade": grade,
                                 "date": date,
                             }
                             for do_no, data in aggregated_data[date].items()
@@ -5497,27 +6264,27 @@ def coal_logistics_report(
                     for date in aggregated_data
                 ]
 
-                coalDataList = [
-                    {"date": coal_date, "data": {
-                        doNo: {
-                            "average_Gross_Calorific_Value_(Adb)": data["Gross_Calorific_Value_(Adb)"] / data["coal_count"],
-                        } for doNo, data in aggregated_coal_data[coal_date].items()
-                    }} for coal_date in aggregated_coal_data
-                ]
+                # coalDataList = [
+                #     {"date": coal_date, "data": {
+                #         doNo: {
+                #             "average_Gross_Calorific_Value_(Adb)": data["Gross_Calorific_Value_(Adb)"] / data["coal_count"],
+                #         } for doNo, data in aggregated_coal_data[coal_date].items()
+                #     }} for coal_date in aggregated_coal_data
+                # ]
 
-                coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
+                # coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
 
-                # Iterate through each month's data
-                for month_data in coalDataList:
-                    for key, mine_data in month_data["data"].items():
-                        if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
-                            for single_coal_grades in coal_grades:
-                                if single_coal_grades["end_value"] != "":
-                                    if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
-                                        mine_data["average_GCV_Grade"] = single_coal_grades["grade"]
-                                    elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
-                                        mine_data["average_GCV_Grade"] = "G-1"
-                                        break
+                # # Iterate through each month's data
+                # for month_data in coalDataList:
+                #     for key, mine_data in month_data["data"].items():
+                #         if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
+                #             for single_coal_grades in coal_grades:
+                #                 if single_coal_grades["end_value"] != "":
+                #                     if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                #                         mine_data["average_GCV_Grade"] = single_coal_grades["grade"]
+                #                     elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                #                         mine_data["average_GCV_Grade"] = "G-1"
+                #                         break
                 
                 final_data = []
                 if specified_date:
@@ -5531,13 +6298,14 @@ def coal_logistics_report(
                             dictData = {}
                             dictData["DO_No"] = data_dom
                             dictData["mine_name"] = values["mine_name"]
-                            dictData["DO_Qty"] = values["DO_Qty"]
-                            dictData["challan_lr_qty"] = values["challan_lr_qty"]
+                            dictData["DO_Qty"] = round(values["DO_Qty"], 2)
+                            dictData["challan_lr_qty"] = round(values["challan_lr_qty"], 2)
                             dictData["date"] = values["date"]
                             dictData["cumulative_challan_lr_qty"] = 0
                             dictData["balance_qty"] = 0
                             dictData["percent_supply"] = 0
                             dictData["asking_rate"] = 0
+                            dictData['average_GCV_Grade'] = values["grade"] 
                             if data_dom in start_dates:
                                 dictData["start_date"] = start_dates[data_dom]
                                 # a total of 45 days data is needed, so date + 44 days
@@ -5551,18 +6319,44 @@ def coal_logistics_report(
                                 dictData["balance_days"] = None
 
                             # Look for data_dom match in coalDataList and add average_GCV_Grade
-                            for coal_data in coalDataList:
-                                # if coal_data['date'] == specified_date and data_dom in coal_data['data']:
-                                if data_dom in coal_data['data']:
-                                    dictData['average_GCV_Grade'] = coal_data['data'][data_dom]['average_GCV_Grade']
-                                    break
-                            else:
-                                dictData['average_GCV_Grade'] = "-"
+                            # for coal_data in coalDataList:
+                            #     # if coal_data['date'] == specified_date and data_dom in coal_data['data']:
+                            #     if data_dom in coal_data['data']:
+                            #         dictData['average_GCV_Grade'] = coal_data['data'][data_dom]['average_GCV_Grade']
+                            #         break
+                            # else:
+                            #     dictData['average_GCV_Grade'] = "-"
                 
                             # append data
                             final_data.append(dictData)
-                    
+                            
                     if final_data:
+                        path = os.path.join(
+                            "static_server",
+                            "gmr_ai",
+                            file,
+                            "Coal_Logistics_Report_{}.xlsx".format(
+                                datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                            ),
+                        )
+
+                        filename = os.path.join(os.getcwd(), path)
+                        workbook = xlsxwriter.Workbook(filename)
+                        workbook.use_zip64()
+                        cell_format2 = workbook.add_format()
+                        cell_format2.set_bold()
+                        cell_format2.set_font_size(10)
+                        cell_format2.set_align("center")
+                        cell_format2.set_align("vjustify")
+
+                        worksheet = workbook.add_worksheet()
+                        worksheet.set_column("A:AZ", 20)
+                        worksheet.set_default_row(50)
+                        cell_format = workbook.add_format()
+                        cell_format.set_font_size(10)
+                        cell_format.set_align("center")
+                        cell_format.set_align("vcenter")
+
                         # Find the index of the month data in dataList
                         index_of_month = next((index for index, item in enumerate(dataList) if item['date'] == specified_date), None)
 
@@ -5588,52 +6382,58 @@ def coal_logistics_report(
                             # Update cumulative_challan_lr_qty in final_data
                             entry['cumulative_challan_lr_qty'] = cumulative_lr_qty
                             if data["DO_Qty"] != 0 and entry["cumulative_challan_lr_qty"] != 0:
-                                entry["percent_supply"] = (entry["cumulative_challan_lr_qty"] / data["DO_Qty"]) * 100
+                                entry["percent_supply"] = round((entry["cumulative_challan_lr_qty"] / data["DO_Qty"]) * 100, 2)
                             else:
                                 entry["percent_supply"] = 0
 
                             if entry["cumulative_challan_lr_qty"] != 0 and data["DO_Qty"] != 0:
-                                entry["balance_qty"] = (data["DO_Qty"] - entry["cumulative_challan_lr_qty"])
+                                entry["balance_qty"] = round((data["DO_Qty"] - entry["cumulative_challan_lr_qty"]), 2)
                             else:
                                 entry["balance_qty"] = 0
                             
                             if entry["balance_qty"] and entry["balance_qty"] != 0:
                                 if entry["balance_days"]:
-                                    entry["asking_rate"] = entry["balance_qty"] / entry["balance_days"]
+                                    entry["asking_rate"] = round(entry["balance_qty"] / entry["balance_days"], 2)
 
-            result["datasets"] = final_data
+                        result["datasets"] = final_data
 
-            headers = ["Sr.No", "Mine Name", "DO_No", "Grade", "DO Qty", "Challan LR Qty", "Cumulative Challan Lr_Qty", "Balance Qty", "% of Supply", "Balance Days", "Asking Rate", "Do Start Date", "Do End Date"]
-            
-            for index, header in enumerate(headers):
-                        worksheet.write(0, index, header, cell_format2)
-            
-            row = 1
-            for single_data in result["datasets"]:
-                console_logger.debug(single_data)
-                worksheet.write(row, 0, count, cell_format)
-                worksheet.write(row, 1, single_data["mine_name"])
-                worksheet.write(row, 2, single_data["DO_No"])
-                worksheet.write(row, 3, single_data["average_GCV_Grade"])
-                worksheet.write(row, 4, single_data["DO_Qty"])
-                worksheet.write(row, 5, single_data["challan_lr_qty"])
-                worksheet.write(row, 6, single_data["cumulative_challan_lr_qty"])
-                worksheet.write(row, 7, single_data["balance_qty"])
-                worksheet.write(row, 8, single_data["percent_supply"])
-                worksheet.write(row, 9, single_data["balance_days"])
-                worksheet.write(row, 10, single_data["asking_rate"])
-                worksheet.write(row, 11, single_data["start_date"])
-                worksheet.write(row, 12, single_data["end_date"].strftime("%Y-%m-%d"))
+                        headers = ["Sr.No", "Mine Name", "DO_No", "Grade", "DO Qty", "Challan LR Qty", "Cumulative Challan Lr_Qty", "Balance Qty", "% of Supply", "Balance Days", "Asking Rate", "Do Start Date", "Do End Date"]
+                        
+                        for index, header in enumerate(headers):
+                                    worksheet.write(0, index, header, cell_format2)
+                        
+                        row = 1
+                        for single_data in result["datasets"]:
+                            worksheet.write(row, 0, count, cell_format)
+                            worksheet.write(row, 1, single_data["mine_name"])
+                            worksheet.write(row, 2, single_data["DO_No"])
+                            worksheet.write(row, 3, single_data["average_GCV_Grade"])
+                            worksheet.write(row, 4, single_data["DO_Qty"])
+                            worksheet.write(row, 5, single_data["challan_lr_qty"])
+                            worksheet.write(row, 6, single_data["cumulative_challan_lr_qty"])
+                            worksheet.write(row, 7, single_data["balance_qty"])
+                            worksheet.write(row, 8, single_data["percent_supply"])
+                            worksheet.write(row, 9, single_data["balance_days"])
+                            worksheet.write(row, 10, single_data["asking_rate"])
+                            worksheet.write(row, 11, single_data["start_date"])
+                            worksheet.write(row, 12, single_data["end_date"].strftime("%Y-%m-%d"))
 
-                count -= 1
-                row += 1
-            workbook.close()
+                            count -= 1
+                            row += 1
+                        workbook.close()
 
-            return {
-                    "Type": "coal_logistics_report",
-                    "Datatype": "Report",
-                    "File_Path": path,
-                }
+                        return {
+                                "Type": "daily_coal_report",
+                                "Datatype": "Report",
+                                "File_Path": path,
+                            }
+                    else:
+                        console_logger.error("No data found")
+                        return {
+                                    "Type": "daily_coal_report",
+                                    "Datatype": "Report",
+                                    "File_Path": path,
+                                }
 
     except Exception as e:
         response.status_code = 400
@@ -5661,15 +6461,15 @@ def mine_wise_average_gwel_gcv(
             start_of_month = specified_date.replace(day=1)
             start_date = datetime.datetime.strftime(start_of_month, '%Y-%m-%d')
             end_date = datetime.datetime.strftime(specified_date, '%Y-%m-%d')
-            console_logger.debug(start_date)
-            console_logger.debug(end_date)
+            # console_logger.debug(start_date)
+            # console_logger.debug(end_date)
         elif type == "Week":
             specified_date = datetime.datetime.now().date()
             start_of_week = specified_date - datetime.timedelta(days=7)
             start_date = datetime.datetime.strftime(start_of_week, '%Y-%m-%d')
             end_date = datetime.datetime.strftime(specified_date, '%Y-%m-%d')
-            console_logger.debug(start_date)
-            console_logger.debug(end_date)
+            # console_logger.debug(start_date)
+            # console_logger.debug(end_date)
         elif type == "Month":
             date=Month
             datestructure = date.replace(" ", "").split("-")
@@ -5679,8 +6479,8 @@ def mine_wise_average_gwel_gcv(
             endd_date = startd_date + datetime.timedelta(days=31)
             start_date = datetime.datetime.strftime(startd_date, '%Y-%m-%d')
             end_date = datetime.datetime.strftime(endd_date, '%Y-%m-%d')
-            console_logger.debug(start_date)
-            console_logger.debug(end_date)
+            # console_logger.debug(start_date)
+            # console_logger.debug(end_date)
         elif type == "Year":
             date = Year
             endd_date =f'{date}-12-31'
@@ -5688,8 +6488,8 @@ def mine_wise_average_gwel_gcv(
             format_data = "%Y-%m-%d"
             end_date=datetime.datetime.strftime(datetime.datetime.strptime(endd_date,format_data), format_data)
             start_date=datetime.datetime.strftime(datetime.datetime.strptime(startd_date,format_data), format_data)
-            console_logger.debug(start_date)
-            console_logger.debug(end_date)
+            # console_logger.debug(start_date)
+            # console_logger.debug(end_date)
 
         # Query for CoalTesting objects
         fetchCoalTesting = CoalTesting.objects(
@@ -5805,7 +6605,7 @@ def mine_wise_average_gwel_gcv(
         return e
 
 @router.get("/source_wise_profit_loss", tags=["Road Map"])
-def source_wise_transist_loss_gain(response: Response,type: Optional[str] = "Daily", Month: Optional[str] = None, Daily: Optional[str] = None, Year: Optional[str] = None):
+def source_wise_transist_loss_gain(response: Response, type: Optional[str] = "Daily", Month: Optional[str] = None, Daily: Optional[str] = None, Year: Optional[str] = None):
     try:
 
         if type == "Daily":
@@ -5813,15 +6613,15 @@ def source_wise_transist_loss_gain(response: Response,type: Optional[str] = "Dai
             start_of_month = specified_date.replace(day=1)
             start_date = datetime.datetime.strftime(start_of_month, '%Y-%m-%d')
             end_date = datetime.datetime.strftime(specified_date, '%Y-%m-%d')
-            console_logger.debug(start_date)
-            console_logger.debug(end_date)
+            # console_logger.debug(start_date)
+            # console_logger.debug(end_date)
         elif type == "Week":
             specified_date = datetime.datetime.now().date()
             start_of_week = specified_date - datetime.timedelta(days=7)
             start_date = datetime.datetime.strftime(start_of_week, '%Y-%m-%d')
             end_date = datetime.datetime.strftime(specified_date, '%Y-%m-%d')
-            console_logger.debug(start_date)
-            console_logger.debug(end_date)
+            # console_logger.debug(start_date)
+            # console_logger.debug(end_date)
         elif type == "Month":
             date=Month
             datestructure = date.replace(" ", "").split("-")
@@ -5831,8 +6631,8 @@ def source_wise_transist_loss_gain(response: Response,type: Optional[str] = "Dai
             endd_date = startd_date + datetime.timedelta(days=31)
             start_date = datetime.datetime.strftime(startd_date, '%Y-%m-%d')
             end_date = datetime.datetime.strftime(endd_date, '%Y-%m-%d')
-            console_logger.debug(start_date)
-            console_logger.debug(end_date)
+            # console_logger.debug(start_date)
+            # console_logger.debug(end_date)
         elif type == "Year":
             date=Year
             endd_date =f'{date}-12-31'
@@ -5840,8 +6640,8 @@ def source_wise_transist_loss_gain(response: Response,type: Optional[str] = "Dai
             format_data = "%Y-%m-%d"
             end_date=datetime.datetime.strftime(datetime.datetime.strptime(endd_date,format_data), format_data)
             start_date=datetime.datetime.strftime(datetime.datetime.strptime(startd_date,format_data), format_data)
-            console_logger.debug(start_date)
-            console_logger.debug(end_date)
+            # console_logger.debug(start_date)
+            # console_logger.debug(end_date)
 
         net_qty_totals = {}
         actual_net_qty_totals = {}
@@ -5934,11 +6734,11 @@ def month_wise_transist_loss_gain_mode(response: Response):
                         start_dates[do_no] = month
                     elif month < start_dates[do_no]:
                         start_dates[do_no] = month
-                    if payload.get("GWEL_Net_Wt(MT)"):
+                    if payload.get("GWEL_Net_Wt(MT)") and payload.get("GWEL_Net_Wt(MT)") != "NaN":
                         aggregated_data[month][do_no]["actual_net_qty"] += float(
                             payload["GWEL_Net_Wt(MT)"]
                         )
-                    if payload.get("Challan_Net_Wt(MT)"):
+                    if payload.get("Challan_Net_Wt(MT)") and payload.get("Challan_Net_Wt(MT)") != "NaN":
                         aggregated_data[month][do_no]["net_qty"] += float(
                             payload.get("Challan_Net_Wt(MT)")
                         )
@@ -5947,7 +6747,6 @@ def month_wise_transist_loss_gain_mode(response: Response):
                             "Mines_Name"
                         ]
                     aggregated_data[month][do_no]["count"] += 1 
-
             dataList = [
                 {
                     "month": month,
@@ -5962,7 +6761,7 @@ def month_wise_transist_loss_gain_mode(response: Response):
                 }
                 for month in aggregated_data
             ]
-
+            # console_logger.debug(dataList)
             total_monthly_final_net_qty = {}
             yearly_final_data = {}
             for data in dataList:
@@ -5974,7 +6773,7 @@ def month_wise_transist_loss_gain_mode(response: Response):
                     total_monthly_final_net_qty[month] += entry["final_net_qty"]
 
             total_monthly_final_net = dict(sorted(total_monthly_final_net_qty.items()))
-
+            console_logger.debug(total_monthly_final_net)
             # for key, single_count in total_monthly_final_net_qty.items():
             #     if datetime.datetime.strptime(key, "%Y-%m").year in yearly_final_data:
             #         yearly_final_data[datetime.datetime.strptime(key, "%Y-%m").year] += single_count
@@ -6044,11 +6843,11 @@ def year_wise_transist_loss_gain_mode(response: Response):
                         start_dates[do_no] = month
                     elif month < start_dates[do_no]:
                         start_dates[do_no] = month
-                    if payload.get("GWEL_Net_Wt(MT)"):
+                    if payload.get("GWEL_Net_Wt(MT)") and payload.get("GWEL_Net_Wt(MT)") != "NaN":
                         aggregated_data[month][do_no]["actual_net_qty"] += float(
                             payload["GWEL_Net_Wt(MT)"]
                         )
-                    if payload.get("Challan_Net_Wt(MT)"):
+                    if payload.get("Challan_Net_Wt(MT)") and payload.get("Challan_Net_Wt(MT)") != "NaN":
                         aggregated_data[month][do_no]["net_qty"] += float(
                             payload.get("Challan_Net_Wt(MT)")
                         )
@@ -6093,18 +6892,296 @@ def year_wise_transist_loss_gain_mode(response: Response):
                     
             yearly_final_data_sort = dict(sorted(yearly_final_data.items()))
 
-        result = {
-            "data": {
-                "labels": ["Road Mode"],
-                "datasets": [
-                    {"label": "Road Mode", "data": list(yearly_final_data_sort.values())}
-                ]
+            result = {
+                "data": {
+                    "labels": ["Road Mode"],
+                    "datasets": [
+                        {"label": "Road Mode", "data": list(yearly_final_data_sort.values())}
+                    ]
+                }
             }
-        }
 
-        return result
+            return result
     except Exception as e:
         console_logger.debug("----- Gate Vehicle Count Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+@router.get("/transit_loss", tags=["Road Map"])
+def endpoint_to_fetch_transit_loss(response: Response, type: Optional[str] = "Daily", 
+                                   Daily: Optional[str] = None, 
+                                   Month: Optional[str] = None,
+                                   Year: Optional[str] = None,
+                                   Overall: Optional[str] = None):
+    try:
+        data = {}
+        timezone = pytz.timezone('Asia/Kolkata')
+        current_time = datetime.datetime.now(timezone)
+        UTC_OFFSET_TIMEDELTA = datetime.datetime.utcnow() - datetime.datetime.now()
+
+        basePipeline = [
+            {
+                "$match": {
+                        "GWEL_Tare_Time": {
+                            "$gte": None,
+                        },
+                },
+            },
+            {
+                '$project': {
+                    'ts': None,
+                    'actual_net_qty': {
+                        '$toDouble': '$actual_net_qty'
+                    }, 
+                    'net_qty': {
+                        '$toDouble': '$net_qty'
+                    }, 
+                    'label': {
+                        '$cond': {
+                            'if': {
+                                '$ne': [
+                                    '$vehicle_number', None
+                                ]
+                            }, 
+                            'then': 'Road', 
+                            'else': 'Rail'
+                        }
+                    }, 
+                    '_id': 0
+                }
+            }, {
+                '$group': {
+                    '_id': {
+                        'ts': '$ts', 
+                        'label': '$label'
+                    }, 
+                    'actual_net_qty_sum': {
+                        '$sum': '$actual_net_qty'
+                    }, 
+                    'net_qty_sum': {
+                        '$sum': '$net_qty'
+                    }
+                }
+            }, {
+                '$project': {
+                    '_id': 0, 
+                    'ts': '$_id.ts', 
+                    'label': '$_id.label', 
+                    'data': {
+                        '$subtract': [
+                            '$actual_net_qty_sum', '$net_qty_sum'
+                        ]
+                    }
+                }
+            }
+        ]
+
+        if type == "Daily":
+            date = Daily
+            end_date = f'{date} 23:59:59'
+            start_date = f'{date} 00:00:00'
+            format_data = "%Y-%m-%d %H:%M:%S"
+            endd_date = convert_to_utc_format(end_date.__str__(), format_data)
+            startd_date = convert_to_utc_format(start_date.__str__(), format_data)
+            # console_logger.debug(startd_date)
+            # console_logger.debug(endd_date)
+
+            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$lte"] = endd_date
+            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
+
+            basePipeline[1]["$project"]["ts"] = {"$hour": {"date": "$GWEL_Tare_Time", "timezone": "Asia/Kolkata"}}
+
+            result = {
+                "data": {
+                    "labels": [str(i) for i in range(1, 25)],
+                    "datasets": [
+                        {"label": "Road", "data": [0 for i in range(1, 25)]},
+                        {"label": "Rail", "data": [0 for i in range(1, 25)]},
+                    ],
+                }
+            }
+
+        elif type == "Week":
+            start_date = (
+                datetime.datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+                - datetime.timedelta(days=7)
+            )
+            end_date = datetime.datetime.utcnow().replace(hour=23, minute=59, second=59, microsecond=0)
+            endd_date = end_date-datetime.timedelta(days=1)
+
+            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"] = convert_to_utc_format(start_date.__str__(), "%Y-%m-%d %H:%M:%S")
+            basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": {"date": "$GWEL_Tare_Time", "timezone": "Asia/Kolkata"}}
+            result = {
+                "data": {
+                    "labels": [
+                        (
+                         convert_to_utc_format(start_date.__str__(),"%Y-%m-%d %H:%M:%S") + datetime.timedelta(days=i+1)
+                        ).strftime("%d")
+                        for i in range(1, 8)
+                    ],
+                    "datasets": [
+                        {"label": "Road", "data": [0 for i in range(7)]},
+                        {"label": "Rail", "data": [0 for i in range(7)]},
+                    ],
+                }
+            }
+        elif type == "Month":
+            date = Month
+            format_data = "%Y - %m-%d"
+            start_date = f'{date}-01'
+            startd_date = timezone.localize(datetime.datetime.strptime(start_date, format_data))
+
+            end_date = startd_date + relativedelta(day=31)
+            end_label = end_date.strftime("%d")
+
+            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$lte"] = end_date
+            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
+            # basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$GWEL_Tare_Time"}
+            basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": {"date": "$GWEL_Tare_Time", "timezone": "Asia/Kolkata"}}
+            result = {
+                "data": {
+                    "labels": [
+                        (
+                            startd_date + datetime.timedelta(days=i)
+                        ).strftime("%d")
+                        for i in range(int(end_label))
+                    ],
+                    "datasets": [
+                        {"label": "Road", "data": [0 for i in range(int(end_label))]},
+                        {"label": "Rail", "data": [0 for i in range(int(end_label))]},
+                    ],
+                }
+            }
+
+        elif type == "Year":
+            date = Year
+            end_date = f'{date}-12-31 23:59:59'
+            start_date = f'{date}-01-01 00:00:00'
+            format_data = "%Y-%m-%d %H:%M:%S"
+            endd_date = timezone.localize(datetime.datetime.strptime(end_date, format_data))
+            startd_date = timezone.localize(datetime.datetime.strptime(start_date, format_data))
+
+            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$lte"] = endd_date
+            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
+
+            # basePipeline[1]["$project"]["ts"] = {"$month": "$GWEL_Tare_Time"}
+            basePipeline[1]["$project"]["ts"] = {"$month": {"date": "$GWEL_Tare_Time", "timezone": "Asia/Kolkata"}}
+
+            result = {
+                "data": {
+                    "labels": [
+                        (
+                            startd_date + relativedelta(months=i)
+                        ).strftime("%b %y")
+                        for i in range(12)
+                    ],
+                    "datasets": [
+                        {"label": "Road", "data": [0 for i in range(12)]},
+                        {"label": "Rail", "data": [0 for i in range(12)]},
+                    ],
+                }
+            }
+
+        elif type == "Overall":
+            date = Overall
+            end_date = f'{int(date) + 1}-03-31 23:59:59'
+            start_date = f'{date}-04-01 00:00:00'
+            format_data = "%Y-%m-%d %H:%M:%S"
+            endd_date = timezone.localize(datetime.datetime.strptime(end_date, format_data))
+            startd_date = timezone.localize(datetime.datetime.strptime(start_date, format_data))
+
+            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$lte"] = endd_date
+            basePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
+
+            # basePipeline[1]["$project"]["ts"] = {"$year": "$GWEL_Tare_Time"}
+            basePipeline[1]["$project"]["ts"] = {"$year": {"date": "$GWEL_Tare_Time", "timezone": "Asia/Kolkata"}}
+
+            result = {
+                "data": {
+                    "labels": [f"{int(date)} - {int(date) + 1}"],
+                    "datasets": [
+                        {"label": "Road", "data": [0]},
+                        {"label": "Rail", "data": [0]},
+                    ],
+                }
+            }
+
+        output = Gmrdata.objects().aggregate(basePipeline)
+        outputDict = {}
+
+        if type == "Overall":
+            modified_labels = [f"{int(date)} - {int(date) + 1}"]
+            for data in output:
+                label = data["label"]
+                total_loss = data["data"]
+                outputDict[label] = total_loss
+
+            for dataset in result["data"]["datasets"]:
+                label = dataset["label"]
+                if label in outputDict:
+                    dataset["data"] = [outputDict[label]]
+        else:
+            for data in output:
+                ts = data["ts"]
+                label = data["label"]
+                sum_value = data["data"]
+                if ts not in outputDict:
+                    outputDict[ts] = {label: sum_value}
+                else:
+                    if label not in outputDict[ts]:
+                        outputDict[ts][label] = sum_value
+                    else:
+                        outputDict[ts][label] += sum_value
+
+            for index, label in enumerate(result["data"]["labels"]):
+
+                if type == "Daily":
+                    modified_labels = [str(i) for i in range(1, 25)]
+
+                elif type == "Week":
+                    modified_labels = [
+                        (
+                            start_date + datetime.timedelta(days=i+1)
+                        ).strftime("%d-%m-%Y,%a")
+                        for i in range(7)
+                    ]
+
+                elif type == "Month":
+                    modified_labels = [
+                        (
+                            startd_date + datetime.timedelta(days=i + 1)
+                        ).strftime("%d-%b")
+                        for i in range(-1, (int(end_label))-1)
+                    ]
+
+                elif type == "Year":
+                    modified_labels = [
+                        (
+                            startd_date + relativedelta(months=i)
+                        ).strftime("%b %y")
+                        for i in range(12)
+                    ]
+
+                if type == "Year":
+                    ts = index
+                else:
+                    ts = int(label)
+
+                if ts in outputDict:
+                    for key, val in outputDict[ts].items():
+                        if key == "Road":
+                            result["data"]["datasets"][0]["data"][index] = val
+                        elif key == "Rail":
+                            result["data"]["datasets"][1]["data"][index] = val
+
+        result["data"]["labels"] = copy.deepcopy(modified_labels)
+        return result
+
+    except Exception as e:
+        console_logger.debug("----- Overall Transit Error -----", e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
@@ -6117,7 +7194,7 @@ async def endpoint_to_add_sap_excel_data(response: Response, file: UploadFile = 
     try:
         # console_logger.debug(file)
         if file is None:
-            return {"error": "NO file Uploaded!"}
+            return {"error": "No file Uploaded!"}
         
         contents = await file.read()
         if not contents:
@@ -6158,13 +7235,14 @@ async def endpoint_to_add_sap_excel_data(response: Response, file: UploadFile = 
                 # take it here
                 fetchGmrData = Gmrdata.objects(arv_cum_do_number = str(single_data["Source & DO No"]))
                 for single_gmr_data in fetchGmrData:
-                    console_logger.debug(single_gmr_data.vehicle_number)
                     single_gmr_data.po_no = str(single_data["SAP PO"])
                     single_gmr_data.line_item = str(single_data["Line Item"])
                     single_gmr_data.po_qty = str(single_data["DO QTY"])
                     single_gmr_data.save()
 
         return {"detail": "success"}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Key Error")
     except Exception as e:
         console_logger.debug("----- Sap Excel Error -----",e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -6197,7 +7275,7 @@ async def endpoint_to_add_sap_excel_data(response: Response, file: UploadFile = 
 #         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
 #         return e
 
-@router.post("/addeditlatlong", tags=["Road Map"])
+@router.post("/addeditlatlong", tags=["Map Data"])
 def endpoint_to_add_lat_long(response: Response, payload: LatLongPostIn, id: str = None):
     try:
         dataName = payload.dict()
@@ -6220,7 +7298,7 @@ def endpoint_to_add_lat_long(response: Response, payload: LatLongPostIn, id: str
         return e
     
 
-@router.get("/getlatlong", tags=["Road Map"])
+@router.get("/getlatlong", tags=["Map Data"])
 def endpoint_to_fetch_lat_long(response: Response):
     try:
         listData = []
@@ -6237,7 +7315,7 @@ def endpoint_to_fetch_lat_long(response: Response):
         return e
     
 
-@router.delete("/deletelatlong", tags=["Road Map"])
+@router.delete("/deletelatlong", tags=["Map Data"])
 def endpoint_to_delete_lat_long(response: Response, id: str):
     try:
         selectedLocationData = SelectedLocation.objects.get(id=id)
@@ -6252,7 +7330,7 @@ def endpoint_to_delete_lat_long(response: Response, id: str):
         return e
 
 
-@router.get("/getsaprecords", tags=["Road Map"])
+@router.get("/getsaprecords", tags=["Sap Data"])
 def endpoint_to_fetch_sap_records(response: Response, do_no: str):
     try:
         fetchSapRecords = SapRecords.objects.get(do_no=do_no)
@@ -6266,14 +7344,14 @@ def endpoint_to_fetch_sap_records(response: Response, do_no: str):
         return e
 
 
-@router.delete("/deletesaprecord", tags=["Road Map"])
+@router.delete("/deletesaprecord", tags=["Sap Data"])
 def endpoint_to_fetch_sap_records(response: Response, do_no: str):
     try:
         fetchSapRecords = SapRecords.objects.get(do_no=do_no)
         fetchSapRecords.delete()
         return {"detail": "success"}
     except Exception as e:
-        console_logger.debug("----- Fetch Sap Records Error -----",e)
+        console_logger.debug("----- delete Sap Records Error -----",e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
@@ -6286,12 +7364,11 @@ def list_report_name_pdf():
         checkPdfReportName = PdfReportName.objects()
         if checkPdfReportName:
             checkPdfReportName.delete()
-        
         report_data = [
             {
                 "report_id": 1,
                 "name": "daily_coal_logistic_report",
-            }
+            },
         ]
         for single_report_name in report_data:
             addreportName = PdfReportName(name=single_report_name["name"])
@@ -6319,31 +7396,32 @@ def endpoint_to_add_reportname():
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
 
+@router.post("/insert/reportname", tags=["PDF Report"])
+def endpoint_to_insert_reportname(response: Response, name: str):
+    try:
+        if name:
+            addreportName = PdfReportName(name=name)
+            addreportName.save()
 
-# @router.get("/fetch/reportname", tags=["PDF Report"])
-# def endpoint_to_fetch_report_name():
-#     try:
-#         listData = []
-#         fetchAllPdfReportName = PdfReportName.objects()
-#         for single_report_name in fetchAllPdfReportName:
-#             listData.append(single_report_name.payload())
-#         return listData
-#     except Exception as e:
-#         console_logger.debug("----- Fetch Report Name Error -----",e)
-#         exc_type, exc_obj, exc_tb = sys.exc_info()
-#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
-#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
-#         return e
+            addOnlyReportNameinReportScheduler = ReportScheduler(report_name=name)
+            addOnlyReportNameinReportScheduler.save()
+        return {"detail": "success"}
+    except Exception as e:
+        console_logger.debug("----- Add Report Name Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
 
 
 @router.get("/fetch/reportname", tags=["PDF Report"])
 def endpoint_to_fetch_report_name():
     try:
         listData = []
-        fetchAllPdfReportName = ReportScheduler.objects()
+        fetchAllPdfReportName = PdfReportName.objects()
         for single_report_name in fetchAllPdfReportName:
-            listData.append(single_report_name.report_payload())
+            listData.append(single_report_name.payload())
         return listData
     except Exception as e:
         console_logger.debug("----- Fetch Report Name Error -----",e)
@@ -6352,6 +7430,467 @@ def endpoint_to_fetch_report_name():
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
+
+
+@router.get("/coallabtestanalysis", tags=["Coal Testing"])
+def endpoint_to_fetch_report_name(response: Response,
+    type: Optional[str] = "Daily",
+    Month: Optional[str] = None, 
+    Daily: Optional[str] = None, 
+    Year: Optional[str] = None
+):
+    try:
+        if type == "Daily":
+            specified_date = datetime.datetime.strptime(Daily, "%Y-%m-%d")
+            start_of_month = specified_date.replace(day=1)
+            start_date = datetime.datetime.strftime(start_of_month, '%Y-%m-%d')
+            end_date = datetime.datetime.strftime(specified_date, '%Y-%m-%d')
+            # console_logger.debug(start_date)
+            # console_logger.debug(end_date)
+        elif type == "Week":
+            specified_date = datetime.datetime.now().date()
+            start_of_week = specified_date - datetime.timedelta(days=7)
+            start_date = datetime.datetime.strftime(start_of_week, '%Y-%m-%d')
+            end_date = datetime.datetime.strftime(specified_date, '%Y-%m-%d')
+            # console_logger.debug(start_date)
+            # console_logger.debug(end_date)
+        elif type == "Month":
+            date=Month
+            datestructure = date.replace(" ", "").split("-")
+            final_month = f"{datestructure[0]}-{str(datestructure[1]).zfill(2)}"
+            start_month = f"{final_month}-01"
+            startd_date = datetime.datetime.strptime(start_month, "%Y-%m-%d")
+            endd_date = startd_date + datetime.timedelta(days=31)
+            start_date = datetime.datetime.strftime(startd_date, '%Y-%m-%d')
+            end_date = datetime.datetime.strftime(endd_date, '%Y-%m-%d')
+            # console_logger.debug(start_date)
+            # console_logger.debug(end_date)
+        elif type == "Year":
+            date = Year
+            endd_date =f'{date}-12-31'
+            startd_date = f'{date}-01-01'
+            format_data = "%Y-%m-%d"
+            end_date=datetime.datetime.strftime(datetime.datetime.strptime(endd_date,format_data), format_data)
+            start_date=datetime.datetime.strftime(datetime.datetime.strptime(startd_date,format_data), format_data)
+            # console_logger.debug(start_date)
+            # console_logger.debug(end_date)
+
+        # Query for CoalTesting objects
+        fetchCoalTesting = CoalTesting.objects(
+            receive_date__gte= datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
+        )
+        # Query for CoalTestingTrain objects
+        fetchCoalTestingTrain = CoalTestingTrain.objects(
+            receive_date__gte = datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
+        )
+        # If no data is found from db, return empty result
+        if not fetchCoalTesting and not fetchCoalTestingTrain:
+            return {"data": {"labels": [], "datasets": []}}
+        else:
+            rrNo_values = {}
+            calorific_value = 0
+            third_party_calorific_value = 0
+            # Iterate through fetched CoalTesting objects
+            for single_coal_testing in fetchCoalTesting:
+                rrNo = single_coal_testing.rrNo
+                location = single_coal_testing.location
+                for param in single_coal_testing.parameters:
+                    if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
+                        if param["val1"] != None and param["val1"] != "":
+                            calorific_value = float(param["val1"])
+                            # break
+
+                    if param["parameter_Name"] == "Third_Party_Gross_Calorific_Value_(Arb)":
+                        if param["val1"] != None and param["val1"] != "":
+                            third_party_calorific_value = float(param["val1"])
+
+
+                # Aggregate values based on rrNo
+                if rrNo in rrNo_values:
+                    rrNo_values[location]["gwel"] += int(calorific_value)
+                    rrNo_values[location]["third_party"] += int(third_party_calorific_value)
+                else:
+                    rrNo_values[location] = {
+                        "gwel": int(calorific_value),
+                        "third_party": int(third_party_calorific_value) if third_party_calorific_value else 0
+                    }
+
+            # Iterate through fetched CoalTestingTrain objects
+            for single_coal_testing_train in fetchCoalTestingTrain:
+                rrNo = single_coal_testing_train.rrNo
+                location = single_coal_testing_train.location
+                for param in single_coal_testing_train.parameters:
+                    if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
+                        if param["val1"] != None and param["val1"] != "":
+                            calorific_value = float(param["val1"])
+                            # break
+                    if param["parameter_Name"] == "Third_Party_Gross_Calorific_Value_(Arb)":
+                        if param["val1"] != None and param["val1"] != "":
+                            third_party_calorific_value = float(param["val1"])
+                            
+
+                # Aggregate values based on rrNo
+                if rrNo in rrNo_values:
+                    rrNo_values[location]["gwel"] += int(calorific_value)
+                    rrNo_values[location]["third_party"] += int(third_party_calorific_value)
+                else:
+                    rrNo_values[location] = {
+                        "gwel": int(calorific_value),
+                        "third_party": int(third_party_calorific_value) if third_party_calorific_value else 0
+                    }
+            
+            # fetch data from AopTarget
+            aopList = []
+            fetchAopTarget = AopTarget.objects()
+            if fetchAopTarget:
+                for single_aop_target in fetchAopTarget:
+                    aopList.append(single_aop_target.payload())
+
+
+            target_dict = {item['source_name']: int(item['aop_target']) for item in aopList}
+            
+            aligned_target_data = [target_dict.get(label.strip(), 0) for label in rrNo_values.keys()]
+
+            result = {
+                "data": {
+                    "labels": list(rrNo_values.keys()),
+                    "datasets": [
+                        {"label": "GWEL", "data": [data['gwel'] for data in rrNo_values.values()], "order": 1, "type": "bar"},
+                        {"label": "Third Party", "data": [data['third_party'] for data in rrNo_values.values()], "order": 1, "type": "bar"},
+                        {"label": "Target", "data": aligned_target_data, "order": 0, "type": "line"},
+                    ],
+                }
+            }
+
+            return result
+        
+    except Exception as e:
+        console_logger.debug("----- Gate Vehicle Count Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.get("/report/inventory", tags=["Road Map"])
+def endpoint_to_fetch_inventory(response: Response):
+    try:
+        results = {
+            "title": "Inventory",
+            "icon": "inventory",
+            "data": ""
+            }
+        fetchGmrData = Gmrdata.objects()
+        overall_gwel = 0
+        overall_historian = 0
+        for single_gmr_data in fetchGmrData:
+            # console_logger.debug(single_gmr_data.payload()["GWEL_Net_Wt(MT)"])    
+
+            if single_gmr_data.payload()["GWEL_Net_Wt(MT)"] != None:
+                overall_gwel += float(single_gmr_data.payload()["GWEL_Net_Wt(MT)"])
+        
+        fetchHistorianData = Historian.objects(tagid__in=[16, 3536])
+
+        for single_historian in fetchHistorianData:
+            overall_historian += float(single_historian.payload()["sum"])
+
+        results["data"] = round(overall_gwel - overall_historian/1000, 2)
+
+        return results
+
+    except Exception as e:
+        console_logger.debug("----- Fetch Report Name Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+    
+
+@router.get("/fetch/expiry/vehicle", tags=["Reports"])
+def endpoint_to_fetch_going_to_expiry_vehicle(response: Response, page_no:int=None, page_size:int=None, search_text: Optional[str]=None, type: Optional[str] = "display"):
+    try:
+        if type and type == "display":
+            if page_no and page_size:
+                skip = page_size * (page_no - 1)
+                limit = page_size
+            query = {}
+            if search_text:
+                query["$or"] = [
+                    {"vehicle_number": {"$regex": f"{search_text}", "$options": "i"}},
+                    {"delivery_challan_number": {"$regex": f"{search_text}", "$options": "i"}},
+                ]
+
+            today = datetime.datetime.now()
+            seven_days_ago = today + datetime.timedelta(days=7)
+
+            # console_logger.debug(today)
+            # console_logger.debug(seven_days_ago)
+            
+            result = {"labels": [], "datasets": [], "total": 0, "page_size": 15}
+            pipeline = [
+                    {
+                        "$addFields": {
+                            "certificate_expiry_date": {
+                                "$dateFromString": {
+                                    "dateString": "$certificate_expiry",
+                                    "format": "%d-%m-%Y"
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "$match": {
+                            "$and": [
+                                {"certificate_expiry_date": {"$lte": seven_days_ago}},
+                                query
+                            ]
+                        }
+                    },
+                    {
+                        "$addFields": {
+                            "days_to_go": {
+                                "$divide": [
+                                    {
+                                        "$subtract": ["$certificate_expiry_date", datetime.datetime.now() + datetime.timedelta(days=-1)]
+                                    },
+                                    1000 * 60 * 60 * 24
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "$sort": {"vehicle_number": 1, "created_at": -1}
+                    },
+                    {
+                        "$group": {
+                            "_id": "$vehicle_number",
+                            "latest_record": {"$first": "$$ROOT"}
+                        }
+                    },
+                    {
+                        "$project": {  
+                            "latest_record": -1
+                        }
+                    },
+                    {
+                        "$replaceRoot": {"newRoot": "$latest_record"}
+                    },
+                    {
+                        "$sort": {"created_at": -1}
+                    }
+                ]
+            count_pipeline = pipeline.copy()
+            count_pipeline.append({"$count": "total_count"})
+            count_result = list(Gmrdata.objects.aggregate(count_pipeline))
+            total_count = count_result[0]["total_count"] if count_result else 0
+            
+            if page_no and page_size:
+                pipeline.append({"$skip": skip})
+                pipeline.append({"$limit": limit})
+            
+            # console_logger.debug(pipeline)
+            results = list(Gmrdata.objects.aggregate(pipeline))
+            # sorting data in ascending order i.e reverse=False
+            # results_sorted = sorted(results, key=lambda record: record["latest_record"]["days_to_go"], reverse=False)
+            results_sorted = sorted(results, key=lambda record: record["days_to_go"], reverse=False)
+            count = len(results_sorted)
+            result["labels"] = ["sr_no", "vehicle_number", "vehicle_chassis_number", "expiry_date", "fitness_file", "days_to_go"]
+            finalData = []
+            for record in results_sorted:
+                # console_logger.debug(record)
+                dictData = {}
+                dictData["sr_no"] = count
+                dictData["vehicle_number"] = record["vehicle_number"]
+                dictData["vehicle_chassis_number"] = record["vehicle_chassis_number"]
+                dictData["expiry_date"] = record["certificate_expiry"]
+                dictData["fitness_file"] = record["fitness_file"]
+
+                days_to_go = record["days_to_go"]
+                total_seconds = int(days_to_go * 24 * 60 * 60)  # Convert days to seconds
+                delta = timedelta(seconds=total_seconds)
+
+                days = delta.days
+                hours, remainder = divmod(delta.seconds, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                if days < 0:
+                    # console_logger.debug("The number is negative.")
+                    dictData["days_to_go"] = 0
+                else:
+                    # console_logger.debug("The number is positive.")
+                    dictData["days_to_go"] = f"{days}"
+                count -= 1
+
+                finalData.append(dictData)
+
+            result["datasets"] = finalData
+            result["total"] = total_count
+            return result
+        elif type and type == "download":
+            del type
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+            today = datetime.datetime.now()
+            seven_days_ago = today + datetime.timedelta(days=7)
+            
+            result = {"labels": [], "datasets": [], "total": 0, "page_size": 15}
+
+            pipeline = [
+                    {
+                        "$addFields": {
+                            "certificate_expiry_date": {
+                                "$dateFromString": {
+                                    "dateString": "$certificate_expiry",
+                                    "format": "%d-%m-%Y"
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "$match": {
+                            "$and": [
+                                {"certificate_expiry_date": {"$lte": seven_days_ago}},
+                            ]
+                        }
+                    },
+                    {
+                        "$addFields": {
+                            "days_to_go": {
+                                "$divide": [
+                                    {
+                                        "$subtract": ["$certificate_expiry_date", datetime.datetime.now() + datetime.timedelta(days=-1)]
+                                    },
+                                    1000 * 60 * 60 * 24
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "$sort": {"vehicle_number": 1, "created_at": -1}
+                    },
+                    {
+                        "$group": {
+                            "_id": "$vehicle_number",
+                            "latest_record": {"$first": "$$ROOT"}
+                        }
+                    },
+                    {
+                        "$project": {  
+                            "latest_record": -1
+                        }
+                    },
+                    {
+                        "$replaceRoot": {"newRoot": "$latest_record"}
+                    },
+                    {
+                        "$sort": {"created_at": -1}
+                    }
+                ]
+            count_pipeline = pipeline.copy()
+            count_pipeline.append({"$count": "total_count"})
+            count_result = list(Gmrdata.objects.aggregate(count_pipeline))
+            total_count = count_result[0]["total_count"] if count_result else 0
+            
+            if page_no and page_size:
+                pipeline.append({"$skip": skip})
+                pipeline.append({"$limit": limit})
+            
+            console_logger.debug(pipeline)
+            results = list(Gmrdata.objects.aggregate(pipeline))
+            # sorting data in ascending order i.e reverse=False
+            # results_sorted = sorted(results, key=lambda record: record["latest_record"]["days_to_go"], reverse=False)
+            results_sorted = sorted(results, key=lambda record: record["days_to_go"], reverse=False)
+            count = len(results_sorted)
+            path = os.path.join(
+                "static_server",
+                "gmr_ai",
+                file,
+                "Vehicle_expiry_{}.xlsx".format(
+                    datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                ),
+            )
+            filename = os.path.join(os.getcwd(), path)
+            workbook = xlsxwriter.Workbook(filename)
+            workbook.use_zip64()
+            cell_format2 = workbook.add_format()
+            cell_format2.set_bold()
+            cell_format2.set_font_size(10)
+            cell_format2.set_align("center")
+            cell_format2.set_align("vjustify")
+
+            worksheet = workbook.add_worksheet()
+            worksheet.set_column("A:AZ", 20)
+            worksheet.set_default_row(50)
+            cell_format = workbook.add_format()
+            cell_format.set_font_size(10)
+            cell_format.set_align("center")
+            cell_format.set_align("vcenter")
+            headers = ["sr_no", "vehicle_number", "vehicle_chassis_number", "expiry_date", "days_to_go"]
+            finalData = []
+
+            for index, header in enumerate(headers):
+                worksheet.write(0, index, header, cell_format2)
+
+            row = 1
+            for record in results_sorted:
+                worksheet.write(row, 0, count, cell_format)
+                worksheet.write(row, 1, record["vehicle_number"])
+                worksheet.write(row, 2, record["vehicle_chassis_number"])
+                worksheet.write(row, 3, record["certificate_expiry"])
+                # worksheet.write(row, 4, record["fitness_file"])
+                
+
+                days_to_go = record["days_to_go"]
+                total_seconds = int(days_to_go * 24 * 60 * 60)  # Convert days to seconds
+                delta = timedelta(seconds=total_seconds)
+
+                days = delta.days
+                hours, remainder = divmod(delta.seconds, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                if days < 0:
+                    console_logger.debug("The number is negative.")
+                    worksheet.write(row, 4, 0)
+                else:
+                    console_logger.debug("The number is positive.")
+                    worksheet.write(row, 4, days)
+                count -= 1
+                row += 1
+            workbook.close()
+
+            return {
+                "Type": "vehicle_fitness_expiry",
+                "Datatype": "Report",
+                "File_Path": path,
+            }
+
+    except Exception as e:
+        console_logger.debug("----- Fetch Report Name Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+# @router.get("/fetch/reportname", tags=["PDF Report"])
+# def endpoint_to_fetch_report_name():
+#     try:
+#         listData = []
+#         fetchAllPdfReportName = ReportScheduler.objects()
+#         for single_report_name in fetchAllPdfReportName:
+#             listData.append(single_report_name.report_payload())
+#         return listData
+#     except Exception as e:
+#         console_logger.debug("----- Fetch Report Name Error -----",e)
+#         exc_type, exc_obj, exc_tb = sys.exc_info()
+#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#         return e
 
 #  x------------------------------    Scheduler To Tigger Coal API's    ------------------------------------x
 

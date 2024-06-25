@@ -71,6 +71,8 @@ class ReportInstantPostIn(BaseModel):
 class MisReportData(BaseModel):
     report_name: str
     recipient_list: List[str]
+    cc_list: List[str]
+    bcc_list: List[str]
     filter: str
     schedule: str
     time: str
@@ -92,4 +94,9 @@ class LatLongPostIn(BaseModel):
     name: str
     latlong: List[float]
     type: str
+
+
+class ShortMineName(BaseModel):
+    mine_name: str
+    short_code: str
 

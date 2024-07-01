@@ -412,8 +412,23 @@ class Gmrrequest(Document):
 
         tat = None
         if self.created_at and self.approved_at:
-            tat_delta = self.approved_at - self.created_at
-            tat = str(tat_delta)
+            diff = self.approved_at - self.created_at
+            days = diff.days
+            seconds = diff.seconds
+            hours = seconds // 3600
+            minutes = (seconds % 3600) // 60
+            seconds = seconds % 60
+            components = []
+            if days > 0:
+                components.append(f"{days} days")
+            if hours > 0:
+                components.append(f"{hours} hours")
+            if minutes > 0:
+                components.append(f"{minutes} minutes")
+            if seconds > 0:
+                components.append(f"{seconds} seconds")
+            
+            tat = ", ".join(components)
 
         return {
                 "Sr.No.":self.ID,
@@ -499,6 +514,8 @@ class Gmrdata(Document):
     gross_weighbridge = StringField(null=True)
     tare_weighbridge = StringField(null=True)
 
+    dc_request = BooleanField(default=False)
+
     created_at = DateTimeField(default=datetime.datetime.utcnow())
 
     # remark = StringField(null=True)
@@ -517,12 +534,14 @@ class Gmrdata(Document):
 
         Loss = None
         transit_loss=None
-        vehicle_time_count=None
+        tat=None
+
         if self.net_qty is not None and self.actual_net_qty is not None:
             Loss = float(self.actual_net_qty) - float(self.net_qty)
             transit_loss = round(Loss,5)
-        if self.vehicle_in_time is not None and self.vehicle_out_time is not None:
-            diff = self.vehicle_out_time - self.vehicle_in_time
+            
+        if self.vehicle_in_time is not None and self.GWEL_Tare_Time is not None:
+            diff = self.GWEL_Tare_Time - self.vehicle_in_time
             days = diff.days
             seconds = diff.seconds
             hours = seconds // 3600
@@ -538,7 +557,7 @@ class Gmrdata(Document):
             if seconds > 0:
                 components.append(f"{seconds} seconds")
             
-            vehicle_time_count = ", ".join(components)
+            tat = ", ".join(components)
 
         return {"record_id":self.record_id,
                 "Sr.No.":self.ID,
@@ -607,7 +626,7 @@ class Gmrdata(Document):
                     self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
                     ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
 
-                "TAT_difference": vehicle_time_count,
+                "TAT_difference": tat,
                 }
     
 
@@ -747,7 +766,7 @@ class SelectedLocation(Document):
             "latlong": self.latlong,
             "type": self.type,
         }
-    
+
 
 class PdfReportName(Document):
     name = StringField()
@@ -761,3 +780,45 @@ class PdfReportName(Document):
             "name": self.name,
             "created_at": self.created_at,
         }
+
+
+class SeclData(EmbeddedDocument):
+    source_type = StringField()
+    media_server = ReferenceField("App")
+    tracker = ReferenceField("App")
+    # docker_image = StringField()
+
+    def payload(self):
+        return {"source_name": self.source_name, "docker_image": self.docker_image}
+
+
+# class RailData(Document):
+#     rr_no = StringField()
+#     rr_qty = StringField()
+#     po_no = StringField()
+#     po_date = StringField()
+#     line_item = StringField()
+#     source = StringField()
+#     placement_date = StringField()
+#     completion_date = StringField()
+#     drawn_date = StringField()
+#     total_ul_wt = StringField()
+#     boxes_supplied = StringField()
+#     total_secl_gross_wt = StringField()
+#     total_secl_tare_wt = StringField()
+#     total_secl_net_wt = StringField()
+#     total_secl_ol_wt = StringField()
+#     boxes_loaded = StringField()
+#     total_rly_gross_wt = StringField()
+#     total_rly_tare_wt = StringField()
+#     total_rly_net_wt = StringField()
+#     total_rly_ol_wt = StringField()
+#     total_secl_chargable_wt = StringField()
+#     total_rly_chargable_wt = StringField()
+#     secl_data = EmbeddedDocumentListField(SeclData)
+#     rly_data = EmbeddedDocumentListField(RailData)
+    # wagon_owner = StringField()
+    # wagon_type = StringField()
+    # wagon_no = StringField()
+    # secl_cc_wt = StringField()
+    # secl_gross_wt = 

@@ -119,9 +119,11 @@ tags_meta = [{"name":"Coal Consumption",
               {"name":"Coal Testing",
               "description": "Coal Testing And Sampling"},
               {"name":"Road Map",
-              "description": "Road Map for Truck Journey"}]
+              "description": "Road Map for Truck Journey"},
+              {"name":"Road Map Request",
+              "description": "Road Map for Request Journey"}]
 
-router = FastAPI(title="GMR API's", description="Contains GMR Testing, Consumption and Roadmap apis",
+router = FastAPI(title="GMR API's", description="Contains GMR Testing, Consumption, Roadmap and Roadmap Request Apis",
                  openapi_tags=tags_meta)
 
 router.add_middleware(
@@ -3223,14 +3225,70 @@ def gmr_table(response:Response, filter_data: Optional[List[str]] = Query([]), c
         return e
 
 
-@router.get("/road/fitness_validation_table", tags=["Road Map"])
+@router.post("/save_dc_request_data", tags=["Road Map Request"])
+async def store_dc_request_data(data:RequestData):
+    try:
+        console_logger.debug(data)
+        challan_no = data.Delivery_Challan_Number
+        record = Gmrdata.objects(delivery_challan_number = challan_no).order_by("-created_at").first()
+        entry_exists = Gmrrequest.objects(delivery_challan_number=challan_no,vehicle_number__exists=True).order_by("-created_at").first()
+        
+        if not record:    
+            raise HTTPException(status_code=404, detail="Record not found")
+        record.dc_request = True
+        record.save()
+
+        if not entry_exists:
+            dc_data = Gmrrequest(
+                                    delivery_challan_number = challan_no,
+                                    vehicle_number = data.Vehicle_Truck_Registration_No.upper().strip() if data.Vehicle_Truck_Registration_No else data.Vehicle_Truck_Registration_No.strip(),
+                                    arv_cum_do_number = data.ARV_Cum_DO_Number,
+                                    mine = data.Mine_Name.upper(),
+                                    net_qty = data.Net_Qty,
+                                    delivery_challan_date = data.Delivery_Challan_Date,
+                                    total_net_amount = data.Total_Net_Amount_of_Figures.replace(",",""),
+                                    vehicle_chassis_number = data.Chassis_No,
+                                    certificate_expiry = data.Certificate_will_expire_on,
+                                    request = "DC_Expiry_Request",
+                                    created_at = datetime.datetime.utcnow(),
+                                    ID=Gmrrequest.objects.count() + 1)
+            dc_data.save()
+            record_num = Gmrrequest.objects(delivery_challan_number=challan_no,record_id__exists=True).order_by("-created_at").first()
+            console_logger.debug(record_num.record_id)
+            return {"message": "Successful"}
+        return {"message": "Entry with this challan Number exist"}
+
+    except NotUniqueError:
+        new_record_id = uuid.uuid4().hex
+        dc_data = Gmrrequest(
+                            record_id=new_record_id,
+                            delivery_challan_number = challan_no,
+                            vehicle_number = data.Vehicle_Truck_Registration_No.upper().strip() if data.Vehicle_Truck_Registration_No else data.fitness.Vehicle_Truck_Registration_No.strip(),
+                            arv_cum_do_number = data.ARV_Cum_DO_Number,
+                            mine = data.Mine_Name.upper(),
+                            net_qty = data.Net_Qty,
+                            delivery_challan_date = data.Delivery_Challan_Date,
+                            total_net_amount = data.Total_Net_Amount_of_Figures.replace(",",""),
+                            vehicle_chassis_number = data.Chassis_No,
+                            certificate_expiry = data.Certificate_will_expire_on,
+                            request = "DC_Expiry_Request",                                
+                            created_at = datetime.datetime.utcnow(),
+                            ID=Gmrrequest.objects.count() + 1)
+        dc_data.save()
+        record_num = Gmrrequest.objects(delivery_challan_number=challan_no,record_id__exists=True).order_by("-created_at").first()
+        console_logger.debug(record_num.record_id)
+        return {"message": "Successful"}
+
+
+@router.get("/road/fitness_validation_table", tags=["Road Map Request"])
 def fitness_dc_validation(
     response: Response,
     currentPage: Optional[int] = None,
     perPage: Optional[int] = None,
     search_text: Optional[str] = None,
     start_timestamp: Optional[str] = None,
-    end_timestamp: Optional[str] = None
+    end_timestamp: Optional[str] = None,
+    search_type: Optional[str] = "fitness"
 ):
     try:
         result = {
@@ -3250,8 +3308,7 @@ def fitness_dc_validation(
             page_len = perPage
             result["page_size"] = perPage
 
-        data = Q(expiry_validation = True)
-        # data = Q()
+        data = Q(expiry_validation=True)
 
         if start_timestamp:
             start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M", "Asia/Kolkata", False)
@@ -3267,6 +3324,11 @@ def fitness_dc_validation(
             else:
                 data &= Q(vehicle_number__icontains=search_text)
 
+        if search_type == "fitness":
+            data &= Q(request="Fitness_Expiry_Request")
+        else:
+            data &= Q(request="DC_Expiry_Request")
+
         offset = (page_no - 1) * page_len
 
         logs = (
@@ -3276,7 +3338,7 @@ def fitness_dc_validation(
             .limit(page_len)
         )
 
-        if any(logs):
+        if logs:
             for log in logs:
                 result["labels"] = list(log.payload().keys())
                 result["datasets"].append(log.payload())
@@ -3294,7 +3356,7 @@ def fitness_dc_validation(
         return e
 
 
-@router.get("/road/record_table", tags=["Road Map"])
+@router.get("/road/record_table", tags=["Road Map Request"])
 def fitness_dc_record(
     response: Response,
     currentPage: Optional[int] = None,
@@ -3302,7 +3364,8 @@ def fitness_dc_record(
     search_text: Optional[str] = None,
     start_timestamp: Optional[str] = None,
     end_timestamp: Optional[str] = None,
-    type: Optional[str] = "display"
+    type: Optional[str] = "display",
+    search_type: Optional[str] = "fitness"
 ):
     try:
         result = {
@@ -3311,7 +3374,8 @@ def fitness_dc_record(
             "total": 0,
             "page_size": 15
         }
-        if type and type == "display":
+
+        if type == "display":
             page_no = 1
             page_len = result["page_size"]
 
@@ -3323,7 +3387,11 @@ def fitness_dc_record(
                 result["page_size"] = perPage
 
             data = Q(approved_at__ne=None)
-            # data = Q()
+
+            if search_type == "fitness":
+                data &= Q(request="Fitness_Expiry_Request")
+            else:
+                data &= Q(request="DC_Expiry_Request")
 
             if start_timestamp:
                 start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M", "Asia/Kolkata", False)
@@ -3348,7 +3416,7 @@ def fitness_dc_record(
                 .limit(page_len)
             )
 
-            if any(logs):
+            if logs:
                 for log in logs:
                     result["labels"] = list(log.history_payload().keys())
                     result["datasets"].append(log.history_payload())
@@ -3356,9 +3424,7 @@ def fitness_dc_record(
             result["total"] = Gmrrequest.objects(data).count()
             return result
 
-        elif type and type == "download":
-            del type
-
+        elif type == "download":
             file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
             target_directory = f"static_server/gmr_ai/{file}"
             os.umask(0)
@@ -3366,23 +3432,29 @@ def fitness_dc_record(
 
             data = Q(approved_at__ne=None)
 
+            if search_type == "fitness":
+                data &= Q(request="Fitness_Expiry_Request")
+            else:
+                data &= Q(request="DC_Expiry_Request")
+
             if start_timestamp:
                 start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M", "Asia/Kolkata", False)
-                data &= Q(approved_at__gte = start_date)
+                data &= Q(approved_at__gte=start_date)
 
             if end_timestamp:
-                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
-                data &= Q(approved_at__lte = end_date)
-            
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M", "Asia/Kolkata", False)
+                data &= Q(approved_at__lte=end_date)
+
             if search_text:
                 if search_text.isdigit():
-                    data &= Q(arv_cum_do_number__icontains = search_text) | Q(delivery_challan_number__icontains = search_text)
+                    data &= Q(arv_cum_do_number__icontains=search_text) | Q(delivery_challan_number__icontains=search_text)
                 else:
-                    data &= Q(vehicle_number__icontains = search_text)
+                    data &= Q(vehicle_number__icontains=search_text)
 
             usecase_data = Gmrrequest.objects(data).order_by("-approved_at")
             count = len(usecase_data)
             path = None
+
             if usecase_data:
                 try:
                     path = os.path.join(
@@ -3413,14 +3485,14 @@ def fitness_dc_record(
                     headers = [
                         "Sr.No",
                         "Request Type",
-                        "Mines Name",
-                        "Vehicle No.",
-                        "Challan No",
+                        "Mine",
+                        "Vehicle Number",
+                        "Delivery Challan No",
                         "DO No",
-                        "Chassis No",
+                        "Vehicle Chassis No",
                         "Fitness Expiry",
                         "DC Date",
-                        "Net Wt. as per challan (MT)",
+                        "Challan Net Wt(MT)",
                         "Total Net Amount",
                         "Remark",
                         "Request Time",
@@ -3430,7 +3502,8 @@ def fitness_dc_record(
 
                     for index, header in enumerate(headers):
                         worksheet.write(0, index, header, cell_format2)
-                    for row, query in enumerate(usecase_data,start=1):
+
+                    for row, query in enumerate(usecase_data, start=1):
                         result = query.history_payload()
                         worksheet.write(row, 0, count, cell_format)
                         worksheet.write(row, 1, str(result["Request_type"]), cell_format)
@@ -3447,32 +3520,33 @@ def fitness_dc_record(
                         worksheet.write(row, 12, str(result["Request_Time"]), cell_format)
                         worksheet.write(row, 13, str(result["Approval_Time"]), cell_format)
                         worksheet.write(row, 14, str(result["TAT"]), cell_format)
-                        count-=1
-                        
+                        count -= 1
+
                     workbook.close()
                     console_logger.debug("Successfully {} report generated".format(service_id))
                     console_logger.debug("sent data {}".format(path))
 
                     return {
-                            "Type": "Request_Approval_download_event",
-                            "Datatype": "Report",
-                            "File_Path": path,
-                            }
-                
+                        "Type": "Request_Approval_download_event",
+                        "Datatype": "Report",
+                        "File_Path": path,
+                    }
+
                 except Exception as e:
                     console_logger.debug(e)
                     exc_type, exc_obj, exc_tb = sys.exc_info()
                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                     console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
                     console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+
             else:
                 console_logger.error("No data found")
                 return {
-                        "Type": "Request_Approval_download_event",
-                        "Datatype": "Report",
-                        "File_Path": path,
-                        }    
-            
+                    "Type": "Request_Approval_download_event",
+                    "Datatype": "Report",
+                    "File_Path": path,
+                }
+
     except Exception as e:
         response.status_code = 400
         console_logger.debug(e)
@@ -3490,8 +3564,8 @@ def add_days_to_date(date_str, days):
     return new_date_obj.strftime(date_format)
 
 
-@router.put("/road/update_expiry_date", tags=["Road Map"])
-async def update_expiry_date(vehicle_number: str, remark: Optional[str] = None):
+@router.put("/road/update_expiry_date", tags=["Road Map Request"])
+async def update_fc_expiry_date(vehicle_number: str, remark: Optional[str] = None):
     try:
         record = Gmrdata.objects(vehicle_number = vehicle_number).order_by("-created_at").first()
         request_record = Gmrrequest.objects(vehicle_number = vehicle_number, expiry_validation=True).order_by("-created_at").first()
@@ -3517,8 +3591,8 @@ async def update_expiry_date(vehicle_number: str, remark: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/road/pass_expiry_date", tags=["Road Map"])
-async def pass_expiry_date(vehicle_number: str, remark: Optional[str] = None):
+@router.put("/road/pass_expiry_date", tags=["Road Map Request"])
+async def pass_fc_expiry_date(vehicle_number: str, remark: Optional[str] = None):
     try:
         record = Gmrdata.objects(vehicle_number = vehicle_number).order_by("-created_at").first()
         request_record = Gmrrequest.objects(vehicle_number = vehicle_number, expiry_validation=True).order_by("-created_at").first()
@@ -3540,8 +3614,57 @@ async def pass_expiry_date(vehicle_number: str, remark: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/delete_expiry", tags=["Road Map"])
-def delete_fitness_expiry(delivery_challan_number: str):
+@router.put("/road/update_dc_expiry", tags=["Road Map Request"])
+async def update_dc_expiry(challan_no: str, remark: Optional[str] = None):
+    try:
+        record = Gmrdata.objects(delivery_challan_number = challan_no).order_by("-created_at").first()
+        request_record = Gmrrequest.objects(delivery_challan_number = challan_no, expiry_validation=True).order_by("-created_at").first()
+
+        if remark == None:
+            remark = "DC Approved"
+
+        if request_record:
+            request_record.expiry_validation = False
+            request_record.approved_at =  datetime.datetime.utcnow()
+            request_record.remark = remark
+            request_record.save()
+
+        if not record:
+            raise HTTPException(status_code=404, detail="Record not found")
+        
+        record.gate_approved = True
+        record.save()
+
+        return {"message": "Record updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/road/pass_dc_expiry", tags=["Road Map Request"])
+async def pass_dc_expiry(challan_no: str, remark: Optional[str] = None):
+    try:
+        record = Gmrdata.objects(delivery_challan_number = challan_no).order_by("-created_at").first()
+        request_record = Gmrrequest.objects(delivery_challan_number = challan_no, expiry_validation=True).order_by("-created_at").first()
+
+        if remark == None:
+            remark = "DC Declined"
+
+        if request_record:
+            request_record.expiry_validation = False
+            request_record.approved_at =  datetime.datetime.utcnow()
+            request_record.remark = remark
+            request_record.save()
+
+        if not record:
+            raise HTTPException(status_code=404, detail="Record not found")
+            
+        return {"message": "Record updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/delete_expiry", tags=["Road Map Request"])
+def delete_expiry(delivery_challan_number: str):
     try:
         challan = Gmrrequest.objects.get(delivery_challan_number = delivery_challan_number)
         challan.delete()
@@ -3724,7 +3847,7 @@ def minewise_road_analysis(response:Response,type: Optional[str] = "Daily",
             if "_id" in data:
                 ts = data["_id"]["ts"]
                 mine = data["_id"]["mine"]
-
+                console_logger.debug(ts)
                 data_list = data.get('data', [])
                 sum_list = []
                 for item in data_list:
@@ -3774,7 +3897,6 @@ def minewise_road_analysis(response:Response,type: Optional[str] = "Daily",
                     ).strftime("%b %y")
                     for i in range(0, 12)
                 ]
-            
             if int(label) in outputDict:
                 for key, val in outputDict[int(label)].items():
 
@@ -5837,6 +5959,7 @@ def send_report_generate(**kwargs):
         # for singleReportschedule in reportSchedule:
         # if singleReportschedule["report_name"] == "daily_coal_logistic_report":
         if kwargs["report_name"] == "daily_coal_logistic_report":
+            console_logger.debug("inside logistic report")
             generateReportData = generate_gmr_report(Response, datetime.date.today().strftime("%Y-%m-%d"), "All")
             console_logger.debug(f"{os.path.join(os.getcwd())}/{generateReportData}")
             response_code, fetch_email = fetch_email_data()
@@ -5847,6 +5970,7 @@ def send_report_generate(**kwargs):
                 # send_email(smtpData.Smtp_user, subject, smtpData.Smtp_password, smtpData.Smtp_host, smtpData.Smtp_port, receiver_email, body, f"{os.path.join(os.getcwd())}{generateReportData}")
                 send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[0].recipient_list, body, f"{os.path.join(os.getcwd())}/{generateReportData}", reportSchedule[0].cc_list, reportSchedule[0].bcc_list)
         elif kwargs["report_name"] == "certificate_expiry_notifications":
+            console_logger.debug("inside certificate expiry")
             generateExpiryData = endpoint_to_fetch_going_to_expiry_vehicle(Response)
             tabledata = ""
             for single_data in generateExpiryData["datasets"]:
@@ -5891,6 +6015,14 @@ def send_report_generate(**kwargs):
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug("Error on line {}".format(sys.exc_info()[-1].tb_lineno))
         return {"detail": "failed"}
+
+@router.get("/testing_data", tags=["test"])
+def test_api(response: Response):
+    try:
+        send_report_generate(**{'report_name': 'daily_coal_logistic_report'})
+    except Exception as e:
+        console_logger.debug(e)
+
 
 
 @router.get("/coal_logistics_report", tags=["Road Map"])

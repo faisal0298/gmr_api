@@ -67,7 +67,6 @@ class ReportInstantPostIn(BaseModel):
     report_action: List[str]
 
 
-
 class MisReportData(BaseModel):
     report_name: str
     recipient_list: List[str]
@@ -100,3 +99,14 @@ class ShortMineName(BaseModel):
     mine_name: str
     short_code: str
 
+
+class RequestData(BaseModel):
+    Delivery_Challan_Number: str = None
+    ARV_Cum_DO_Number: str = None
+    Mine_Name: str = None
+    Vehicle_Truck_Registration_No: str = None
+    Net_Qty: str = None
+    Delivery_Challan_Date: str = None
+    Total_Net_Amount_of_Figures: str = None
+    Chassis_No: Optional[str] = None
+    Certificate_will_expire_on: str = None

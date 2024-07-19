@@ -4,6 +4,7 @@ from pymongo import MongoClient
 import os
 
 host = os.environ.get("HOST", "192.168.1.57")
+ip = os.environ.get("IP", "192.168.1.57")
 db_port = int(os.environ.get("DB_PORT", 30000))
 username = os.environ.get("USERNAME", "gmr_api")
 password = os.environ.get("PASSWORD", "Q1hTpYkpYNRzsUVs")

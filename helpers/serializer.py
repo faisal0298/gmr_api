@@ -1,5 +1,5 @@
 from pydantic import BaseModel, validator, ValidationError, root_validator, EmailStr
-from typing import Optional, List
+from typing import Optional, List,Dict,Union
 from enum import Enum
 
 
@@ -43,6 +43,10 @@ class seclData(BaseModel):
 class WCLtest(BaseModel):
     id: str
     coal_data: dict
+
+class WCLtestMain(BaseModel):
+    # data: List[WCLtest]
+    data: List[dict]
 
 class ReportEnum(str, Enum):
     daily = "daily"
@@ -110,3 +114,70 @@ class RequestData(BaseModel):
     Total_Net_Amount_of_Figures: str = None
     Chassis_No: Optional[str] = None
     Certificate_will_expire_on: str = None
+
+
+class RailwayDataDetails(BaseModel):
+    indexing: str
+    wagon_owner: str
+    wagon_type: str
+    wagon_no: str
+    secl_cc_wt: str
+    secl_gross_wt: str
+    secl_tare_wt: str
+    secl_net_wt: str
+    secl_ol_wt: str
+    secl_ul_wt: str
+    secl_chargable_wt: str
+    rly_cc_wt: str
+    rly_gross_wt: str
+    rly_tare_wt: str
+    rly_net_wt: str
+    rly_permissible_cc_wt: str
+    rly_ol_wt: str
+    rly_norm_rate: str
+    rly_pun_rate: str
+    rly_chargable_wt: str
+    rly_sliding_adjustment: str
+
+class RailwayData(BaseModel):
+    rr_no: str
+    rr_qty: str
+    po_no: str
+    po_date: str
+    line_item: str
+    source: str
+    placement_date: str
+    completion_date: str
+    drawn_date: str
+    total_ul_wt: str
+    boxes_supplied: str
+    total_secl_gross_wt: str
+    total_secl_tare_wt: str
+    total_secl_net_wt: str
+    total_secl_ol_wt: str
+    boxes_loaded: str
+    total_rly_gross_wt: str
+    total_rly_tare_wt: str
+    total_rly_net_wt: str
+    total_rly_ol_wt: str
+    total_secl_chargable_wt: str
+    total_rly_chargable_wt: str
+    freight: str
+    gst: str
+    pola: str
+    total_freight: str
+    source_type: str
+    secl_rly_data: List[dict]
+
+
+class EmailRequest(BaseModel):
+    sender_email: EmailStr
+    subject: Optional[str]
+    password: str
+    smtp_host: str
+    smtp_port: int
+    receiver_email: List[EmailStr]
+    body: str
+    file_path: Optional[Union[str, Dict[str, str]]]
+    cc_list: Optional[List[EmailStr]] = []
+    bcc_list: Optional[List[EmailStr]] = []

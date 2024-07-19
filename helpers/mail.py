@@ -9,6 +9,7 @@ from email.utils import formataddr
 import datetime
 from helpers.logger import console_logger
 import cryptocode
+import json
 
 # def send_email(sender_email, subject, password, smtp_host, smtp_port, receiver_email, body, file_path):
 #     # Create a MIMEMultipart object for the email
@@ -101,23 +102,54 @@ def send_email(sender_email, subject, password, smtp_host, smtp_port, receiver_e
         if bcc_list:
             message["Bcc"] = ', '.join(bcc_list)
 
+        # file_data = json.loads(file_path)
+
+        console_logger.debug(file_path)
+
         # Attach the body of the email
         if file_path:
             message.attach(MIMEText(body, "plain"))
         else:
             message.attach(MIMEText(body, "html"))
 
+        console_logger.debug(type(file_path))
+
         # Attach the file
         if file_path:
-            with open(file_path, "rb") as attachment:
-                part = MIMEBase("application", "octet-stream")
-                part.set_payload(attachment.read())
-            encoders.encode_base64(part)
-            part.add_header(
-                "Content-Disposition",
-                f"attachment; filename={file_path.rsplit('/', 1)[-1]}",
-            )
-            message.attach(part)
+            console_logger.debug("inside file path")
+            if isinstance(file_path, dict):
+                console_logger.debug("inside dict")
+                for each_file_path in file_path.values():
+                    try:
+                        console_logger.debug(each_file_path)
+                        with open(each_file_path, "rb") as attachment:
+                            part = MIMEBase("application", "octet-stream")
+                            part.set_payload(attachment.read())
+                        encoders.encode_base64(part)
+                        part.add_header(
+                            "Content-Disposition",
+                            f"attachment; filename={each_file_path.rsplit('/', 1)[-1]}",
+                        )
+                        message.attach(part)
+                        # file_name=each_file_path.split("/")[-1]
+                        # part = MIMEBase('application', "octet-stream")
+                        # part.set_payload(open(each_file_path, "rb").read())
+
+                        # Encoders.encode_base64(part)
+                        # part.add_header('Content-Disposition', 'attachment' ,filename=file_name)
+                        # msg.attach(part)
+                    except:
+                        print("could not attache file")
+            else:    
+                with open(file_path, "rb") as attachment:
+                    part = MIMEBase("application", "octet-stream")
+                    part.set_payload(attachment.read())
+                encoders.encode_base64(part)
+                part.add_header(
+                    "Content-Disposition",
+                    f"attachment; filename={file_path.rsplit('/', 1)[-1]}",
+                )
+                message.attach(part)
 
 
         # Combine all recipients for the sendmail method
@@ -137,8 +169,8 @@ def send_email(sender_email, subject, password, smtp_host, smtp_port, receiver_e
             server.quit()
     except smtplib.SMTPException as e:
         console_logger.error(f"SMTP error occurred: {e}")
-    except FileNotFoundError as e:
-        console_logger.error(f"File not found: {e}")
+    # except FileNotFoundError as e:
+    #     console_logger.error(f"File not found: {e}")
     except Exception as e:
         console_logger.error(f"Failed to send email: {e}")
 
@@ -156,6 +188,7 @@ def send_test_email(payload):
         </body>
     </html>
     '''
+    console_logger.debug(body)
     message.attach(MIMEText(body, 'html'))
     context = ssl.create_default_context()
     with smtplib.SMTP(payload.dict()["Smtp_host"], payload.dict()["Smtp_port"]) as server:

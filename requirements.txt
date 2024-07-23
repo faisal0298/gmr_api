@@ -34,3 +34,10 @@ matplotlib==3.7.3
 reportlab==4.0.6
 cryptocode==0.1
 pydantic
+pydyf==0.9.0
+
+camelot-py==0.11.0
+opencv-python==4.6.0.66
+opencv-python-headless==4.10.0.84
+pdftotext==2.2.2
+numpy==1.24

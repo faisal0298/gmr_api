@@ -56,6 +56,8 @@ import cryptocode
 from mongoengine import MultipleObjectsReturned
 from io import BytesIO
 from pymongo import MongoClient
+from dotenv import load_dotenv, dotenv_values
+load_dotenv() 
 
 # mahabal starts
 import tabula
@@ -735,7 +737,6 @@ def extract_historian_data(start_date: Optional[str] = None, end_date: Optional[
     success = False
     try:
         global consumption_headers, proxies
-        # entry = UsecaseParameters.objects.filter(Parameters__gmr_api__exists=True).first()
         entry = UsecaseParameters.objects.first()
         historian_ip = entry.Parameters.get('gmr_api', {}).get('roi1', {}).get('Coal Consumption IP') if entry else None
         historian_timer = entry.Parameters.get('gmr_api', {}).get('roi1', {}).get('Coal Consumption Duration') if entry else None
@@ -760,7 +761,7 @@ def extract_historian_data(start_date: Optional[str] = None, end_date: Optional[
                     "EndTime": end_date, 
                     "RetrievalType": "Aggregate", 
                     "RetrievalMode": "History", 
-                    "TagID": ["2","3538","16","3536"],
+                    "TagID": ["2","3538","16","3536", "15274", "15275"],
                     "RetrieveBy": "ID"
                     })
         
@@ -1777,11 +1778,11 @@ def coal_wcl_gcv_table(
                         for mine, values in data.items():
                             dictData = {}
                             dictData['Mine'] = mine
-                            dictData['DO_Qty'] = str(values['average_DO_Qty'])
-                            dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                            dictData['DO_Qty'] = round(values['average_DO_Qty'], 2)
+                            dictData['GWEL_Gross_Calorific_Value_(Adb)'] = round(values['average_Gross_Calorific_Value_(Adb)'], 2)
                             if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":    
-                                dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
-                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                                dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"], 2)
                                 if values.get("average_Third_Party_GCV_Grade"):
                                     dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
                                 dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
@@ -1800,11 +1801,11 @@ def coal_wcl_gcv_table(
                         for mine, values in single_data['data'].items():
                             dictData = {}
                             dictData['Mine'] = mine
-                            dictData['DO_Qty'] = str(values['average_DO_Qty'])
-                            dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                            dictData['DO_Qty'] = round(values['average_DO_Qty'], 2)
+                            dictData['GWEL_Gross_Calorific_Value_(Adb)'] = round(values['average_Gross_Calorific_Value_(Adb)'], 2)
                             if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
-                                dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
-                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                                dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"], 2)
                                 if values.get("average_Third_Party_GCV_Grade"):
                                     dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
                                 dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
@@ -1892,8 +1893,8 @@ def coal_wcl_gcv_table(
                         "Sr.No",
                         "Mine",
                         "DO_Qty",
-                        "Gross_Calorific_Value_(Adb)",
-                        "Gross_Calorific_Value_Grade",
+                        "GWEL_Gross_Calorific_Value_(Adb)",
+                        "GWEL_Gross_Calorific_Value_Grade",
                         "Third_Party_Gross_Calorific_Value_(Adb)",
                         "Third_Party_Gross_Calorific_Value_(Adb)_grade",
                         "Difference_Gross_Calorific_Value(Adb)",
@@ -1966,11 +1967,11 @@ def coal_wcl_gcv_table(
                             for mine, values in data.items():
                                 dictData = {}
                                 dictData['Mine'] = mine
-                                dictData['DO_Qty'] = str(values['average_DO_Qty'])
-                                dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                                dictData['DO_Qty'] = round(values['average_DO_Qty'], 2)
+                                dictData['Gross_Calorific_Value_(Adb)'] = round(values['average_Gross_Calorific_Value_(Adb)'], 2)
                                 if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":    
                                     dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
-                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"], 2)
                                     if values.get("average_Third_Party_GCV_Grade"):
                                         dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
                                     dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
@@ -1989,11 +1990,11 @@ def coal_wcl_gcv_table(
                             for mine, values in single_data['data'].items():
                                 dictData = {}
                                 dictData['Mine'] = mine
-                                dictData['DO_Qty'] = str(values['average_DO_Qty'])
-                                dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                                dictData['DO_Qty'] = round(values['average_DO_Qty'], 2)
+                                dictData['Gross_Calorific_Value_(Adb)'] = round(values['average_Gross_Calorific_Value_(Adb)'], 2)
                                 if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
                                     dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
-                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"],2)
                                     if values.get("average_Third_Party_GCV_Grade"):
                                         dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
                                     dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
@@ -2165,13 +2166,13 @@ def coal_wcl_gcv_table(
                             # console_logger.debug(values)
                             dictData = {}
                             dictData['Mine'] = mine
-                            dictData['RR_Qty'] = str(values['average_RR_Qty'])
-                            dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                            dictData['RR_Qty'] = round(values['average_RR_Qty'], 2)
+                            dictData['GWEL_Gross_Calorific_Value_(Adb)'] = round(values['average_Gross_Calorific_Value_(Adb)'], 2)
 
                             if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
                                 # dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_Third_Party_GCV_Grade']
-                                dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
-                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                                dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"], 2)
                                 if values.get("average_Third_Party_GCV_Grade"):
                                     dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
                                 dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
@@ -2188,12 +2189,12 @@ def coal_wcl_gcv_table(
                         for mine, values in single_data['data'].items():
                             dictData = {}
                             dictData['Mine'] = mine
-                            dictData['RR_Qty'] = str(values['average_RR_Qty'])
-                            dictData['Gross_Calorific_Value_(Adb)'] = str(values['average_Gross_Calorific_Value_(Adb)'])
+                            dictData['RR_Qty'] = round(values['average_RR_Qty'], 2)
+                            dictData['GWEL_Gross_Calorific_Value_(Adb)'] = round(values['average_Gross_Calorific_Value_(Adb)'], 2)
                             if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
                                 # dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_Third_Party_GCV_Grade']
-                                dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
-                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = str(values["average_Third_Party_Gross_Calorific_Value_(Adb)"])
+                                dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"], 2)
                                 if values.get("average_Third_Party_GCV_Grade"):
                                     dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
                                 dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
@@ -2278,8 +2279,8 @@ def coal_wcl_gcv_table(
                         "Sr.No",
                         "Mine",
                         "RR_Qty",
-                        "Gross_Calorific_Value_(Adb)",
-                        "Gross_Calorific_Value_Grade",
+                        "GWEL_Gross_Calorific_Value_(Adb)",
+                        "GWEL_Gross_Calorific_Value_Grade",
                         "Third_Party_Gross_Calorific_Value_(Adb)",
                         "Third_Party_Gross_Calorific_Value_(Adb)_grade",
                         "Difference_Gross_Calorific_Value_(Adb)",
@@ -2724,9 +2725,9 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
             if any(logs):
                 for log in logs:
                     # result["labels"] = list(log.payload().keys())
-                    result["labels"] = ["Sr.No","Mine","Lot_No","DO_No","DO_Qty", "Supplier", "Date", "Time","Id", "Total_Moisture_%", 
-                                        "Inherent_Moisture_(Adb)_%", "Ash_(Adb)_%", "Volatile_Matter_(Adb)_%", "Gross_Calorific_Value_(Adb)_Kcal/Kg", 
-                                        "Ash_(Arb)_%", "Volatile_Matter_(Arb)_%", "Fixed_Carbon_(Arb)_%", "Gross_Calorific_Value_(Arb)_Kcal/Kg",
+                    result["labels"] = ["Sr.No","Mine","Lot_No","DO_No","DO_Qty", "Supplier", "Date", "Time","Id", "GWEL_Total_Moisture_%", 
+                                        "GWEL_Inherent_Moisture_(Adb)_%", "GWEL_Ash_(Adb)_%", "GWEL_Volatile_Matter_(Adb)_%", "GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg", 
+                                        "Ash_(Arb)_%", "GWEL_Volatile_Matter_(Arb)_%", "GWEL_Fixed_Carbon_(Arb)_%", "GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg",
                                         "Third_Party_Total_Moisture_%", "Third_Party_Inherent_Moisture_(Adb)_%", "Third_Party_Ash_(Adb)_%",
                                         "Third_Party_Volatile_Matter_(Adb)_%", "Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg",
                                         "Third_Party_Ash_(Arb)_%", "Third_Party_Volatile_Matter_(Arb)_%",
@@ -3133,15 +3134,15 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
                     "Date", 
                     "Time", 
                     "Id", 
-                    "Total_Moisture_%", 
-                    "Inherent_Moisture_(Adb)_%", 
-                    "Ash_(Adb)_%", 
-                    "Volatile_Matter_(Adb)_%", 
-                    "Gross_Calorific_Value_(Adb)_Kcal/Kg", 
-                    "Ash_(Arb)_%", 
-                    "Volatile_Matter_(Arb)_%", 
-                    "Fixed_Carbon_(Arb)_%", 
-                    "Gross_Calorific_Value_(Arb)_Kcal/Kg", 
+                    "GWEL_Total_Moisture_%", 
+                    "GWEL_Inherent_Moisture_(Adb)_%", 
+                    "GWEL_Ash_(Adb)_%", 
+                    "GWEL_Volatile_Matter_(Adb)_%", 
+                    "GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg", 
+                    "GWEL_Ash_(Arb)_%", 
+                    "GWEL_Volatile_Matter_(Arb)_%", 
+                    "GWEL_Fixed_Carbon_(Arb)_%", 
+                    "GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg", 
                     "Third_Party_Report_No", 
                     "Third_Party_Total_Moisture_%", 
                     "Third_Party_Inherent_Moisture_(Adb)_%", 
@@ -4864,7 +4865,8 @@ def daywise_coal_generation(response: Response):
         result = total_sum / 10000
 
         return {
-            "title": "Today's Total Generation(MW)",
+            # "title": "Today's Total Generation(MW)",
+            "title": "Todays Average Generation(MW)",
             "icon" : "energy",
             "data": round(result, 2),
             "last_updated": today
@@ -6562,6 +6564,10 @@ def endpoint_to_add_scheduler(response: Response, payload: MisReportData):
                 # backgroundTaskHandler.run_job(task_name=reportScheduler.report_name, func=send_report_generate, trigger="cron", **{"month": reportScheduler.schedule}) # month (int|str) - month (1-12)
                 backgroundTaskHandler.run_job(task_name=reportScheduler.report_name, func=send_report_generate, trigger="cron", **{"day": reportScheduler.schedule, "hour": hh, "minute": mm}, func_kwargs={"report_name":payload.report_name}, max_instances=1)
 
+        fetchEmailNotifications = emailNotifications.objects.get(notification_name=dataName.get("report_name"))
+        if fetchEmailNotifications:
+            fetchEmailNotifications.delete()
+
         return {"detail": "success"}
     except Exception as e:
         console_logger.debug(e)
@@ -6743,6 +6749,7 @@ def endpoint_to_fetch_aoptarget(response: Response, mine_name: str=None):
         console_logger.debug("Error on line {}".format(sys.exc_info()[-1].tb_lineno))
         return {"detail": "failed"}
 
+
 @router.get("/fetch/similarminelocation", tags=["PDF Report"])
 def endpoint_to_fetch_aoptarget(response: Response, mine_name: str):
     try:    
@@ -6826,182 +6833,290 @@ def send_report_generate(**kwargs):
         reportSchedule = ReportScheduler.objects()
         # for singleReportschedule in reportSchedule:
         # if singleReportschedule["report_name"] == "daily_coal_logistic_report":
+        
         if kwargs["report_name"] == "daily_coal_logistic_report":
-            if not check_existing_notification("daily_coal_logistic_report"):
-                emailNotifications(notification_name="daily_coal_logistic_report").save()
-                console_logger.debug("inside logistic report")
-                generateReportData = generate_gmr_report(Response, datetime.date.today().strftime("%Y-%m-%d"), "All")
-                console_logger.debug(f"{os.path.join(os.getcwd())}/{generateReportData}")
-                response_code, fetch_email = fetch_email_data()
-                if response_code == 200:
-                    console_logger.debug(reportSchedule[0].recipient_list)
-                    subject = f"GMR Daily Coal Logistic Report {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
-                    body = f"Daily Coal Logistic Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
-                    # send_email(smtpData.Smtp_user, subject, smtpData.Smtp_password, smtpData.Smtp_host, smtpData.Smtp_port, receiver_email, body, f"{os.path.join(os.getcwd())}{generateReportData}")
-                    console_logger.debug(os.getenv("DEVELOPMENT"))
-                    if os.getenv("DEVELOPMENT") == "local":
-                        send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[0].recipient_list, body, f"{os.path.join(os.getcwd())}/{generateReportData}", reportSchedule[0].cc_list, reportSchedule[0].bcc_list)
-                    elif os.getenv("DEVELOPMENT") == "prod":
-                        send_data = {
-                            "sender_email": fetch_email.get("Smtp_user"),
-                            "subject": subject,
-                            "password": fetch_email.get("Smtp_password"),
-                            "smtp_host": fetch_email.get("Smtp_host"),
-                            "smtp_port": fetch_email.get("Smtp_port"),
-                            "receiver_email": reportSchedule[0].recipient_list,
-                            "body": body,
-                            "file_path": f"{os.path.join(os.getcwd())}/{generateReportData}",
-                            "cc_list": reportSchedule[0].cc_list,
-                            "bcc_list": reportSchedule[0].bcc_list
-                        }
-                        console_logger.debug(send_data)
-                        generate_email(Response, email=send_data)
-            else:
+            if reportSchedule[0].active == False:
+                console_logger.debug("scheduler is off")
                 return
+            elif reportSchedule[0].active == True:
+                if not check_existing_notification("daily_coal_logistic_report"):
+                    emailNotifications(notification_name="daily_coal_logistic_report").save()
+                    console_logger.debug("inside logistic report")
+                    generateReportData = generate_gmr_report(Response, datetime.date.today().strftime("%Y-%m-%d"), "All")
+                    console_logger.debug(f"{os.path.join(os.getcwd())}/{generateReportData}")
+                    response_code, fetch_email = fetch_email_data()
+                    if response_code == 200:
+                        console_logger.debug(reportSchedule[0].recipient_list)
+                        subject = f"GMR Daily Coal Logistic Report {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                        body = f"Daily Coal Logistic Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                        # send_email(smtpData.Smtp_user, subject, smtpData.Smtp_password, smtpData.Smtp_host, smtpData.Smtp_port, receiver_email, body, f"{os.path.join(os.getcwd())}{generateReportData}")
+                        console_logger.debug(os.getenv("DEVELOPMENT"))
+                        if os.getenv("DEVELOPMENT") == "local":
+                            console_logger.debug("inside local")
+                            send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[0].recipient_list, body, f"{os.path.join(os.getcwd())}/{generateReportData}", reportSchedule[0].cc_list, reportSchedule[0].bcc_list)
+                        elif os.getenv("DEVELOPMENT") == "prod":
+                            console_logger.debug("inside prod")
+                            send_data = {
+                                "sender_email": fetch_email.get("Smtp_user"),
+                                "subject": subject,
+                                "password": fetch_email.get("Smtp_password"),
+                                "smtp_host": fetch_email.get("Smtp_host"),
+                                "smtp_port": fetch_email.get("Smtp_port"),
+                                "receiver_email": reportSchedule[0].recipient_list,
+                                "body": body,
+                                "file_path": f"{os.path.join(os.getcwd())}/{generateReportData}",
+                                "cc_list": reportSchedule[0].cc_list,
+                                "bcc_list": reportSchedule[0].bcc_list
+                            }
+                            console_logger.debug(send_data)
+                            generate_email(Response, email=send_data)
+                else:
+                    return
         elif kwargs["report_name"] == "certificate_expiry_notifications":
-            if not check_existing_notification("certificate_expiry_notifications"):
-                emailNotifications(notification_name="certificate_expiry_notifications").save()
-                console_logger.debug("inside certificate expiry")
-                generateExpiryData = endpoint_to_fetch_going_to_expiry_vehicle(Response)
-                tabledata = ""
-                for single_data in generateExpiryData["datasets"]:
-                    tabledata +="<tr>"
-                    tabledata +=f"<td>{single_data['vehicle_number']}</td>"
-                    tabledata +=f"<td>{single_data['vehicle_chassis_number']}</td>"
-                    tabledata +=f"<td>{single_data['expiry_date']}</td>"
-                    tabledata +=f"<td>{single_data['days_to_go']}</td>"
-                    tabledata +="</tr>"
-                response_code, fetch_email = fetch_email_data()
-                if response_code == 200:
-                    console_logger.debug(reportSchedule[1].recipient_list)
-                    # for receiver_email in reportSchedule[1].recipient_list:
-                    subject = f"Expiring Fitness Certificate for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
-                    body = f"""
-                    <b>Expiring Fitness Certificate for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b>
-                    <br>
-                    <br>
-                    <!doctype html>
-                    <html>
-                    <head>
-                        <meta charset="utf-8">
-                        <title>Expiry Certificate</title>
-                    </head>
-                    <body>
-                        <table border='1'>
-                            <tr>
-                                <th>Vehicle Number</th>
-                                <th>Vehicle Chassis Number</th>
-                                <th>Certificate Expiry</th>
-                                <th>Days To Go</th>
-                            </tr>
-                            {tabledata}
-                        </table>
-                    </body>
-                    </html>"""
-                    console_logger.debug(os.getenv("DEVELOPMENT"))
-                    if os.getenv("DEVELOPMENT") == "local":
-                        console_logger.debug("inside 192")
-                        send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[1].recipient_list, body, "", reportSchedule[1].cc_list, reportSchedule[1].bcc_list)
-                    elif os.getenv("DEVELOPMENT") == "prod":
-                        console_logger.debug("outside 192")
-                        send_data = {
-                            "sender_email": fetch_email.get("Smtp_user"),
-                            "subject": subject,
-                            "password": fetch_email.get("Smtp_password"),
-                            "smtp_host": fetch_email.get("Smtp_host"),
-                            "smtp_port": fetch_email.get("Smtp_port"),
-                            "receiver_email": reportSchedule[1].recipient_list,
-                            "body": body,
-                            "file_path": "",
-                            "cc_list": reportSchedule[1].cc_list,
-                            "bcc_list": reportSchedule[1].bcc_list
-                        }
-                        console_logger.debug(send_data)
-                        generate_email(Response, email=send_data)
-            else:
+            if reportSchedule[1].active == False:
+                console_logger.debug("scheduler is off")
                 return
+            elif reportSchedule[1].active == True:
+                if not check_existing_notification("certificate_expiry_notifications"):
+                    emailNotifications(notification_name="certificate_expiry_notifications").save()
+                    console_logger.debug("inside certificate expiry")
+                    generateExpiryData = endpoint_to_fetch_going_to_expiry_vehicle(Response)
+                    tabledata = ""
+                    for single_data in generateExpiryData["datasets"]:
+                        tabledata +="<tr>"
+                        tabledata +=f"<td>{single_data['vehicle_number']}</td>"
+                        tabledata +=f"<td>{single_data['vehicle_chassis_number']}</td>"
+                        tabledata +=f"<td>{single_data['expiry_date']}</td>"
+                        tabledata +=f"<td>{single_data['days_to_go']}</td>"
+                        tabledata +="</tr>"
+                    response_code, fetch_email = fetch_email_data()
+                    if response_code == 200:
+                        console_logger.debug(reportSchedule[1].recipient_list)
+                        # for receiver_email in reportSchedule[1].recipient_list:
+                        subject = f"Expiring Fitness Certificate for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                        body = f"""
+                        <b>Expiring Fitness Certificate for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b>
+                        <br>
+                        <br>
+                        <!doctype html>
+                        <html>
+                        <head>
+                            <meta charset="utf-8">
+                            <title>Expiry Certificate</title>
+                        </head>
+                        <body>
+                            <table border='1'>
+                                <tr>
+                                    <th>Vehicle Number</th>
+                                    <th>Vehicle Chassis Number</th>
+                                    <th>Certificate Expiry</th>
+                                    <th>Days To Go</th>
+                                </tr>
+                                {tabledata}
+                            </table>
+                        </body>
+                        </html>"""
+                        console_logger.debug(os.getenv("DEVELOPMENT"))
+                        if os.getenv("DEVELOPMENT") == "local":
+                            console_logger.debug("inside 192")
+                            send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[1].recipient_list, body, "", reportSchedule[1].cc_list, reportSchedule[1].bcc_list)
+                        elif os.getenv("DEVELOPMENT") == "prod":
+                            console_logger.debug("outside 192")
+                            send_data = {
+                                "sender_email": fetch_email.get("Smtp_user"),
+                                "subject": subject,
+                                "password": fetch_email.get("Smtp_password"),
+                                "smtp_host": fetch_email.get("Smtp_host"),
+                                "smtp_port": fetch_email.get("Smtp_port"),
+                                "receiver_email": reportSchedule[1].recipient_list,
+                                "body": body,
+                                "file_path": "",
+                                "cc_list": reportSchedule[1].cc_list,
+                                "bcc_list": reportSchedule[1].bcc_list
+                            }
+                            console_logger.debug(send_data)
+                            generate_email(Response, email=send_data)
+                else:
+                    return
 
         elif kwargs["report_name"] == "gwel_coal_report":
-            if not check_existing_notification("gwel_coal_report"):
-                emailNotifications(notification_name="gwel_coal_report").save()
-                console_logger.debug("inside gwel coal report")
-                # start_date = datetime.datetime.today().strftime('%Y-%m-%d')
-                # end_date = datetime.datetime.today().strftime('%Y-%m-%d')
-                start_date = "2024-07-08"
-                end_date = "2024-07-08"
-                filter_type = "gwel"
-                generateGwelReportData = fetch_excel_data_rail(Response, f"{start_date}T00:00", f"{end_date}T23:59", filter_type)
-                console_logger.debug(generateGwelReportData)
-                console_logger.debug(type(generateGwelReportData))
-                # console_logger.debug(f"{os.path.join(os.getcwd())}/{generateGwelReportData}")
-                response_code, fetch_email = fetch_email_data()
-                if response_code == 200:
-                    if generateGwelReportData.get("road") is None and generateGwelReportData.get("rail") is None:
-                        console_logger.debug(reportSchedule[2].recipient_list)
-                        subject = f"GWEL Received Coal Analysis {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
-                        body = f"""<b>No data found for GWEL Received Coal Analysis for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b>"""
-                        if os.getenv("DEVELOPMENT") == "local":
-                            send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[2].recipient_list, body, "", reportSchedule[2].cc_list, reportSchedule[2].bcc_list)
-                        elif os.getenv("DEVELOPMENT") == "prod":
-                            send_data = {
-                                "sender_email": fetch_email.get("Smtp_user"),
-                                "subject": subject,
-                                "password": fetch_email.get("Smtp_password"),
-                                "smtp_host": fetch_email.get("Smtp_host"),
-                                "smtp_port": fetch_email.get("Smtp_port"),
-                                "receiver_email": reportSchedule[2].recipient_list,
-                                "body": body,
-                                "file_path": "",
-                                "cc_list": reportSchedule[2].cc_list,
-                                "bcc_list": reportSchedule[2].bcc_list
-                            }
-                            console_logger.debug(send_data)
-                            generate_email(Response, email=send_data)
-                    else:
-                        console_logger.debug(reportSchedule[2].recipient_list)
-                        subject = f"GWEL Received Coal Analysis {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
-                        body = f"GWEL Received Coal Analysis for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
-                        # send_email(smtpData.Smtp_user, subject, smtpData.Smtp_password, smtpData.Smtp_host, smtpData.Smtp_port, receiver_email, body, f"{os.path.join(os.getcwd())}{generateReportData}")
-                        if os.getenv("DEVELOPMENT") == "local":
-                            send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[2].recipient_list, body, generateGwelReportData, reportSchedule[2].cc_list, reportSchedule[2].bcc_list)
-                        elif os.getenv("DEVELOPMENT") == "prod":
-                            send_data = {
-                                "sender_email": fetch_email.get("Smtp_user"),
-                                "subject": subject,
-                                "password": fetch_email.get("Smtp_password"),
-                                "smtp_host": fetch_email.get("Smtp_host"),
-                                "smtp_port": fetch_email.get("Smtp_port"),
-                                "receiver_email": reportSchedule[2].recipient_list,
-                                "body": body,
-                                "file_path": f"{generateGwelReportData}",
-                                "cc_list": reportSchedule[2].cc_list,
-                                "bcc_list": reportSchedule[2].bcc_list
-                            }
-                            console_logger.debug(send_data)
-                            generate_email(Response, email=send_data)
-            else:
+            if reportSchedule[2].active == False:
+                console_logger.debug("scheduler is off")
                 return
+            elif reportSchedule[2].active == True:
+                if not check_existing_notification("gwel_coal_report"):
+                    emailNotifications(notification_name="gwel_coal_report").save()
+                    console_logger.debug("inside gwel coal report")
+                    # start_date = datetime.datetime.today().strftime('%Y-%m-%d')
+                    # end_date = datetime.datetime.today().strftime('%Y-%m-%d')
+                    start_date = "2024-07-08"
+                    end_date = "2024-07-08"
+                    filter_type = "gwel"
+                    generateGwelReportData = fetch_excel_data_rail(Response, f"{start_date}T00:00", f"{end_date}T23:59", filter_type)
+                    console_logger.debug(generateGwelReportData)
+                    console_logger.debug(type(generateGwelReportData))
+                    # console_logger.debug(f"{os.path.join(os.getcwd())}/{generateGwelReportData}")
+                    response_code, fetch_email = fetch_email_data()
+                    if response_code == 200:
+                        if generateGwelReportData.get("road") is None and generateGwelReportData.get("rail") is None:
+                            console_logger.debug(reportSchedule[2].recipient_list)
+                            subject = f"GWEL Received Coal Analysis {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                            body = f"""<b>No data found for GWEL Received Coal Analysis for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b>"""
+                            if os.getenv("DEVELOPMENT") == "local":
+                                send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[2].recipient_list, body, "", reportSchedule[2].cc_list, reportSchedule[2].bcc_list)
+                            elif os.getenv("DEVELOPMENT") == "prod":
+                                send_data = {
+                                    "sender_email": fetch_email.get("Smtp_user"),
+                                    "subject": subject,
+                                    "password": fetch_email.get("Smtp_password"),
+                                    "smtp_host": fetch_email.get("Smtp_host"),
+                                    "smtp_port": fetch_email.get("Smtp_port"),
+                                    "receiver_email": reportSchedule[2].recipient_list,
+                                    "body": body,
+                                    "file_path": "",
+                                    "cc_list": reportSchedule[2].cc_list,
+                                    "bcc_list": reportSchedule[2].bcc_list
+                                }
+                                console_logger.debug(send_data)
+                                generate_email(Response, email=send_data)
+                        else:
+                            console_logger.debug(reportSchedule[2].recipient_list)
+                            subject = f"GWEL Received Coal Analysis {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                            body = f"GWEL Received Coal Analysis for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                            # send_email(smtpData.Smtp_user, subject, smtpData.Smtp_password, smtpData.Smtp_host, smtpData.Smtp_port, receiver_email, body, f"{os.path.join(os.getcwd())}{generateReportData}")
+                            if os.getenv("DEVELOPMENT") == "local":
+                                send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[2].recipient_list, body, generateGwelReportData, reportSchedule[2].cc_list, reportSchedule[2].bcc_list)
+                            elif os.getenv("DEVELOPMENT") == "prod":
+                                send_data = {
+                                    "sender_email": fetch_email.get("Smtp_user"),
+                                    "subject": subject,
+                                    "password": fetch_email.get("Smtp_password"),
+                                    "smtp_host": fetch_email.get("Smtp_host"),
+                                    "smtp_port": fetch_email.get("Smtp_port"),
+                                    "receiver_email": reportSchedule[2].recipient_list,
+                                    "body": body,
+                                    "file_path": f"{generateGwelReportData}",
+                                    "cc_list": reportSchedule[2].cc_list,
+                                    "bcc_list": reportSchedule[2].bcc_list
+                                }
+                                console_logger.debug(send_data)
+                                generate_email(Response, email=send_data)
+                else:
+                    return
         elif kwargs["report_name"] == "thirdparty_coal_report":
-            if not check_existing_notification("thirdparty_coal_report"):
-                emailNotifications(notification_name="thirdparty_coal_report").save()
-                console_logger.debug("inside Thirdparty Coal Report")
-                # start_date = datetime.datetime.today().strftime('%Y-%m-%d')
-                # end_date = datetime.datetime.today().strftime('%Y-%m-%d')
-                start_date = "2024-07-08"
-                end_date = "2024-07-08"
-                filter_type = "third_party"
-                generateThirdPartyReportData = fetch_excel_data_rail(Response, f"{start_date}T00:00", f"{end_date}T23:59", filter_type)
-                console_logger.debug(generateThirdPartyReportData)
-                console_logger.debug(type(generateThirdPartyReportData))
-                # console_logger.debug(f"{os.path.join(os.getcwd())}/{generateThirdPartyReportData}")
-                response_code, fetch_email = fetch_email_data()
-                if response_code == 200:
-                    if generateThirdPartyReportData.get("road") is None and generateThirdPartyReportData.get("rail") is None:
-                        console_logger.debug(reportSchedule[3].recipient_list)
-                        subject = f"Third-Party Coal Analysis(Mahabal) {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
-                        body = f"""<b>No data found for Third-Party Coal Analysis(Mahabal) for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b>"""
+            if reportSchedule[3].active == False:
+                console_logger.debug("scheduler is off")
+                return
+            elif reportSchedule[3].active == True:
+                if not check_existing_notification("thirdparty_coal_report"):
+                    emailNotifications(notification_name="thirdparty_coal_report").save()
+                    console_logger.debug("inside Thirdparty Coal Report")
+                    # start_date = datetime.datetime.today().strftime('%Y-%m-%d')
+                    # end_date = datetime.datetime.today().strftime('%Y-%m-%d')
+                    start_date = "2024-07-08"
+                    end_date = "2024-07-08"
+                    filter_type = "third_party"
+                    generateThirdPartyReportData = fetch_excel_data_rail(Response, f"{start_date}T00:00", f"{end_date}T23:59", filter_type)
+                    console_logger.debug(generateThirdPartyReportData)
+                    console_logger.debug(type(generateThirdPartyReportData))
+                    # console_logger.debug(f"{os.path.join(os.getcwd())}/{generateThirdPartyReportData}")
+                    response_code, fetch_email = fetch_email_data()
+                    if response_code == 200:
+                        if generateThirdPartyReportData.get("road") is None and generateThirdPartyReportData.get("rail") is None:
+                            console_logger.debug(reportSchedule[3].recipient_list)
+                            subject = f"Third-Party Coal Analysis(Mahabal) {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                            body = f"""<b>No data found for Third-Party Coal Analysis(Mahabal) for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b>"""
+                            if os.getenv("DEVELOPMENT") == "local":
+                                send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[3].recipient_list, body, "", reportSchedule[3].cc_list, reportSchedule[3].bcc_list)
+                            elif os.getenv("DEVELOPMENT") == "prod":
+                                send_data = {
+                                    "sender_email": fetch_email.get("Smtp_user"),
+                                    "subject": subject,
+                                    "password": fetch_email.get("Smtp_password"),
+                                    "smtp_host": fetch_email.get("Smtp_host"),
+                                    "smtp_port": fetch_email.get("Smtp_port"),
+                                    "receiver_email": reportSchedule[3].recipient_list,
+                                    "body": body,
+                                    "file_path": "",
+                                    "cc_list": reportSchedule[3].cc_list,
+                                    "bcc_list": reportSchedule[3].bcc_list
+                                }
+                                console_logger.debug(send_data)
+                                generate_email(Response, email=send_data)
+                        else:
+                            console_logger.debug(reportSchedule[3].recipient_list)
+                            subject = f"Third-Party Coal Analysis(Mahabal) {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                            body = f"Third-Party Coal Analysis(Mahabal) Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                            # send_email(smtpData.Smtp_user, subject, smtpData.Smtp_password, smtpData.Smtp_host, smtpData.Smtp_port, receiver_email, body, f"{os.path.join(os.getcwd())}{generateReportData}")
+                            if os.getenv("DEVELOPMENT") == "local":
+                                send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[3].recipient_list, body, generateThirdPartyReportData, reportSchedule[3].cc_list, reportSchedule[3].bcc_list)
+                            elif os.getenv("DEVELOPMENT") == "prod":
+                                send_data = {
+                                    "sender_email": fetch_email.get("Smtp_user"),
+                                    "subject": subject,
+                                    "password": fetch_email.get("Smtp_password"),
+                                    "smtp_host": fetch_email.get("Smtp_host"),
+                                    "smtp_port": fetch_email.get("Smtp_port"),
+                                    "receiver_email": reportSchedule[3].recipient_list,
+                                    "body": body,
+                                    "file_path": f"{generateThirdPartyReportData}",
+                                    "cc_list": reportSchedule[3].cc_list,
+                                    "bcc_list": reportSchedule[3].bcc_list
+                                }
+                                console_logger.debug(send_data)
+                                generate_email(Response, email=send_data)
+                else:
+                    return
+        elif kwargs["report_name"] == "coal_logistics_table":
+            if reportSchedule[4].active == False:
+                console_logger.debug("scheduler is off")
+                return
+            elif reportSchedule[4].active == True:
+                if not check_existing_notification("coal_logistics_table"):
+                    emailNotifications(notification_name="coal_logistics_table").save()
+                    console_logger.debug("inside Coal Logistics Table")
+                    specified_date = datetime.datetime.today().strftime('%Y-%m-%d')
+                    # specified_date = "2024-07-02"
+                    roadData = fetch_data_road_logistics(Response, specified_date)
+                    railData = fetch_data_rail_logistics(Response, specified_date)
+
+                    console_logger.debug(roadData)
+                    console_logger.debug(railData)
+                    response_code, fetch_email = fetch_email_data()
+                    if response_code == 200:
+                        htmlData = ""
+                        if roadData != 404 and roadData is not None:
+                            htmlData += f"<b>Daily Road Coal Logistic Report for {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b><br><br>"
+                            htmlData += roadData
+                            htmlData += "<br><br>"
+                        else:
+                            htmlData += f"<b>No data found for Daily Road Coal Logistic Report for {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b><br><br>"
+                        if railData != 404 and railData is not None:
+                            htmlData += f"<b>Daily Rail Coal Logistic Report for {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b><br><br>"
+                            htmlData += railData
+                            htmlData += "<br><br>"
+                        else:
+                            htmlData += f"<b>No data found for Daily Rail Coal Logistic Report for {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b><br><br>"
+
+                        console_logger.debug(reportSchedule[4].recipient_list)
+                        subject = f"Daily Coal Receipt by Road & Rail for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                        body = f"""
+                        <h3>Daily Coal Receipt by Road & Rail for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</h3>
+                        <br>
+                        <br>
+                        <br>
+                        <!doctype html>
+                        <html>
+                        <head>
+                            <meta charset="utf-8">
+                            <title>Daily Coal Receipt by Road & Rail</title>
+                        </head>
+                        <body>
+                            {htmlData}
+                        </body>
+                        </html>"""
                         if os.getenv("DEVELOPMENT") == "local":
-                            send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[3].recipient_list, body, "", reportSchedule[3].cc_list, reportSchedule[3].bcc_list)
+                            send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[4].recipient_list, body, "", reportSchedule[4].cc_list, reportSchedule[4].bcc_list)
                         elif os.getenv("DEVELOPMENT") == "prod":
                             send_data = {
                                 "sender_email": fetch_email.get("Smtp_user"),
@@ -7009,101 +7124,16 @@ def send_report_generate(**kwargs):
                                 "password": fetch_email.get("Smtp_password"),
                                 "smtp_host": fetch_email.get("Smtp_host"),
                                 "smtp_port": fetch_email.get("Smtp_port"),
-                                "receiver_email": reportSchedule[3].recipient_list,
+                                "receiver_email": reportSchedule[4].recipient_list,
                                 "body": body,
                                 "file_path": "",
-                                "cc_list": reportSchedule[3].cc_list,
-                                "bcc_list": reportSchedule[3].bcc_list
+                                "cc_list": reportSchedule[4].cc_list,
+                                "bcc_list": reportSchedule[4].bcc_list
                             }
                             console_logger.debug(send_data)
                             generate_email(Response, email=send_data)
-                    else:
-                        console_logger.debug(reportSchedule[3].recipient_list)
-                        subject = f"Third-Party Coal Analysis(Mahabal) {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
-                        body = f"Third-Party Coal Analysis(Mahabal) Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
-                        # send_email(smtpData.Smtp_user, subject, smtpData.Smtp_password, smtpData.Smtp_host, smtpData.Smtp_port, receiver_email, body, f"{os.path.join(os.getcwd())}{generateReportData}")
-                        if os.getenv("DEVELOPMENT") == "local":
-                            send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[3].recipient_list, body, generateThirdPartyReportData, reportSchedule[3].cc_list, reportSchedule[3].bcc_list)
-                        elif os.getenv("DEVELOPMENT") == "prod":
-                            send_data = {
-                                "sender_email": fetch_email.get("Smtp_user"),
-                                "subject": subject,
-                                "password": fetch_email.get("Smtp_password"),
-                                "smtp_host": fetch_email.get("Smtp_host"),
-                                "smtp_port": fetch_email.get("Smtp_port"),
-                                "receiver_email": reportSchedule[3].recipient_list,
-                                "body": body,
-                                "file_path": f"{generateThirdPartyReportData}",
-                                "cc_list": reportSchedule[3].cc_list,
-                                "bcc_list": reportSchedule[3].bcc_list
-                            }
-                            console_logger.debug(send_data)
-                            generate_email(Response, email=send_data)
-            else:
-                return
-        elif kwargs["report_name"] == "coal_logistics_table":
-            if not check_existing_notification("coal_logistics_table"):
-                emailNotifications(notification_name="coal_logistics_table").save()
-                console_logger.debug("inside Coal Logistics Table")
-                specified_date = datetime.datetime.today().strftime('%Y-%m-%d')
-                # specified_date = "2024-07-02"
-                roadData = fetch_data_road_logistics(Response, specified_date)
-                railData = fetch_data_rail_logistics(Response, specified_date)
-
-                console_logger.debug(roadData)
-                console_logger.debug(railData)
-                response_code, fetch_email = fetch_email_data()
-                if response_code == 200:
-                    htmlData = ""
-                    if roadData != 404 and roadData is not None:
-                        htmlData += f"<b>Daily Road Coal Logistic Report for {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b><br><br>"
-                        htmlData += roadData
-                        htmlData += "<br><br>"
-                    else:
-                        htmlData += f"<b>No data found for Daily Road Coal Logistic Report for {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b><br><br>"
-                    if railData != 404 and railData is not None:
-                        htmlData += f"<b>Daily Rail Coal Logistic Report for {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b><br><br>"
-                        htmlData += railData
-                        htmlData += "<br><br>"
-                    else:
-                        htmlData += f"<b>No data found for Daily Rail Coal Logistic Report for {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b><br><br>"
-
-                    console_logger.debug(reportSchedule[4].recipient_list)
-                    subject = f"Daily Coal Receipt by Road & Rail for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
-                    body = f"""
-                    <h3>Daily Coal Receipt by Road & Rail for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</h3>
-                    <br>
-                    <br>
-                    <br>
-                    <!doctype html>
-                    <html>
-                    <head>
-                        <meta charset="utf-8">
-                        <title>Daily Coal Receipt by Road & Rail</title>
-                    </head>
-                    <body>
-                        {htmlData}
-                    </body>
-                    </html>"""
-                    if os.getenv("DEVELOPMENT") == "local":
-                        send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[4].recipient_list, body, "", reportSchedule[4].cc_list, reportSchedule[4].bcc_list)
-                    elif os.getenv("DEVELOPMENT") == "prod":
-                        send_data = {
-                            "sender_email": fetch_email.get("Smtp_user"),
-                            "subject": subject,
-                            "password": fetch_email.get("Smtp_password"),
-                            "smtp_host": fetch_email.get("Smtp_host"),
-                            "smtp_port": fetch_email.get("Smtp_port"),
-                            "receiver_email": reportSchedule[4].recipient_list,
-                            "body": body,
-                            "file_path": "",
-                            "cc_list": reportSchedule[4].cc_list,
-                            "bcc_list": reportSchedule[4].bcc_list
-                        }
-                        console_logger.debug(send_data)
-                        generate_email(Response, email=send_data)
-            else:
-                return
+                else:
+                    return
         return "success"
     except Exception as e:
         console_logger.debug(e)
@@ -9589,7 +9619,7 @@ def endpoint_to_fetch_going_to_expiry_vehicle(response: Response, page_no:int=No
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
 
-@router.get("/fetch/rail", tags=["Railway"])
+@router.get("/fetch/rail", tags=["Rail Map"])
 def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int] = None, perPage: Optional[int] = None, search_text: Optional[str] = None, start_timestamp: Optional[str] = None, end_timestamp: Optional[str] = None, type: Optional[str] = "display"):
     try:
         result = {        
@@ -9793,7 +9823,7 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
 
-@router.get("/fetch/singlerail", tags=["Railway"])
+@router.get("/fetch/singlerail", tags=["Rail Map"])
 def endpoint_to_fetch_railway_data(response: Response, rrno: str):
     try:
         try:
@@ -9803,6 +9833,35 @@ def endpoint_to_fetch_railway_data(response: Response, rrno: str):
             raise HTTPException(status_code=404, detail="No data found")
     except Exception as e:
         console_logger.debug("----- Fetch Report Name Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+    
+@router.get("/fetch/allminenames", tags=["Rail Map"])
+def endpoint_to_fetch_rail_mines(response: Response):
+    try:
+        # mine_names = short_mine_collection.find({},{"coal_journey":"rail"})
+        mine_names = short_mine_collection.find({})
+        dictData = {}
+        railData = []
+        roadData = []
+        for single_data in mine_names:
+            console_logger.debug(single_data)
+            if single_data.get("coal_journey") == "Rail":
+                railData.append(single_data.get("mine_name"))
+            if single_data.get("coal_journey") == "Road":
+                roadData.append(single_data.get("mine_name"))
+        
+        dictData["road"] = roadData
+        dictData["rail"] = railData
+
+        return dictData
+        # mine_data = [doc. for doc in mine_names]
+        # console_logger.debug(mine_names)
+    except Exception as e:
+        console_logger.debug("----- Fetch Rail Mines Error -----",e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
@@ -9846,6 +9905,7 @@ def endpoint_to_fetch_railway_data(response: Response, rrno: str):
 #         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
 #         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
 #         return e
+
 
 @router.post("/insert/rail", tags=["Railway"])
 def endpoint_to_insert_rail_data(response: Response, payload: RailwayData, rr_no: Optional[str] = None):
@@ -10056,27 +10116,6 @@ async def extract_data_railway(response: Response, pdf_upload: Optional[UploadFi
                     "RR_Qty":None, 
                 })
 
-        # kept old for mapping below data
-        # key_mappings = {
-        #     "0": "sr_no",
-        #     "1": "wagon_owner",
-        #     "2": "wagon_type",
-        #     "3": "wagon_no",
-        #     "4": "cc",
-        #     "5": "tare",
-        #     "6": "no_of_art",
-        #     "7": "cmdt_code",
-        #     "8": "rly_gross_wt",
-        #     "9": "dip_dms_lts",
-        #     "10": "dip_wt",
-        #     "11": "actl_wt",
-        #     "12": "perm_cc",
-        #     "13": "over_wt_total",
-        #     "14": "over_wt_nrml_rate",
-        #     "15": "over_pntv_rate",
-        #     "16": "chbl_wt",
-        # }
-
         key_mappings = {
             0: "sr_no",
             1: "wagon_owner",
@@ -10211,6 +10250,37 @@ def display_pdf_report_bunker(response:Response, sample_id: str):
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
 
+@router.get("/update/scheduler/status", tags=["scheduler"])
+def display_pdf_report_bunker(response:Response, scheduler_name: str, active: bool):
+    try:
+        DataExecutionsHandler = DataExecutions()
+        response = DataExecutionsHandler.update_schheduler_status(scheduler_name=scheduler_name, active=active)
+        return response
+    except Exception as e:
+        console_logger.debug("----- Update Scheduler Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.get("/fetch/scheduler/status", tags=["scheduler"])
+def display_pdf_report_bunker(response:Response):
+    try:
+        DataExecutionsHandler = DataExecutions()
+        response = DataExecutionsHandler.fetch_scheduler_status()
+        return response
+    except Exception as e:
+        console_logger.debug("----- Fetch Scheduler Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
     
 
 # @router.get("/fetch/road/excel", tags=["excel test"])
@@ -10221,30 +10291,6 @@ def display_pdf_report_bunker(response:Response, sample_id: str):
 #         return response
 #     except Exception as e:
 #         console_logger.debug("----- Vehicle Scanned Count Error -----",e)
-#         response.status_code = 400
-#         exc_type, exc_obj, exc_tb = sys.exc_info()
-#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
-#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
-#         return e
-
-
-# @router.post("/send_email", tags=["Generate_Email"])
-# def generate_email(response: Response, email:EmailRequest):
-#     try:
-#         url = f"http://{ip}/api/v1/host/send-email/"
-
-#         headers = {'Content-Type': 'application/json'}
-
-#         payload = json.dumps(email.dict())
-#         response = requests.request("POST", url, headers=headers, data=payload)
-#         console_logger.debug(response.status_code)
-#         console_logger.debug(response.text)
-#         response.status_code = response.status_code
-#         return response.json()
-    
-#     except Exception as e:
-#         console_logger.debug("----- Email Generation Error -----",e)
 #         response.status_code = 400
 #         exc_type, exc_obj, exc_tb = sys.exc_info()
 #         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]

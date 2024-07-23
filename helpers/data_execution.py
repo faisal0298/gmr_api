@@ -196,7 +196,7 @@ class DataExecutions:
                 # listData = []
                 logs = (
                     BunkerData.objects(data)
-                    .order_by("-ID")
+                    .order_by("-created_at")
                     .skip(offset)
                     .limit(page_len)
                 )   
@@ -1586,6 +1586,27 @@ class DataExecutions:
             fetchBunkerSingleData = BunkerData.objects.get(sample_details_id=sample_id)
             fetch_pdf_bunker = bunker_single_generate_report(fetchBunkerSingleData=fetchBunkerSingleData)
             return fetch_pdf_bunker
+        except Exception as e:
+            console_logger.debug(e)
+
+
+    def update_schheduler_status(self, scheduler_name, active):
+        try:
+            updateSchedulerData = ReportScheduler.objects(
+                report_name=scheduler_name,
+            ).update(active=active)
+            return {"detail": "success"}
+        except Exception as e:
+            console_logger.debug(e)
+
+    
+    def fetch_scheduler_status(self):
+        try:
+            listData = []
+            fetchSchedulerData = ReportScheduler.objects()
+            for single_data in fetchSchedulerData:
+                listData.append(single_data.status_payload())
+            return listData
         except Exception as e:
             console_logger.debug(e)
 

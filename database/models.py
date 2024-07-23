@@ -654,6 +654,8 @@ class ReportScheduler(Document):
     filter = StringField(default="")
     schedule = StringField(default="")
     time = StringField(default="")
+    active = BooleanField(default=False)
+    created_at = DateTimeField(default=datetime.datetime.utcnow())
 
     meta = {"db_alias": "gmrDB-alias", "collection": "reportscheduler"}
 
@@ -667,12 +669,21 @@ class ReportScheduler(Document):
             "filter": self.filter,
             "schedule": self.schedule,
             "time": self.time,
+            "active": self.active,
+            "created_at": self.created_at,
         }
     
     def report_payload(self):
         return{
             "id": str(self.id),
             "name": self.report_name,
+        } 
+
+    def status_payload(self):
+        return{
+            "id": str(self.id),
+            "name": self.report_name,
+            "active": self.active,
         } 
 
     
@@ -1048,7 +1059,7 @@ class BunkerData(Document):
 class emailNotifications(Document):
     notification_name = StringField()
     time_log = DateTimeField(default=datetime.datetime.utcnow)
-    created_at = DateTimeField(default=datetime.datetime.utcnow())
+    created_at = DateTimeField(default=datetime.datetime.utcnow)
     expireOn = DateTimeField(
         default=datetime.datetime.utcnow() + datetime.timedelta(minutes=7 * 24 * 60)
     )

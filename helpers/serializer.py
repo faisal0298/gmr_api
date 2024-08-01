@@ -78,6 +78,7 @@ class MisReportData(BaseModel):
     bcc_list: List[str]
     filter: str
     schedule: str
+    shift_schedule: Optional[List] = []
     time: str
 
 class AopTargetData(BaseModel):
@@ -97,6 +98,7 @@ class LatLongPostIn(BaseModel):
     name: str
     latlong: List[float]
     type: str
+    geofencing: List
 
 
 class ShortMineName(BaseModel):
@@ -181,3 +183,43 @@ class EmailRequest(BaseModel):
     file_path: Optional[Union[str, Dict[str, str]]]
     cc_list: Optional[List[EmailStr]] = []
     bcc_list: Optional[List[EmailStr]] = []
+
+class BunkerAnalysisData(BaseModel):
+    id: str
+    mgcv: str
+    hgcv: str
+    ratio: str
+
+
+class TruckTareEmailTrigger(BaseModel):
+    vehicle_number: str
+    current_gwel_tare_time: str
+    current_gwel_tare_wt: str
+    min_GWEL_Tare_Wt: str
+    max_GWEL_Tare_Wt: str
+    difference: str
+
+class TruckEmailTrigger(BaseModel):
+    details: List[TruckTareEmailTrigger]
+
+
+class geofenceEmailTrigger(BaseModel):
+    vehicle_number: str
+    lat_long: str
+    mine_name: str
+    geo_fence: str
+
+
+class ShiftSchedule(BaseModel):
+    shift_name: str
+    start_shift_time: str
+    end_shift_time: str
+
+
+class ShiftMainData(BaseModel):
+    data : List[ShiftSchedule]
+
+
+class geoFence(BaseModel):
+    name: str
+    geofence: list

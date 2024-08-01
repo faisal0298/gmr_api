@@ -653,6 +653,8 @@ class ReportScheduler(Document):
     bcc_list = ListField(StringField(unique=True), default=[])
     filter = StringField(default="")
     schedule = StringField(default="")
+    # shift_schedule = DictField(null=True)
+    shift_schedule = ListField(default=[])
     time = StringField(default="")
     active = BooleanField(default=False)
     created_at = DateTimeField(default=datetime.datetime.utcnow())
@@ -668,6 +670,7 @@ class ReportScheduler(Document):
             "bcc_list": self.bcc_list,
             "filter": self.filter,
             "schedule": self.schedule,
+            "shift_schedule": self.shift_schedule,
             "time": self.time,
             "active": self.active,
             "created_at": self.created_at,
@@ -767,6 +770,7 @@ class SelectedLocation(Document):
     name = StringField()
     latlong = ListField()
     type = StringField()
+    geofence = ListField()
     Created_at = DateTimeField(default=datetime.datetime.utcnow())
 
     meta = {"db_alias": "gmrDB-alias", "collection": "SelectedLocation"}
@@ -776,6 +780,7 @@ class SelectedLocation(Document):
             "id": str(self.id),
             "name": self.name,
             "latlong": self.latlong,
+            "geofence": self.geofence,
             "type": self.type,
         }
 
@@ -1081,4 +1086,54 @@ class emailNotifications(Document):
             "notification_name": self.notification_name,
             "time_log": self.time_log,
             "created_at": str(self.created_at)
+        }
+    
+
+class bunkerAnalysis(Document):
+    units = StringField(default=None)
+    tagid = IntField()
+    bunkering = StringField(default=None)
+    mgcv = StringField(default=None)
+    hgcv = StringField(default=None)
+    ratio = StringField(default=None)
+    shift_name = StringField(default=None)
+    created_date = DateTimeField()
+    ID = IntField(min_value=1)
+    created_at = DateTimeField(default=datetime.datetime.utcnow())
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "bunkerAnalysis"}
+
+    def payload(self):
+        return {
+            "Sr.No": self.ID,
+            # "id": str(self.id),
+            "shift_name": self.shift_name,
+            "unit": self.units,
+            # "tagid": self.tagid,
+            "bunkering": self.bunkering,
+            "mgcv": self.mgcv,
+            "hgcv": self.hgcv,
+            "ratio": self.ratio,
+            "date": self.created_date,
+            "created_at": str(self.created_at)
+        }
+
+
+class shiftScheduler(Document):
+    shift_name = StringField(default=None)
+    start_shift_time = StringField(default=None)
+    end_shift_time = StringField(default=None)
+    report_name = StringField(default=None)
+    created_at = DateTimeField(default=datetime.datetime.utcnow)
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "shiftScheduler"}
+
+    def payload(self):
+        return {
+            "id": str(self.id),
+            "shift_name": self.shift_name,
+            "start_shift_time": self.start_shift_time,
+            "end_shift_time": self.end_shift_time,
+            # "report_name": self.report_name,
+            "created_at": self.created_at,
         }

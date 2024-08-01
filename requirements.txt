@@ -1,7 +1,7 @@
 APScheduler==3.7.0
 bidict
-certifi
-charset-normalizer
+# certifi
+# charset-normalizer
 dnspython
 idna==3.4
 mongoengine
@@ -12,7 +12,7 @@ python-socketio==5.1.0
 pytz==2022.7.1
 #rdx==0.0.4
 requests
-shapely
+# shapely
 six==1.16.0
 tzlocal==2.1
 urllib3==1.26.15
@@ -41,3 +41,15 @@ opencv-python==4.6.0.66
 opencv-python-headless==4.10.0.84
 pdftotext==2.2.2
 numpy==1.24
+
+
+
+certifi==2024.7.4
+charset-normalizer==3.3.2
+googlemaps==4.10.0
+# idna==3.7
+# numpy==2.0.1
+polyline==2.0.2
+# requests==2.32.3
+shapely==2.0.5
+# urllib3==2.2.2

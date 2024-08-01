@@ -8,7 +8,7 @@ from email.header import Header
 from email.utils import formataddr
 import datetime
 from helpers.logger import console_logger
-import cryptocode
+# import cryptocode
 import json
 
 # def send_email(sender_email, subject, password, smtp_host, smtp_port, receiver_email, body, file_path):

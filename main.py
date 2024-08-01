@@ -57,6 +57,7 @@ from mongoengine import MultipleObjectsReturned
 from io import BytesIO
 from pymongo import MongoClient
 from dotenv import load_dotenv, dotenv_values
+from bson.objectid import ObjectId
 load_dotenv() 
 
 # mahabal starts
@@ -79,6 +80,17 @@ import json
 import warnings
 
 #### railway pdf upload end #####
+
+
+#maps start
+
+import googlemaps
+import polyline
+import json
+from shapely.geometry import LineString, mapping
+from shapely.geometry.polygon import Polygon
+
+#maps end
 
 
 ### database setup
@@ -554,8 +566,6 @@ async def extract_data_from_mahabal_pdf(response: Response, pdf_upload: Optional
                     try:
                         # coalTrainData = CoalTestingTrain.objects.get(rake_no=f"{int(rrLot.get('rake'))}", rrNo=rrLot.get("rr"))
                         querysetTrain = CoalTestingTrain.objects.filter(rake_no=f"{int(rrLot.get('rake'))}", rrNo=rrLot.get("rr"))
-                        console_logger.debug(querysetTrain.count())
-                        console_logger.debug(querysetTrain)
                         if querysetTrain.count() == 0:
                             console_logger.debug("no data available")
                             continue
@@ -631,8 +641,6 @@ async def extract_data_from_mahabal_pdf(response: Response, pdf_upload: Optional
                     try:
                         # queryset = CoalTesting.objects.get(rake_no=f'LOT-{rrLot.get("lot")}', rrNo=rrLot.get("do"))
                         queryset = CoalTesting.objects.filter(rake_no=f'LOT-{rrLot.get("lot")}', rrNo=rrLot.get("do"))
-                        console_logger.debug(queryset.count())
-                        console_logger.debug(queryset)
                         if queryset.count() == 0:
                             console_logger.debug("no data available")
                             continue
@@ -731,7 +739,6 @@ consumption_headers = {
 'ClientToken': 'Administrator',
 'Content-Type': 'application/json'}
 
-
 @router.get("/load_historian_data", tags=["Coal Consumption"])                                    # coal consumption
 def extract_historian_data(start_date: Optional[str] = None, end_date: Optional[str] = None):
     success = False
@@ -742,16 +749,11 @@ def extract_historian_data(start_date: Optional[str] = None, end_date: Optional[
         historian_timer = entry.Parameters.get('gmr_api', {}).get('roi1', {}).get('Coal Consumption Duration') if entry else None
 
         console_logger.debug(f"---- Coal Consumption IP ----        {historian_ip}")
-        console_logger.debug(f"---- Coal Consumption Duration ----  {historian_timer}")
-
-        current_time = datetime.datetime.now(IST)
-        current_date = current_time.date()
 
         if not end_date:
-            end_date = current_date.__str__()                                                    # end_date will always be the current date
+            end_date = (datetime.datetime.now(IST).replace(minute=59,second=59,microsecond=59) - datetime.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
         if not start_date:
-            no_of_day = historian_timer.split(":")[0]
-            start_date = (current_date-timedelta(int(no_of_day))).__str__()
+            start_date = (datetime.datetime.now(IST).replace(minute=0,second=0,microsecond=0) - datetime.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
 
         console_logger.debug(f" --- Consumption Start Date --- {start_date}")
         console_logger.debug(f" --- Consumption End Date --- {end_date}")
@@ -761,7 +763,7 @@ def extract_historian_data(start_date: Optional[str] = None, end_date: Optional[
                     "EndTime": end_date, 
                     "RetrievalType": "Aggregate", 
                     "RetrievalMode": "History", 
-                    "TagID": ["2","3538","16","3536", "15274", "15275"],
+                    "TagID": ["2","3538","16","3536"],
                     "RetrieveBy": "ID"
                     })
         
@@ -775,16 +777,22 @@ def extract_historian_data(start_date: Optional[str] = None, end_date: Optional[
                 tag_id = item["Data"]["TagID"]
                 sum = item["Data"]["SUM"]
                 created_date = item["Data"]["CreatedDate"]
-                if Historian.objects.filter(tagid = tag_id, created_date=created_date):
-                    console_logger.debug("data there historian")
-                    pass
-                else:
+
+                if tag_id in [16, 3538]:
+                    sum_value = str(round(int(float(sum)) / 1000 , 2))
+                elif tag_id in [2, 3536]:
+                    sum_value = str(round(int(float(sum)) / 10000 , 2))
+
+                if not Historian.objects.filter(tagid=tag_id, created_date=created_date):
                     console_logger.debug("adding data")
                     Historian(
                         tagid = tag_id,
-                        sum = sum,
+                        sum = sum_value,
                         created_date = created_date,
-                        ID = Historian.objects.count() + 1).save()
+                        ID=Historian.objects.count() + 1
+                    ).save()
+                else:
+                    console_logger.debug("data already exists in historian")
                 
             success = "completed"
         except requests.exceptions.Timeout:
@@ -804,9 +812,8 @@ def extract_historian_data(start_date: Optional[str] = None, end_date: Optional[
     finally:
         console_logger.debug(f"success:{success}")
         SchedulerResponse("save consumption data", f"{success}")
-        return {"message" : "Successful"}
+        return {"message" : "Successful"} 
     
-
 
 # @router.get("/historian_data", tags=["Historian"])
 # def fetch_historian_data():
@@ -846,7 +853,7 @@ def coal_generation_analysis(response:Response, type: Optional[str] = "Daily",
             {
                 "$project": {
                     "ts": {
-                        "$hour": {"date": "$created_date", "timezone": timezone},
+                        "$hour": {"date": "$created_date"},
                     },
                     "tagid": "$tagid",
                     "sum": "$sum",
@@ -881,10 +888,10 @@ def coal_generation_analysis(response:Response, type: Optional[str] = "Daily",
 
             result = {
                 "data": {
-                    "labels": [str(i) for i in range(1, 25)],
+                    "labels": [str(i) for i in range(0, 24)],
                     "datasets": [
-                        {"label": "Unit 1", "data": [0 for i in range(1, 25)]},             # unit 1 = tagid_2
-                        {"label": "Unit 2", "data": [0 for i in range(1, 25)]},             # unit 2 = tagid_3536
+                        {"label": "Unit 1", "data": [0 for i in range(0, 24)]},             # unit 1 = tagid_2
+                        {"label": "Unit 2", "data": [0 for i in range(0, 24)]},             # unit 2 = tagid_3536
                     ],
                 }
             }
@@ -1067,7 +1074,7 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
             {
                 "$project": {
                     "ts": {
-                        "$hour": {"date": "$created_date", "timezone": timezone},
+                        "$hour": {"date": "$created_date"},
                     },
                     "tagid": "$tagid",
                     "sum": "$sum",
@@ -1102,10 +1109,10 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
 
             result = {
                 "data": {
-                    "labels": [str(i) for i in range(1, 25)],
+                    "labels": [str(i) for i in range(0, 24)],
                     "datasets": [
-                        {"label": "Unit 1", "data": [0 for i in range(1, 25)]},             # unit 1 = tagid_16
-                        {"label": "Unit 2", "data": [0 for i in range(1, 25)]},             # unit 2 = tagid_3538
+                        {"label": "Unit 1", "data": [0 for i in range(0, 24)]},             # unit 1 = tagid_16
+                        {"label": "Unit 2", "data": [0 for i in range(0, 24)]},             # unit 2 = tagid_3538
                     ],
                 }
             }
@@ -1538,7 +1545,7 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
             
             # testing_data = json.loads(response.text)
             testing_data = response.json()
-            console_logger.debug(testing_data)
+            # console_logger.debug(testing_data)
             wcl_extracted_data = []
             secl_extracted_data = []
 
@@ -1730,7 +1737,10 @@ def coal_wcl_gcv_table(
                         if payload.get("DO_Qty").count('.') > 1:
                             aggregated_data[month][mine]["DO_Qty"] += float(payload.get("DO_Qty")[:5])
                         else:
-                            aggregated_data[month][mine]["DO_Qty"] += float(payload["DO_Qty"])
+                            if "," in payload["DO_Qty"]:
+                                aggregated_data[month][mine]["DO_Qty"] += float(payload["DO_Qty"].replace(",", ""))
+                            else:
+                                aggregated_data[month][mine]["DO_Qty"] += float(payload["DO_Qty"])
                     if payload.get("Gross_Calorific_Value_(Adb)"):
                         aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["Gross_Calorific_Value_(Adb)"])
                     if payload.get("Third_Party_Gross_Calorific_Value_(Adb)"):
@@ -1785,7 +1795,7 @@ def coal_wcl_gcv_table(
                                 dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"], 2)
                                 if values.get("average_Third_Party_GCV_Grade"):
                                     dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
-                                dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["GWEL_Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
                                 if values.get("average_Third_Party_GCV_Grade"):
                                     dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['Gross_Calorific_Value_Grade_(Adb)'].replace('G-', '')) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))))
                             final_data.append(dictData)
@@ -1804,11 +1814,11 @@ def coal_wcl_gcv_table(
                             dictData['DO_Qty'] = round(values['average_DO_Qty'], 2)
                             dictData['GWEL_Gross_Calorific_Value_(Adb)'] = round(values['average_Gross_Calorific_Value_(Adb)'], 2)
                             if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
-                                dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                                dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
                                 dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"], 2)
                                 if values.get("average_Third_Party_GCV_Grade"):
                                     dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
-                                dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["GWEL_Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
                                 if values.get("average_Third_Party_GCV_Grade"):
                                     dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['Gross_Calorific_Value_Grade_(Adb)'].replace('G-', '')) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))))
 
@@ -2175,7 +2185,7 @@ def coal_wcl_gcv_table(
                                 dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"], 2)
                                 if values.get("average_Third_Party_GCV_Grade"):
                                     dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
-                                dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["GWEL_Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
                                 if values.get("average_Third_Party_GCV_Grade"):
                                     dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['Gross_Calorific_Value_Grade_(Adb)'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
                             final_data.append(dictData)
@@ -2197,7 +2207,7 @@ def coal_wcl_gcv_table(
                                 dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"], 2)
                                 if values.get("average_Third_Party_GCV_Grade"):
                                     dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
-                                dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["GWEL_Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
                                 if values.get("average_Third_Party_GCV_Grade"):
                                     dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['Gross_Calorific_Value_Grade_(Adb)'].replace('G-', ''))) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', '')))
                            
@@ -2589,10 +2599,10 @@ def wcl_addon_data(response: Response, paydata: WCLtestMain):
 def wcl_addon_data(response: Response, paydata: WCLtestMain):
     try:
         # dataLoad = data.dict()
-        console_logger.debug(paydata.dict())
+        # console_logger.debug(paydata.dict())
         multyData = paydata.dict()
         for dataLoad in multyData["data"]:
-            console_logger.debug(dataLoad)
+            # console_logger.debug(dataLoad)
             fetchCoaltesting = CoalTestingTrain.objects.get(id=dataLoad.get("id"))
             fetchCoaltesting.third_party_report_no = dataLoad.get("coal_data").get("Third_Party_Report_No")
             if fetchCoaltesting:
@@ -2881,7 +2891,7 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
 
                     for row, query in enumerate(usecase_data,start=1):
                         result = query.payload()
-                        console_logger.debug(result)
+                        # console_logger.debug(result)
                         worksheet.write(row, 0, count, cell_format)
                         if filter_type == "gwel":
                             worksheet.write(row, 1, str(result["Mine"]), cell_format)
@@ -3517,7 +3527,7 @@ def gmr_table(response:Response, filter_data: Optional[List[str]] = Query([]), c
             #     else:
             #         data["vehicle_number__icontains"] = search_text
 
-             # Constructing the base for query
+            # Constructing the base for query
             data = Q()
 
             # based on condition for timestamp playing with & and | 
@@ -4281,7 +4291,7 @@ def minewise_road_analysis(response:Response,type: Optional[str] = "Daily",
             if "_id" in data:
                 ts = data["_id"]["ts"]
                 mine = data["_id"]["mine"]
-                console_logger.debug(ts)
+                # console_logger.debug(ts)
                 data_list = data.get('data', [])
                 sum_list = []
                 for item in data_list:
@@ -4862,18 +4872,18 @@ def daywise_coal_generation(response: Response):
         for doc in result:
             total_sum = doc["total_sum_all"]
         
-        result = total_sum / 10000
+        # result = total_sum / 10000
+        result = total_sum
 
         return {
-            # "title": "Today's Total Generation(MW)",
-            "title": "Todays Average Generation(MW)",
+            "title": "Today's Average Generation(MW)",
             "icon" : "energy",
             "data": round(result, 2),
             "last_updated": today
         }
 
     except Exception as e:
-        console_logger.debug("----- Coal Generation Error -----", e)
+        console_logger.debug(f"----- Coal Generation Error -----{e}")
         response.status_code = 400
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -4924,7 +4934,8 @@ def daywise_coal_consumption(response: Response):
         for doc in result:
             total_sum = doc["total_sum_all"]
         
-        result = total_sum / 10000
+        # result = total_sum / 10000
+        result = total_sum
 
         return {
             "title": "Today's Total Coal Consumption(MT)",
@@ -4934,7 +4945,7 @@ def daywise_coal_consumption(response: Response):
         }
 
     except Exception as e:
-        console_logger.debug("----- Coal Consumption Error -----", e)
+        console_logger.debug(f"----- Coal Consumption Error ----- {e}")
         response.status_code = 400
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -5731,8 +5742,8 @@ def transit_loss_gain_road_mode_month(date_object):
         start_date = f'{date}-01-01 00:00:00'
         format_data = "%Y-%m-%d %H:%M:%S"
 
-        console_logger.debug(start_date)
-        console_logger.debug(end_date)
+        # console_logger.debug(start_date)
+        # console_logger.debug(end_date)
 
         endd_date = timezone.localize(datetime.datetime.strptime(end_date, format_data))
         startd_date = timezone.localize(datetime.datetime.strptime(start_date, format_data))
@@ -5761,7 +5772,7 @@ def transit_loss_gain_road_mode_month(date_object):
                     outputDict[ts][label] = sum_value
                 else:
                     outputDict[ts][label] += sum_value
-        console_logger.debug(outputDict)
+        # console_logger.debug(outputDict)
         for index, label in enumerate(labels):
             # console_logger.debug(index)
             # console_logger.debug(label)
@@ -5836,11 +5847,16 @@ def transit_loss_gain_road_mode():
 
                     if payload.get("GWEL_Net_Wt(MT)") and payload.get("GWEL_Net_Wt(MT)") != "NaN":
                         aggregated_data[month][do_no]["actual_net_qty"] += float(payload["GWEL_Net_Wt(MT)"])
+                    else:
+                        aggregated_data[month][do_no]["actual_net_qty"] = 0
                     if payload.get("Challan_Net_Wt(MT)") and payload.get("Challan_Net_Wt(MT)") != "NaN":
                         aggregated_data[month][do_no]["net_qty"] += float(payload.get("Challan_Net_Wt(MT)"))
+                    else:
+                        aggregated_data[month][do_no]["net_qty"] = 0
                     if payload.get("Mines_Name"):
                         aggregated_data[month][do_no]["mine_name"] = payload["Mines_Name"]
-
+                    else:
+                        aggregated_data[month][do_no]["mine_name"] = "-"
                     aggregated_data[month][do_no]["count"] += 1 
 
             dataList = [
@@ -5936,11 +5952,16 @@ def transit_loss_gain_rail_mode():
 
                     if payload.get("total_rly_net_wt") and payload.get("total_rly_net_wt") != "NaN":
                         aggregated_data[month][rr_no]["actual_net_qty"] += float(payload["total_rly_net_wt"])
+                    else:
+                        aggregated_data[month][rr_no]["actual_net_qty"] = 0
                     if payload.get("total_secl_net_wt") and payload.get("total_secl_net_wt") != "NaN":
                         aggregated_data[month][rr_no]["net_qty"] += float(payload.get("total_secl_net_wt"))
+                    else:
+                        aggregated_data[month][rr_no]["net_qty"] = 0
                     if payload.get("Mines_Name"):
                         aggregated_data[month][rr_no]["mine_name"] = payload["Mines_Name"]
-
+                    else:
+                        aggregated_data[month][rr_no]["mine_name"] = "-"
                     aggregated_data[month][rr_no]["count"] += 1 
 
             dataList = [
@@ -6117,10 +6138,14 @@ def rail_pdf(specified_date):
                             aggregated_data[date][rr_no]["challan_lr_qty"] += float(
                                 payload.get("total_secl_net_wt")
                             )
+                        else:
+                            aggregated_data[date][rr_no]["challan_lr_qty"] = 0
                         if payload.get("source"):
                             aggregated_data[date][rr_no]["source"] = payload[
                                 "source"
                             ]
+                        else:
+                            aggregated_data[date][rr_no]["source"] = "-"
                         aggregated_data[date][rr_no]["count"] += 1 
 
                 dataList = [
@@ -6138,7 +6163,7 @@ def rail_pdf(specified_date):
                     }
                     for date in aggregated_data
                 ]
-                console_logger.debug(dataList)
+                # console_logger.debug(dataList)
                 coalDataList = [
                     {"date": coal_date, "data": {
                         rr_no: {
@@ -6253,23 +6278,24 @@ def rail_pdf(specified_date):
 @router.get("/pdf_minewise_road", tags=["PDF Report"])
 def generate_gmr_report(
     response: Response,
-    specified_date: str,
+    specified_date: Optional[str]=None,
     mine: Optional[str] = "All",
 ):
     try:
+        # if specified_date:
+        data = {}
+        result = {
+            "labels": [],
+            "datasets": [],
+            "weight_total": [],
+            "total": 0,
+            "page_size": 15,
+        }
+
+        if mine and mine != "All":
+            data["mine__icontains"] = mine.upper()
+
         if specified_date:
-            data = {}
-            result = {
-                "labels": [],
-                "datasets": [],
-                "weight_total": [],
-                "total": 0,
-                "page_size": 15,
-            }
-
-            if mine and mine != "All":
-                data["mine__icontains"] = mine.upper()
-
             # specified_change_date = datetime.datetime.strptime(specified_date, "%Y-%m-%d")
             specified_change_date = convert_to_utc_format(specified_date, "%Y-%m-%d")
 
@@ -6278,206 +6304,302 @@ def generate_gmr_report(
             start_date = datetime.datetime.strftime(start_of_month, '%Y-%m-%d')
             end_date = datetime.datetime.strftime(specified_change_date, '%Y-%m-%d')
 
-            logs = (
-                Gmrdata.objects()
-                .order_by("mine", "arv_cum_do_number", "-created_at")
-            )
-            # coal_testing = CoalTesting.objects(receive_date__gte=start_date, receive_date__lte=end_date).order_by("-ID")
-            if any(logs):
-                aggregated_data = defaultdict(
-                    lambda: defaultdict(
-                        lambda: {
-                            "DO_Qty": 0,
-                            "challan_lr_qty": 0,
-                            "mine_name": "",
-                            "balance_qty": 0,
-                            "percent_of_supply": 0,
-                            "actual_net_qty": 0,
-                            "Gross_Calorific_Value_(Adb)": 0,
-                            "count": 0,
-                            "coal_count": 0,
-                        }
-                    )
-                )
-
-                # aggregated_coal_data = defaultdict(
-                #     lambda: defaultdict(
-                #         lambda: {
-                #             "Gross_Calorific_Value_(Adb)": 0,
-                #             "coal_count": 0,
-                #         }
-                #     )
-                # )
-
-                # for single_log in coal_testing:
-                #     coal_date = single_log.receive_date.strftime("%Y-%m")
-                #     coal_payload = single_log.gradepayload()
-                #     mine = coal_payload["Mine"]
-                #     doNo = coal_payload["DO_No"]
-                #     if coal_payload.get("Gross_Calorific_Value_(Adb)"):
-                #         aggregated_coal_data[coal_date][doNo]["Gross_Calorific_Value_(Adb)"] += float(coal_payload["Gross_Calorific_Value_(Adb)"])
-                #         aggregated_coal_data[coal_date][doNo]["coal_count"] += 1
-
-                start_dates = {}
-                grade = 0
-                for log in logs:
-                    if log.vehicle_in_time!=None:
-                        month = log.vehicle_in_time.strftime("%Y-%m")
-                        date = log.vehicle_in_time.strftime("%Y-%m-%d")
-                        payload = log.payload()
-                        result["labels"] = list(payload.keys())
-                        mine_name = payload.get("Mines_Name")
-                        do_no = payload.get("DO_No")
-                        if payload.get("Grade") is not None:
-                            if '-' in payload.get("Grade"):
-                                grade = payload.get("Grade").split("-")[0]
-                            else:
-                                grade = payload.get("Grade")
-                        
-                        # If start_date is None or the current vehicle_in_time is earlier than start_date, update start_date
-                        if do_no not in start_dates:
-                            start_dates[do_no] = date
-                        elif date < start_dates[do_no]:
-                            start_dates[do_no] = date
-                        if payload.get("DO_Qty"):
-                            aggregated_data[date][do_no]["DO_Qty"] = float(payload["DO_Qty"])
-                        # if payload.get("DO_Qty"):
-                        #     aggregated_data[date][do_no]["DO_Qty"] += float(
-                        #         payload["DO_Qty"]
-                        #     )
-                        if payload.get("Challan_Net_Wt(MT)"):
-                            aggregated_data[date][do_no]["challan_lr_qty"] += float(
-                                payload.get("Challan_Net_Wt(MT)")
-                            )
-                        if payload.get("Mines_Name"):
-                            aggregated_data[date][do_no]["mine_name"] = payload[
-                                "Mines_Name"
-                            ]
-                        aggregated_data[date][do_no]["count"] += 1 
-
-                dataList = [
-                    {
-                        "date": date,
-                        "data": {
-                            do_no: {
-                                "DO_Qty": data["DO_Qty"],
-                                "challan_lr_qty": data["challan_lr_qty"],
-                                "mine_name": data["mine_name"],
-                                "grade": grade,
-                                "date": date,
-                            }
-                            for do_no, data in aggregated_data[date].items()
-                        },
+        logs = (
+            Gmrdata.objects(actual_tare_qty__ne=None, gate_approved=True)
+            .order_by("-created_at")
+        )
+        # coal_testing = CoalTesting.objects(receive_date__gte=start_date, receive_date__lte=end_date).order_by("-ID")
+        if any(logs):
+            aggregated_data = defaultdict(
+                lambda: defaultdict(
+                    lambda: {
+                        "DO_Qty": 0,
+                        "challan_lr_qty": 0,
+                        "mine_name": "",
+                        "balance_qty": 0,
+                        "percent_of_supply": 0,
+                        "actual_net_qty": 0,
+                        "Gross_Calorific_Value_(Adb)": 0,
+                        "count": 0,
+                        "coal_count": 0,
                     }
-                    for date in aggregated_data
-                ]
-                # console_logger.debug(dataList)
-                # coalDataList = [
-                #     {"date": coal_date, "data": {
-                #         doNo: {
-                #             "average_Gross_Calorific_Value_(Adb)": data["Gross_Calorific_Value_(Adb)"] / data["coal_count"],
-                #         } for doNo, data in aggregated_coal_data[coal_date].items()
-                #     }} for coal_date in aggregated_coal_data
-                # ]
-                # console_logger.debug(coalDataList)
-                # coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
+                )
+            )
 
-                # # Iterate through each month's data
-                # for month_data in coalDataList:
-                #     for key, mine_data in month_data["data"].items():
-                #         if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
-                #             for single_coal_grades in coal_grades:
-                #                 if single_coal_grades["end_value"] != "":
-                #                     if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
-                #                         mine_data["average_GCV_Grade"] = single_coal_grades["grade"]
-                #                     elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
-                #                         mine_data["average_GCV_Grade"] = "G-1"
-                #                         break
-                # console_logger.debug(mine_data["average_GCV_Grade"])
-                # console_logger.debug(coalDataList)
-                final_data = []
-                if specified_date:
-                    filtered_data = [
-                        entry for entry in dataList if entry["date"] == specified_date
-                    ]
-                    if filtered_data:
-                        data = filtered_data[0]["data"]
-                        for data_dom, values in data.items():
-                            dictData = {}
-                            dictData["DO_No"] = data_dom
-                            dictData["mine_name"] = values["mine_name"]
-                            dictData["DO_Qty"] = values["DO_Qty"]
-                            dictData["challan_lr_qty"] = values["challan_lr_qty"]
-                            dictData["date"] = values["date"]
-                            dictData["cumulative_challan_lr_qty"] = 0
-                            dictData["balance_qty"] = 0
-                            dictData["percent_supply"] = 0
-                            dictData["asking_rate"] = 0
-                            dictData['average_GCV_Grade'] = values["grade"] 
-                            if data_dom in start_dates:
-                                dictData["start_date"] = start_dates[data_dom]
-                                # a total of 45 days data is needed, so date + 44 days
-                                dictData["end_date"] = datetime.datetime.strptime(start_dates[data_dom], "%Y-%m-%d") + timedelta(days=44)
-                                # dictData["balance_days"] = dictData["end_date"] - datetime.date.today()
-                                balance_days = dictData["end_date"].date() - datetime.date.today()
-                                dictData["balance_days"] = balance_days.days
-                            else:
-                                dictData["start_date"] = None
-                                dictData["end_date"] = None
-                                dictData["balance_days"] = None
+            # aggregated_coal_data = defaultdict(
+            #     lambda: defaultdict(
+            #         lambda: {
+            #             "Gross_Calorific_Value_(Adb)": 0,
+            #             "coal_count": 0,
+            #         }
+            #     )
+            # )
 
-                            # Look for data_dom match in coalDataList and add average_GCV_Grade
-                            # for coal_data in coalDataList:
-                            #     # if coal_data['date'] == specified_date and data_dom in coal_data['data']:
-                            #     if data_dom in coal_data['data']:
-                            #         dictData['average_GCV_Grade'] = coal_data['data'][data_dom]['average_GCV_Grade']
-                            #         break
-                            # else:
-                            #     dictData['average_GCV_Grade'] = "-"
+            # for single_log in coal_testing:
+            #     coal_date = single_log.receive_date.strftime("%Y-%m")
+            #     coal_payload = single_log.gradepayload()
+            #     mine = coal_payload["Mine"]
+            #     doNo = coal_payload["DO_No"]
+            #     if coal_payload.get("Gross_Calorific_Value_(Adb)"):
+            #         aggregated_coal_data[coal_date][doNo]["Gross_Calorific_Value_(Adb)"] += float(coal_payload["Gross_Calorific_Value_(Adb)"])
+            #         aggregated_coal_data[coal_date][doNo]["coal_count"] += 1
+
+            start_dates = {}
+            grade = 0
+            for log in logs:
+                if log.vehicle_in_time!=None:
+                    month = log.vehicle_in_time.strftime("%Y-%m")
+                    date = log.vehicle_in_time.strftime("%Y-%m-%d")
+                    payload = log.payload()
+                    result["labels"] = list(payload.keys())
+                    mine_name = payload.get("Mines_Name")
+                    do_no = payload.get("DO_No")
+                    # console_logger.debug(do_no)
+                    
+                    if payload.get("Grade") is not None:
+                        if '-' in payload.get("Grade"):
+                            grade = payload.get("Grade").split("-")[0]
+                        else:
+                            grade = payload.get("Grade")
+                    # console_logger.debug(grade)
+                    # If start_date is None or the current vehicle_in_time is earlier than start_date, update start_date
+                    if do_no not in start_dates:
+                        start_dates[do_no] = date
+                    elif date < start_dates[do_no]:
+                        start_dates[do_no] = date
+
+                    # start_dates[do_no] = date
+
+                    # console_logger.debug(start_dates)
+                    if payload.get("DO_Qty"):
+                        # console_logger.debug(float(payload["DO_Qty"]))
+                        aggregated_data[date][do_no]["DO_Qty"] = float(payload["DO_Qty"])
+                    else:
+                        aggregated_data[date][do_no]["DO_Qty"] = 0
+                    if payload.get("Challan_Net_Wt(MT)"):
+                        aggregated_data[date][do_no]["challan_lr_qty"] += float(
+                            payload.get("Challan_Net_Wt(MT)")
+                        )
+                    else:
+                        aggregated_data[date][do_no]["challan_lr_qty"] = 0
+
+                    if payload.get("Mines_Name"):
+                        aggregated_data[date][do_no]["mine_name"] = payload[
+                            "Mines_Name"
+                        ]
+                    else:
+                        aggregated_data[date][do_no]["mine_name"] = "-"
+                    aggregated_data[date][do_no]["count"] += 1 
+            # console_logger.debug(aggregated_data)
+            dataList = [
+                {
+                    "date": date,
+                    "data": {
+                        do_no: {
+                            "DO_Qty": data["DO_Qty"],
+                            "challan_lr_qty": data["challan_lr_qty"],
+                            "mine_name": data["mine_name"],
+                            "grade": grade,
+                            "date": date,
+                        }
+                        for do_no, data in aggregated_data[date].items()
+                    },
+                }
+                for date in aggregated_data
+            ]
+            # console_logger.debug(dataList)
+            # coalDataList = [
+            #     {"date": coal_date, "data": {
+            #         doNo: {
+            #             "average_Gross_Calorific_Value_(Adb)": data["Gross_Calorific_Value_(Adb)"] / data["coal_count"],
+            #         } for doNo, data in aggregated_coal_data[coal_date].items()
+            #     }} for coal_date in aggregated_coal_data
+            # ]
+            # console_logger.debug(coalDataList)
+            # coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
+
+            # # Iterate through each month's data
+            # for month_data in coalDataList:
+            #     for key, mine_data in month_data["data"].items():
+            #         if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
+            #             for single_coal_grades in coal_grades:
+            #                 if single_coal_grades["end_value"] != "":
+            #                     if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+            #                         mine_data["average_GCV_Grade"] = single_coal_grades["grade"]
+            #                     elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+            #                         mine_data["average_GCV_Grade"] = "G-1"
+            #                         break
+            # console_logger.debug(mine_data["average_GCV_Grade"])
+            # console_logger.debug(coalDataList)
+            final_data = []
+            for entry in dataList:
+                date = entry["date"]
+                # console_logger.debug(entry)
+                for data_dom, values in entry['data'].items():
+                    # console_logger.debug(values["grade"])
+                    dictData = {}
+                    dictData["DO_No"] = data_dom
+                    dictData["mine_name"] = values["mine_name"]
+                    dictData["DO_Qty"] = values["DO_Qty"]
+                    dictData["challan_lr_qty"] = values["challan_lr_qty"]
+                    dictData["date"] = values["date"]
+                    dictData["cumulative_challan_lr_qty"] = 0
+                    dictData["balance_qty"] = 0
+                    dictData["percent_supply"] = 0
+                    dictData["asking_rate"] = 0
+                    dictData['average_GCV_Grade'] = values["grade"]
+                    
+                    
+                    if data_dom in start_dates:
+                        # console_logger.debug(start_dates)
+                        dictData["start_date"] = start_dates[data_dom]
+                        dictData["end_date"] = datetime.datetime.strptime(start_dates[data_dom], "%Y-%m-%d") + timedelta(days=44)
+                        balance_days = dictData["end_date"].date() - datetime.datetime.today().date()
+                        dictData["balance_days"] = balance_days.days
+                    else:
+                        dictData["start_date"] = None
+                        dictData["end_date"] = None
+                        dictData["balance_days"] = None
+                    
+                    final_data.append(dictData)
+
+                # console_logger.debug(final_data)
+
+            if final_data:
+                # if specified_date:
+                #     # Find the index of the month data in dataList
+                #     index_of_month = next((index for index, item in enumerate(dataList) if item['date'] == specified_date), None)
+                # else:
+                index_of_month = next((index for index, item in enumerate(dataList)))
+                # If the month is not found, exit or handle the case
+                if index_of_month is None:
+                    print("Month data not found.")
+                    exit()
+
+        # if specified_date:
+        #     # Iterate over final_data
+        #     for entry in final_data:
+        #         do_no = entry["DO_No"]
+        #         cumulative_lr_qty = 0
                 
-                            # append data
-                            final_data.append(dictData)
-                    # console_logger.debug(final_data)
+        #         # Iterate over dataList from the first month to the current month
+        #         for i in range(index_of_month + 1):
+        #             month_data = dataList[i]
+        #             data = month_data["data"].get(do_no)
+                    
+        #             # If data is found for the DO_No in the current month, update cumulative_lr_qty
+        #             if data:
+        #                 cumulative_lr_qty += data['challan_lr_qty']
+                
+        #         # Update cumulative_challan_lr_qty in final_data
+        #         entry['cumulative_challan_lr_qty'] = cumulative_lr_qty
+        #         if data["DO_Qty"] != 0 and entry["cumulative_challan_lr_qty"] != 0:
+        #             entry["percent_supply"] = (entry["cumulative_challan_lr_qty"] / data["DO_Qty"]) * 100
+        #         else:
+        #             entry["percent_supply"] = 0
 
-                    if final_data:
-                        # Find the index of the month data in dataList
-                        index_of_month = next((index for index, item in enumerate(dataList) if item['date'] == specified_date), None)
+        #         if entry["cumulative_challan_lr_qty"] != 0 and data["DO_Qty"] != 0:
+        #             entry["balance_qty"] = (data["DO_Qty"] - entry["cumulative_challan_lr_qty"])
+        #         else:
+        #             entry["balance_qty"] = 0
+                
+        #         if entry["balance_qty"] and entry["balance_qty"] != 0:
+        #             if entry["balance_days"]:
+        #                 entry["asking_rate"] = entry["balance_qty"] / entry["balance_days"]
+        # else:
+            # for record in final_data:
+            #     if 'DO_No' in record:
+            #         DO_No = record['DO_No']
+            #         cumulative_lr_qty = 0
+                    
+            #         for entry in dataList:
+            #             if DO_No in entry['data']:
+            #                 cumulative_challan_lr_qty += entry['data'][DO_No]['challan_lr_qty']
+            #                 console_logger.debug(cumulative_challan_lr_qty)
+            #                 balance_qty = record['DO_Qty'] - cumulative_challan_lr_qty
+            #                 percent_supply = (cumulative_challan_lr_qty / record['DO_Qty']) * 100 if record['DO_Qty'] != 0 else 0
+            #                 asking_rate = balance_qty / record['balance_days'] if record['balance_days'] != 0 else 0
 
-                        # If the month is not found, exit or handle the case
-                        if index_of_month is None:
-                            print("Month data not found.")
-                            exit()
+            #             record['cumulative_challan_lr_qty'] = cumulative_challan_lr_qty
+            #             record['balance_qty'] = balance_qty
+            #             record['percent_supply'] = percent_supply
+            #             record['asking_rate'] = asking_rate
 
-                        # Iterate over final_data
-                        for entry in final_data:
-                            do_no = entry["DO_No"]
-                            cumulative_lr_qty = 0
-                            
-                            # Iterate over dataList from the first month to the current month
-                            for i in range(index_of_month + 1):
-                                month_data = dataList[i]
-                                data = month_data["data"].get(do_no)
-                                
-                                # If data is found for the DO_No in the current month, update cumulative_lr_qty
-                                if data:
-                                    cumulative_lr_qty += data['challan_lr_qty']
-                            
-                            # Update cumulative_challan_lr_qty in final_data
-                            entry['cumulative_challan_lr_qty'] = cumulative_lr_qty
-                            if data["DO_Qty"] != 0 and entry["cumulative_challan_lr_qty"] != 0:
-                                entry["percent_supply"] = (entry["cumulative_challan_lr_qty"] / data["DO_Qty"]) * 100
-                            else:
-                                entry["percent_supply"] = 0
+                # console_logger.debug(final_data)
+                # for entry in final_data:
+                #     do_no = entry["DO_No"]
+                #     cumulative_lr_qty = 0
+                    
+                #     # Iterate over dataList from the first month to the current month
+                #     for i in range(index_of_month + 1):
+                #         month_data = dataList[i]
+                #         data = month_data["data"].get(do_no)
+                        
+                #         # If data is found for the DO_No in the current month, update cumulative_lr_qty
+                #         if data:
+                #             cumulative_lr_qty += data['challan_lr_qty']
+                #         console_logger.debug(entry["DO_Qty"])
+                #     # Update cumulative_challan_lr_qty in final_data
+                #     entry['cumulative_challan_lr_qty'] = cumulative_lr_qty
+                #     if entry and entry["DO_Qty"] != 0 and entry["cumulative_challan_lr_qty"] != 0:
+                #         entry["percent_supply"] = (entry["cumulative_challan_lr_qty"] / entry["DO_Qty"]) * 100
+                #     else:
+                #         entry["percent_supply"] = 0
 
-                            if entry["cumulative_challan_lr_qty"] != 0 and data["DO_Qty"] != 0:
-                                entry["balance_qty"] = (data["DO_Qty"] - entry["cumulative_challan_lr_qty"])
-                            else:
-                                entry["balance_qty"] = 0
-                            
-                            if entry["balance_qty"] and entry["balance_qty"] != 0:
-                                if entry["balance_days"]:
-                                    entry["asking_rate"] = entry["balance_qty"] / entry["balance_days"]
+                #     if entry and entry["cumulative_challan_lr_qty"] != 0 and entry["DO_Qty"] != 0:
+                #         entry["balance_qty"] = (entry["DO_Qty"] - entry["cumulative_challan_lr_qty"])
+                #     else:
+                #         entry["balance_qty"] = 0
+                    
+                #     if entry and entry["balance_days"] and entry["balance_qty"] != 0:
+                #         if entry["balance_days"]:
+                #             entry["asking_rate"] = entry["balance_qty"] / entry["balance_days"]
 
+                #     console_logger.debug(entry)
+
+                # Create a dictionary to store the latest entries based on DO_No
+                latest_entries = {}
+
+                for entry in final_data:
+                    do_no = entry["DO_No"]
+                    entry_date = entry["date"]
+                    
+                    if do_no not in latest_entries or entry_date > latest_entries[do_no]["date"]:
+                        latest_entries[do_no] = entry
+                # console_logger.debug(latest_entries)
+                # Step 2: Iterate over the latest_entries to perform the remaining calculations
+                for do_no, entry in latest_entries.items():
+                    cumulative_lr_qty = 0
+                    
+                    # Iterate over dataList from the first month to the current month
+                    # for i in range(index_of_month + 1):
+                    for i in range(12):
+                        month_data = dataList[i]
+                        data = month_data["data"].get(do_no)
+                        
+                        # If data is found for the DO_No in the current month, update cumulative_lr_qty
+                        if data:
+                            cumulative_lr_qty += data['challan_lr_qty']
+                    
+                    # Update cumulative_challan_lr_qty in the latest_entries
+                    entry['cumulative_challan_lr_qty'] = cumulative_lr_qty
+                    if data and data["DO_Qty"] != 0 and entry["cumulative_challan_lr_qty"] != 0:
+                        entry["percent_supply"] = (entry["cumulative_challan_lr_qty"] / data["DO_Qty"]) * 100
+                    else:
+                        entry["percent_supply"] = 0
+
+                    if data and entry["cumulative_challan_lr_qty"] != 0 and data["DO_Qty"] != 0:
+                        entry["balance_qty"] = (data["DO_Qty"] - entry["cumulative_challan_lr_qty"])
+                    else:
+                        entry["balance_qty"] = 0
+                    
+                    if data and entry["balance_days"] and entry["balance_qty"] != 0:
+                        if entry["balance_days"]:
+                            entry["asking_rate"] = entry["balance_qty"] / entry["balance_days"]
+
+                    # console_logger.debug(entry)
+
+                final_data = list(latest_entries.values())
                 
                 rrNo_values, clubbed_data, aopList = bar_graph_data(specified_date)
                 clubbed_data_final = gmr_main_graph()
@@ -6530,6 +6652,7 @@ def endpoint_to_add_scheduler(response: Response, payload: MisReportData):
             reportScheduler.bcc_list = dataName.get("bcc_list")
             reportScheduler.filter = dataName.get("filter")
             reportScheduler.schedule = dataName.get("schedule")
+            reportScheduler.shift_schedule = dataName.get("shift_schedule")
             # time_fetch_data = datetime.datetime.strptime(dataName.get("time"), "%H:%M") + timedelta(hours=5, minutes=30)
             # reportScheduler.time = time_fetch_data.strftime("%H:%M")
             reportScheduler.time = dataName.get("time")
@@ -6537,7 +6660,7 @@ def endpoint_to_add_scheduler(response: Response, payload: MisReportData):
 
         except DoesNotExist as e:
             # time_fetch_data = datetime.datetime.strptime(dataName.get("time"), "%H:%M") + timedelta(hours=5, minutes=30)
-            reportScheduler = ReportScheduler(report_name=dataName.get("report_name"), recipient_list=dataName.get("recipient_list"), cc_list=dataName.get("cc_list"), bcc_list=dataName.get("bcc_list"), filter = dataName.get("filter"), schedule = dataName.get("schedule"), time=dataName.get("time"))
+            reportScheduler = ReportScheduler(report_name=dataName.get("report_name"), recipient_list=dataName.get("recipient_list"), cc_list=dataName.get("cc_list"), bcc_list=dataName.get("bcc_list"), filter = dataName.get("filter"), schedule = dataName.get("schedule"), shift_schedule = dataName.get("shift_schedule"), time=dataName.get("time"))
             reportScheduler.save()
 
         # hh, mm = reportScheduler.time.split(":")
@@ -6563,11 +6686,27 @@ def endpoint_to_add_scheduler(response: Response, payload: MisReportData):
             elif reportScheduler.filter == "monthly":
                 # backgroundTaskHandler.run_job(task_name=reportScheduler.report_name, func=send_report_generate, trigger="cron", **{"month": reportScheduler.schedule}) # month (int|str) - month (1-12)
                 backgroundTaskHandler.run_job(task_name=reportScheduler.report_name, func=send_report_generate, trigger="cron", **{"day": reportScheduler.schedule, "hour": hh, "minute": mm}, func_kwargs={"report_name":payload.report_name}, max_instances=1)
+            elif reportScheduler.filter == "shift_schedule":
+                shift_schedule = reportScheduler.shift_schedule
+                for single_shift in shift_schedule:
+                    # console_logger.debug(single_shift)
+                    shift_time = datetime.datetime.strptime(single_shift.get("time"), time_format)
+                    shift_time_ist = shift_time - time_to_subtract
+                    shift_hh, shift_mm = shift_time_ist.strftime(time_format).split(":")
+                    console_logger.debug(reportScheduler.report_name)
+                    backgroundTaskHandler.run_job(
+                        task_name=f"{reportScheduler.report_name}_{single_shift.get('shift_wise')}", 
+                        func=send_shift_report_generate, 
+                        trigger="cron", **{"day": "*", "hour": shift_hh, "minute": shift_mm}, 
+                        func_kwargs={"report_name":f"{reportScheduler.report_name}", "shift_name": single_shift.get('shift_wise'), "shift_time": single_shift.get("time")},
+                        max_instances=1)
 
-        fetchEmailNotifications = emailNotifications.objects.get(notification_name=dataName.get("report_name"))
-        if fetchEmailNotifications:
+
+        try:
+            fetchEmailNotifications = emailNotifications.objects.get(notification_name=dataName.get("report_name"))
             fetchEmailNotifications.delete()
-
+        except DoesNotExist as e:
+            console_logger.debug("No report name found in emailnotifications db")
         return {"detail": "success"}
     except Exception as e:
         console_logger.debug(e)
@@ -6602,33 +6741,6 @@ def endpoint_to_delete_scheduler(response: Response, id: str):
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug("Error on line {}".format(sys.exc_info()[-1].tb_lineno))
         return {"detail": "failed"}
-
-
-# @router.post("/smtp", tags=["Mail"])
-# async def add_smtp_settings(response: Response, payload: SmtpSettingsPostIn):
-#     """
-#     Smtp Settings
-#     """
-#     if SmtpSettings.objects.first() is not None:
-#         # console_logger.debug(SmtpSettings.objects.first())
-#         raise HTTPException(status_code=409)
-#     encrypt_pass = cryptocode.encrypt(payload.dict()["Smtp_password"], "8tFXLF46fRUkRFqJrfMjIbYAYeEJKyqB")
-#     # console_logger.debug(payload.dict())
-
-#     mail = send_test_email(payload)
-
-#     # console_logger.debug(mail)
-#     # sending test email
-#     if mail == "success":
-#         payload = payload.dict(exclude_none=True, exclude_defaults=True)
-#         payload["Smtp_password"] = encrypt_pass
-#         smtp_settings = SmtpSettings(**payload)
-#         smtp_settings.save()
-
-#         raise HTTPException(status_code=200, detail="success")
-#     else:
-#         console_logger.debug("Failed to Send")
-#         raise HTTPException(status_code=400, detail="Invalid Smtp Settings")
 
 
 @router.post("/smtp", tags=["Mail"])
@@ -6813,8 +6925,8 @@ def check_existing_notification(notification_name):
     current_time = datetime.datetime.now()
     start_of_day = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
     end_of_day = start_of_day + datetime.timedelta(days=1)
-    console_logger.debug(start_of_day)
-    console_logger.debug(end_of_day)
+    # console_logger.debug(start_of_day)
+    # console_logger.debug(end_of_day)
     console_logger.debug(emailNotifications.objects(
         Q(notification_name=notification_name) & 
         Q(created_at__gte=start_of_day) & 
@@ -6826,6 +6938,95 @@ def check_existing_notification(notification_name):
         Q(created_at__lt=end_of_day)
     ).count() > 0 # getting either true or false
 
+def send_shift_report_generate(**kwargs):
+    # try:
+    console_logger.debug(("scheduler report generate",kwargs))
+    reportSchedule = ReportScheduler.objects.get(report_name=kwargs.get("report_name"))
+    if reportSchedule.active == False:
+        console_logger.debug("scheduler is off")
+        return
+    elif reportSchedule.active == True:
+        if not check_existing_notification(f"coal_bunkering_schedule_{kwargs.get('shift_name')}"):
+            emailNotifications(notification_name=f"coal_bunkering_schedule_{kwargs.get('shift_name')}").save()
+            console_logger.debug("inside Coal Bunkering Schedule")
+            fetchShiftScheduler = shiftScheduler.objects.get(report_name=kwargs.get("report_name"), shift_name=kwargs.get('shift_name'))
+            if fetchShiftScheduler:
+                # console_logger.debug(fetchShiftScheduler.start_shift_time)
+                # console_logger.debug(fetchShiftScheduler.end_shift_time)
+
+                fetchBunkerAnalysis = bunkerAnalysis.objects.filter(Q(created_at__gte=fetchShiftScheduler.start_shift_time) & Q(created_at__lte=fetchShiftScheduler.end_shift_time))
+                html_per = ""
+                if fetchBunkerAnalysis:
+                    html_per += "<table border='1'><tr><th>ID</th><th>Units</th><th>Bunkering</th><th>Shift Name</th><th>MGCV</th><th>HGCV</th><th>Ratio</th><th>Date</th></tr>"
+                    for single_bunker in fetchBunkerAnalysis:
+                        # console_logger.debug(single_bunker.units)
+                        html_per += "<tr>"
+                        html_per +=f"<td>{single_bunker.ID}</td>"
+                        if single_bunker.shift_name:
+                            html_per += f"<td>{single_bunker.shift_name}</td>"
+                        else:
+                            html_per += "<td>-</td>"
+                        html_per +=f"<td>{single_bunker.units}</td>"
+                        html_per +=f"<td>{single_bunker.bunkering}</td>"
+                        if single_bunker.mgcv:
+                            html_per += f"<td>{single_bunker.mgcv}</td>"
+                        else:
+                            html_per += "<td>-</td>"
+                        if single_bunker.hgcv:
+                            html_per += f"<td>{single_bunker.hgcv}</td>"
+                        else:
+                            html_per += "<td>-</td>"
+                        if single_bunker.ratio:
+                            html_per += f"<td>{single_bunker.ratio}</td>"
+                        else:
+                            html_per += "<td>-</td>"
+                        html_per += f"<td>{single_bunker.created_date.strftime('%d %b %Y')}</td>"
+                        html_per += "</tr>"
+                    html_per += "</table>"
+                else:
+                    html_per += "<b>No data found</b>"
+                response_code, fetch_email = fetch_email_data()
+                if response_code == 200:
+                    subject = f"Bunker Analysis Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                    body = f"""
+                        <b>Bunker Analysis Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b>
+                        <br>
+                        <br>
+                        <!doctype html>
+                        <html>
+                        <head>
+                            <meta charset="utf-8">
+                            <title>Bunker Analysis Report</title>
+                        </head>
+                        <body>
+                            {html_per}
+                        </body>
+                        </html>"""
+                    console_logger.debug(os.getenv("DEVELOPMENT"))
+                    if os.getenv("DEVELOPMENT") == "local":
+                        console_logger.debug("inside 192")
+                        send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule.recipient_list, body, "", reportSchedule.cc_list, reportSchedule.bcc_list)
+                    elif os.getenv("DEVELOPMENT") == "prod":
+                        console_logger.debug("outside 192")
+                        send_data = {
+                            "sender_email": fetch_email.get("Smtp_user"),
+                            "subject": subject,
+                            "password": fetch_email.get("Smtp_password"),
+                            "smtp_host": fetch_email.get("Smtp_host"),
+                            "smtp_port": fetch_email.get("Smtp_port"),
+                            "receiver_email": reportSchedule.recipient_list,
+                            "body": body,
+                            "file_path": "",
+                            "cc_list": reportSchedule.cc_list,
+                            "bcc_list": reportSchedule.bcc_list
+                        }
+                        console_logger.debug(send_data)
+                        generate_email(Response, email=send_data)
+
+        else:
+            return
+    # except Exception as e:
+    #     console_logger.debug(e)
 
 def send_report_generate(**kwargs):
     try:
@@ -6872,13 +7073,13 @@ def send_report_generate(**kwargs):
                             generate_email(Response, email=send_data)
                 else:
                     return
-        elif kwargs["report_name"] == "certificate_expiry_notifications":
+        elif kwargs["report_name"] == "expiring_fitness_certificate":
             if reportSchedule[1].active == False:
                 console_logger.debug("scheduler is off")
                 return
             elif reportSchedule[1].active == True:
-                if not check_existing_notification("certificate_expiry_notifications"):
-                    emailNotifications(notification_name="certificate_expiry_notifications").save()
+                if not check_existing_notification("expiring_fitness_certificate"):
+                    emailNotifications(notification_name="expiring_fitness_certificate").save()
                     console_logger.debug("inside certificate expiry")
                     generateExpiryData = endpoint_to_fetch_going_to_expiry_vehicle(Response)
                     tabledata = ""
@@ -6947,14 +7148,12 @@ def send_report_generate(**kwargs):
                 if not check_existing_notification("gwel_coal_report"):
                     emailNotifications(notification_name="gwel_coal_report").save()
                     console_logger.debug("inside gwel coal report")
-                    # start_date = datetime.datetime.today().strftime('%Y-%m-%d')
-                    # end_date = datetime.datetime.today().strftime('%Y-%m-%d')
-                    start_date = "2024-07-08"
-                    end_date = "2024-07-08"
+                    start_date = datetime.datetime.today().strftime('%Y-%m-%d')
+                    end_date = datetime.datetime.today().strftime('%Y-%m-%d')
+                    # start_date = "2024-07-29"
+                    # end_date = "2024-07-29"
                     filter_type = "gwel"
                     generateGwelReportData = fetch_excel_data_rail(Response, f"{start_date}T00:00", f"{end_date}T23:59", filter_type)
-                    console_logger.debug(generateGwelReportData)
-                    console_logger.debug(type(generateGwelReportData))
                     # console_logger.debug(f"{os.path.join(os.getcwd())}/{generateGwelReportData}")
                     response_code, fetch_email = fetch_email_data()
                     if response_code == 200:
@@ -7011,14 +7210,12 @@ def send_report_generate(**kwargs):
                 if not check_existing_notification("thirdparty_coal_report"):
                     emailNotifications(notification_name="thirdparty_coal_report").save()
                     console_logger.debug("inside Thirdparty Coal Report")
-                    # start_date = datetime.datetime.today().strftime('%Y-%m-%d')
-                    # end_date = datetime.datetime.today().strftime('%Y-%m-%d')
-                    start_date = "2024-07-08"
-                    end_date = "2024-07-08"
+                    start_date = datetime.datetime.today().strftime('%Y-%m-%d')
+                    end_date = datetime.datetime.today().strftime('%Y-%m-%d')
+                    # start_date = "2024-07-29"
+                    # end_date = "2024-07-29"
                     filter_type = "third_party"
                     generateThirdPartyReportData = fetch_excel_data_rail(Response, f"{start_date}T00:00", f"{end_date}T23:59", filter_type)
-                    console_logger.debug(generateThirdPartyReportData)
-                    console_logger.debug(type(generateThirdPartyReportData))
                     # console_logger.debug(f"{os.path.join(os.getcwd())}/{generateThirdPartyReportData}")
                     response_code, fetch_email = fetch_email_data()
                     if response_code == 200:
@@ -7080,8 +7277,8 @@ def send_report_generate(**kwargs):
                     roadData = fetch_data_road_logistics(Response, specified_date)
                     railData = fetch_data_rail_logistics(Response, specified_date)
 
-                    console_logger.debug(roadData)
-                    console_logger.debug(railData)
+                    # console_logger.debug(roadData)
+                    # console_logger.debug(railData)
                     response_code, fetch_email = fetch_email_data()
                     if response_code == 200:
                         htmlData = ""
@@ -7134,6 +7331,65 @@ def send_report_generate(**kwargs):
                             generate_email(Response, email=send_data)
                 else:
                     return
+        elif kwargs["report_name"] == "coal_bunkering_table":
+            if reportSchedule[5].active == False:
+                console_logger.debug("scheduler is off")
+                return
+            elif reportSchedule[5].active == True:
+                if not check_existing_notification("coal_bunkering_table"):
+                    emailNotifications(notification_name="coal_bunkering_table").save()
+                    console_logger.debug("inside Coal Bunkering Table")
+                    specified_date = datetime.datetime.today().strftime('%Y-%m-%d')
+                    # specified_date = "2024-07-02"
+                    bunkerData = coal_bunker_analysis(Response, specified_date)
+
+                    # console_logger.debug(bunkerData)
+                    response_code, fetch_email = fetch_email_data()
+                    if response_code == 200:
+                        htmlData = ""
+                        if bunkerData != 404 and bunkerData is not None:
+                            htmlData += f"<b>Daily Coal Bunkering Report for {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b><br><br>"
+                            htmlData += bunkerData
+                            htmlData += "<br><br>"
+                        else:
+                            htmlData += f"<b>No data found for Daily Coal Bunkering Report for {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b><br><br>"
+                        
+                        console_logger.debug(reportSchedule[5].recipient_list)
+                        subject = f"Daily Coal Bunkering Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                        body = f"""
+                        <h3>Daily Coal Bunkering Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</h3>
+                        <br>
+                        <br>
+                        <br>
+                        <!doctype html>
+                        <html>
+                        <head>
+                            <meta charset="utf-8">
+                            <title>Daily Bunkering Report</title>
+                        </head>
+                        <body>
+                            {htmlData}
+                        </body>
+                        </html>"""
+                        if os.getenv("DEVELOPMENT") == "local":
+                            send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[5].recipient_list, body, "", reportSchedule[5].cc_list, reportSchedule[5].bcc_list)
+                        elif os.getenv("DEVELOPMENT") == "prod":
+                            send_data = {
+                                "sender_email": fetch_email.get("Smtp_user"),
+                                "subject": subject,
+                                "password": fetch_email.get("Smtp_password"),
+                                "smtp_host": fetch_email.get("Smtp_host"),
+                                "smtp_port": fetch_email.get("Smtp_port"),
+                                "receiver_email": reportSchedule[5].recipient_list,
+                                "body": body,
+                                "file_path": "",
+                                "cc_list": reportSchedule[5].cc_list,
+                                "bcc_list": reportSchedule[5].bcc_list
+                            }
+                            console_logger.debug(send_data)
+                            generate_email(Response, email=send_data)
+                else:
+                    return
         return "success"
     except Exception as e:
         console_logger.debug(e)
@@ -7148,7 +7404,7 @@ def test_api(response: Response):
     try:
         # send_report_generate(**{'report_name': 'daily_coal_logistic_report'})
         # send_report_generate(**{'report_name': 'certificate_expiry_notifications'})
-        send_report_generate(**{'report_name': 'gwel_coal_report'})
+        # send_report_generate(**{'report_name': 'coal_bunkering_schedule'})
         send_report_generate(**{'report_name': 'thirdparty_coal_report'})
         return {"detail": "success"}
     except Exception as e:
@@ -7261,20 +7517,23 @@ def coal_logistics_report(
                             elif date < start_dates[do_no]:
                                 start_dates[do_no] = date
                             if payload.get("DO_Qty"):
-                                # aggregated_data[date][do_no]["DO_Qty"] += float(
-                                #     payload["DO_Qty"]
-                                # )
                                 aggregated_data[date][do_no]["DO_Qty"] = float(
                                     payload["DO_Qty"]
                                 )
+                            else:
+                                aggregated_data[date][do_no]["DO_Qty"] = 0
                             if payload.get("Challan_Net_Wt(MT)"):
                                 aggregated_data[date][do_no]["challan_lr_qty"] += float(
                                     payload.get("Challan_Net_Wt(MT)")
                                 )
+                            else:
+                                aggregated_data[date][do_no]["challan_lr_qty"] = 0
                             if payload.get("Mines_Name"):
                                 aggregated_data[date][do_no]["mine_name"] = payload[
                                     "Mines_Name"
                                 ]
+                            else:
+                                aggregated_data[date][do_no]["mine_name"] = "-"
                             aggregated_data[date][do_no]["count"] += 1 
 
                     dataList = [
@@ -7493,20 +7752,23 @@ def coal_logistics_report(
                         elif date < start_dates[do_no]:
                             start_dates[do_no] = date
                         if payload.get("DO_Qty"):
-                            # aggregated_data[date][do_no]["DO_Qty"] += float(
-                            #     payload["DO_Qty"]
-                            # )
                             aggregated_data[date][do_no]["DO_Qty"] = float(
                                 payload["DO_Qty"]
                             )
+                        else:
+                            aggregated_data[date][do_no]["DO_Qty"] = 0
                         if payload.get("Challan_Net_Wt(MT)"):
                             aggregated_data[date][do_no]["challan_lr_qty"] += float(
                                 payload.get("Challan_Net_Wt(MT)")
                             )
+                        else:
+                            aggregated_data[date][do_no]["challan_lr_qty"] = 0
                         if payload.get("Mines_Name"):
                             aggregated_data[date][do_no]["mine_name"] = payload[
                                 "Mines_Name"
                             ]
+                        else:
+                            aggregated_data[date][do_no]["mine_name"] = "-"
                         aggregated_data[date][do_no]["count"] += 1 
 
                 dataList = [
@@ -7826,10 +8088,14 @@ def coal_logistics_report_train(
                                 aggregated_data[date][rr_no]["challan_lr_qty"] += float(
                                     payload.get("total_secl_net_wt")
                                 )
+                            else:
+                                aggregated_data[date][rr_no]["challan_lr_qty"] = 0
                             if payload.get("source"):
                                 aggregated_data[date][rr_no]["source"] = payload[
                                     "source"
                                 ]
+                            else:
+                                aggregated_data[date][rr_no]["source"] = "-"
                             aggregated_data[date][rr_no]["count"] += 1 
                     dataList = [
                         {
@@ -8055,10 +8321,14 @@ def coal_logistics_report_train(
                             aggregated_data[date][rr_no]["challan_lr_qty"] += float(
                                 payload.get("total_secl_net_wt")
                             )
+                        else:
+                            aggregated_data[date][rr_no]["challan_lr_qty"] = 0
                         if payload.get("source"):
                             aggregated_data[date][rr_no]["source"] = payload[
                                 "source"
                             ]
+                        else:
+                            aggregated_data[date][rr_no]["source"] = "-"
                         aggregated_data[date][rr_no]["count"] += 1
 
                 dataList = [
@@ -8516,14 +8786,20 @@ def month_wise_transist_loss_gain_mode(response: Response):
                         aggregated_data[month][do_no]["actual_net_qty"] += float(
                             payload["GWEL_Net_Wt(MT)"]
                         )
+                    else:
+                        aggregated_data[month][do_no]["actual_net_qty"] = 0
                     if payload.get("Challan_Net_Wt(MT)") and payload.get("Challan_Net_Wt(MT)") != "NaN":
                         aggregated_data[month][do_no]["net_qty"] += float(
                             payload.get("Challan_Net_Wt(MT)")
                         )
+                    else:
+                        aggregated_data[month][do_no]["net_qty"] = 0
                     if payload.get("Mines_Name"):
                         aggregated_data[month][do_no]["mine_name"] = payload[
                             "Mines_Name"
                         ]
+                    else:
+                        aggregated_data[month][do_no]["mine_name"] = "-"
                     aggregated_data[month][do_no]["count"] += 1 
             dataList = [
                 {
@@ -8623,14 +8899,20 @@ def year_wise_transist_loss_gain_mode(response: Response):
                         aggregated_data[month][do_no]["actual_net_qty"] += float(
                             payload["GWEL_Net_Wt(MT)"]
                         )
+                    else:
+                        aggregated_data[month][do_no]["actual_net_qty"] = 0
                     if payload.get("Challan_Net_Wt(MT)") and payload.get("Challan_Net_Wt(MT)") != "NaN":
                         aggregated_data[month][do_no]["net_qty"] += float(
                             payload.get("Challan_Net_Wt(MT)")
                         )
+                    else:
+                        aggregated_data[month][do_no]["net_qty"] = 0
                     if payload.get("Mines_Name"):
                         aggregated_data[month][do_no]["mine_name"] = payload[
                             "Mines_Name"
                         ]
+                    else:
+                        aggregated_data[month][do_no]["mine_name"] = 0
                     aggregated_data[month][do_no]["count"] += 1 
 
             dataList = [
@@ -9035,19 +9317,146 @@ async def endpoint_to_add_sap_excel_data(response: Response, file: UploadFile = 
         return e
     
 
+# @router.post("/addeditlatlong", tags=["Map Data"])
+# def endpoint_to_add_lat_long(response: Response, payload: LatLongPostIn, id: str = None):
+#     try:
+#         dataName = payload.dict()
+#         if id:
+#             selectedLocationData = SelectedLocation.objects.get(id=id)
+#             selectedLocationData.name = dataName.get("name")
+#             selectedLocationData.latlong = dataName.get("latlong")
+#             selectedLocationData.type = dataName.get("type")
+#             selectedLocationData.save()
+#         else:
+#             selectedLocationData = SelectedLocation(name=dataName.get("name"), latlong=dataName.get("latlong"), type=dataName.get("type"))
+#             selectedLocationData.save()
+#         return {"detail": "success"}
+#     except Exception as e:
+#         console_logger.debug("----- Add edit lat long Error -----",e)
+#         exc_type, exc_obj, exc_tb = sys.exc_info()
+#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#         return e
+
+def create_geofence(route_coordinates, tolerance_meters):
+    try:
+        # Constants
+        meters_per_degree = 111_000  # Approximate value for the distance of 1 degree of latitude in meters
+        tolerance_degrees = tolerance_meters / meters_per_degree
+
+        # # Load the route coordinates from the JSON file
+        # with open(route_file, 'r') as f:
+        #     route_coordinates = json.load(f)
+
+        # Convert the route coordinates into a LineString object
+        geofenced_path = LineString(route_coordinates)
+
+        # Create a buffer around the LineString to form a Polygon
+        buffered_geofence = geofenced_path.buffer(tolerance_degrees)
+
+        # Extract the exterior coordinates of the buffered polygon
+        buffered_coordinates = list(buffered_geofence.exterior.coords)
+
+        # Save the buffered coordinates to a new JSON file
+        # output_file = route_file.replace('.json', '_buffered.json')
+        # with open(output_file, 'w') as out_f:
+            # json.dump(buffered_coordinates, out_f, indent=2)
+        # with open(f'{Mine_Name}_geofence_coordinates.json', 'w') as json_file:
+        #     json.dump(buffered_coordinates, json_file, indent=2)
+
+        # print(f"Buffered geofence coordinates saved to '{Mine_Name}_geofence_coordinates.json'")
+        return buffered_coordinates
+    except Exception as e:
+        console_logger.debug("----- Add edit lat long Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+def fetch_geofencing_data(name, latlong):
+    try:
+        tolerance_meters = 100  # Set the desired tolerance in meters
+
+        # Replace 'YOUR_API_KEY' with your actual Google Maps API key
+        gmaps = googlemaps.Client(key=os.getenv("GOOGLE_MAPS_KEY"))
+
+        Mine_Name = name        #Mine Name
+
+        # Define the starting and ending points using the provided coordinates
+        # origin = "20.6853644, 79.3062271"            #Yekona Mines
+        dataLatlong = latlong.split(',')
+        origin = f"{dataLatlong[0]}, {dataLatlong[1]}"            #Yekona Mines
+        destination = "20.2796104, 78.9765083"       #GMR Warora Energy Limited
+
+        # Request directions
+        directions_result = gmaps.directions(origin, destination)
+
+        # Extract the polyline points from the directions result
+        if directions_result:
+            steps = directions_result[0]['legs'][0]['steps']
+            polyline_points = [step['polyline']['points'] for step in steps]
+
+            # Decode the polyline points to get the latitude and longitude
+            route_coordinates = []
+            for polyline_point in polyline_points:
+                route_coordinates.extend(polyline.decode(polyline_point))
+
+        #     # Print and save the coordinates to a JSON file
+        #     with open(f'{Mine_Name}_route_coordinates.json', 'w') as json_file:
+        #         json.dump(route_coordinates, json_file)
+
+        #     print("Coordinates have been saved to 'route_coordinates.json'.")
+            fetch_geofence = create_geofence(route_coordinates, tolerance_meters)
+            # console_logger.debug(fetch_geofence)
+            res_geofence = [list(ele) for ele in fetch_geofence]
+            # updateSchedulerData = SelectedLocation.objects(
+            #     name=Mine_Name,
+            # ).update(geofence=res_geofence)
+            # return {"details": "data updated"}
+            console_logger.debug("data updated")
+            return res_geofence
+        else:
+            console_logger.debug("No route found.")
+            return {"detail": "No data found"}
+
+        
+    except Exception as e:
+        console_logger.debug("----- Add edit lat long Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
 @router.post("/addeditlatlong", tags=["Map Data"])
 def endpoint_to_add_lat_long(response: Response, payload: LatLongPostIn, id: str = None):
     try:
         dataName = payload.dict()
+        console_logger.debug(id)
         if id:
-            selectedLocationData = SelectedLocation.objects.get(id=id)
-            selectedLocationData.name = dataName.get("name")
-            selectedLocationData.latlong = dataName.get("latlong")
-            selectedLocationData.type = dataName.get("type")
-            selectedLocationData.save()
+            console_logger.debug("inside id")
+            # selectedLocationData = SelectedLocation.objects.get(id=id)
+            # selectedLocationData.name = dataName.get("name")
+            # selectedLocationData.latlong = dataName.get("latlong")
+            # selectedLocationData.type = dataName.get("type")
+            # selectedLocationData.save()
+            updateSchedulerData = SelectedLocation.objects(
+                id=ObjectId(id),
+            ).update(name=dataName.get("name"), latlong=dataName.get("latlong"), type=dataName.get("type"), geofence=dataName.get("geofencing"))
         else:
-            selectedLocationData = SelectedLocation(name=dataName.get("name"), latlong=dataName.get("latlong"), type=dataName.get("type"))
+            console_logger.debug("add")
+            selectedLocationData = SelectedLocation(name=dataName.get("name"), latlong=dataName.get("latlong"), type=dataName.get("type"), geofence=dataName.get("geofencing"))
             selectedLocationData.save()
+
+
+        # updateSchedulerData = SelectedLocation.objects(
+            #     name=Mine_Name,
+            # ).update(geofence=res_geofence)
+
+        # fetch_geofencing_data(dataName.get("name"), dataName.get("latlong"))
+
         return {"detail": "success"}
     except Exception as e:
         console_logger.debug("----- Add edit lat long Error -----",e)
@@ -9056,6 +9465,21 @@ def endpoint_to_add_lat_long(response: Response, payload: LatLongPostIn, id: str
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
+
+
+@router.get("/fetch/geofence", tags=["Map Data"])
+def endpoint_to_fetch_geofence(response: Response, name: str, latlang: str):
+    try:
+        getGeofencing = fetch_geofencing_data(name, latlang)
+        return getGeofencing
+    except Exception as e:
+        console_logger.debug("----- Add edit lat long Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
     
 
 @router.get("/getlatlong", tags=["Map Data"])
@@ -9074,6 +9498,54 @@ def endpoint_to_fetch_lat_long(response: Response):
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
     
+# @router.post("/insert/geofence/json", tags=["Map Data"])
+# async def endpoint_to_update_geofence_json(response: Response, name:str, json_file: Optional[UploadFile] = File(None)):
+#     try:
+#         console_logger.debug(json_file)
+#         if json_file is None:
+#             return {"error": "No file uploaded"}
+        
+#         contents = await json_file.read()
+
+#         if not contents:
+#             return {"error": "Uploaded file is empty"}
+        
+#         if not json_file.filename.endswith('.json'):
+#             return {"error": "Uploaded file is not a JSON"}
+
+#         try:
+#             # Load JSON data from the file contents
+#             fileJsonData = json.loads(contents)
+
+#             # Check if the loaded data is a list of lists with numeric values
+#             if not isinstance(fileJsonData, list):
+#                 raise ValueError("JSON data is not a valid list")
+
+#             for sublist in fileJsonData:
+#                 if not isinstance(sublist, list):
+#                     raise ValueError("JSON data does not contain lists of lists")
+#                 for value in sublist:
+#                     if not isinstance(value, (int, float)):
+#                         raise ValueError("JSON data contains non-numeric values")
+
+#         except (json.JSONDecodeError, ValueError) as e:
+#             return {"error": str(e)}
+
+#         console_logger.debug(fileJsonData)
+
+#         updateSchedulerData = SelectedLocation.objects(
+#                 name=name,
+#         ).update(geofence=fileJsonData)
+
+#         return {"detail": "success"}
+
+#     except Exception as e:
+#         console_logger.debug("----- Get Lat Long Error -----",e)
+#         exc_type, exc_obj, exc_tb = sys.exc_info()
+#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#         return e
 
 @router.delete("/deletelatlong", tags=["Map Data"])
 def endpoint_to_delete_lat_long(response: Response, id: str):
@@ -9826,11 +10298,10 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
 @router.get("/fetch/singlerail", tags=["Rail Map"])
 def endpoint_to_fetch_railway_data(response: Response, rrno: str):
     try:
-        try:
-            fetchRailData = RailData.objects.get(rr_no=rrno)
-            return fetchRailData.payload()
-        except DoesNotExist as e:
-            raise HTTPException(status_code=404, detail="No data found")
+        fetchRailData = RailData.objects.get(rr_no=rrno)
+        return fetchRailData.payload()
+    except DoesNotExist as e:
+        raise HTTPException(status_code=404, detail="No data found")
     except Exception as e:
         console_logger.debug("----- Fetch Report Name Error -----",e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -9848,7 +10319,7 @@ def endpoint_to_fetch_rail_mines(response: Response):
         railData = []
         roadData = []
         for single_data in mine_names:
-            console_logger.debug(single_data)
+            # console_logger.debug(single_data)
             if single_data.get("coal_journey") == "Rail":
                 railData.append(single_data.get("mine_name"))
             if single_data.get("coal_journey") == "Road":
@@ -10010,7 +10481,361 @@ def endpoint_to_insert_rail_data(response: Response, payload: RailwayData, rr_no
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
+
+
+@router.get("/load_bunker_data", tags=["Coal bunker"])
+def save_bunker_data(start_date: Optional[str] = None, end_date: Optional[str] = None, shift_name: Optional[str] = None):
+    success = False
+    try:
+        global consumption_headers, proxies
+        entry = UsecaseParameters.objects.first()
+        historian_ip = entry.Parameters.get('gmr_api', {}).get('roi1', {}).get('Coal Consumption IP') if entry else None
+
+        if not end_date:
+            end_date = (datetime.datetime.now(IST).replace(minute=59,second=59,microsecond=59) - datetime.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
+        if not start_date:
+            start_date = (datetime.datetime.now(IST).replace(minute=0,second=0,microsecond=0) - datetime.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
+
+        console_logger.debug(f" --- Bunker Start Date --- {start_date}")
+        console_logger.debug(f" --- Bunker End Date --- {end_date}")
+
+        payload = json.dumps({
+                    "StartTime": start_date,
+                    "EndTime": end_date, 
+                    "RetrievalType": "Aggregate", 
+                    "RetrievalMode": "History", 
+                    "TagID": ["15274","15275"],
+                    "RetrieveBy": "ID"
+                    })
+        
+        consumption_url = f"http://{historian_ip}/api/REST/HistoryData/LoadTagData"
+        # consumption_url = "http://10.100.12.28:8093/api/REST/HistoryData/LoadTagData"
+        try:
+            response = requests.request("POST", url=consumption_url, headers=consumption_headers, data=payload, proxies=proxies)
+            data = json.loads(response.text)
+            for item in data["Data"]:
+                tag_id = item["Data"]["TagID"]
+                unit = "Unit1" if tag_id == 15274 else "Unit2"
+                sum = str(int(float(item["Data"]["SUM"])) / 1000)
+                created_date = item["Data"]["CreatedDate"]
+                if bunkerAnalysis.objects.filter(tagid = tag_id, created_date=created_date):
+                    console_logger.debug("data there bunkerAnalysis")
+                    pass
+                else:
+                    console_logger.debug("adding data")
+                    bunkerAnalysis(
+                        tagid = tag_id,
+                        units = unit,
+                        bunkering = sum,
+                        shift_name = shift_name,
+                        created_date = created_date,
+                        ID = bunkerAnalysis.objects.count() + 1).save()
+                
+            success = "completed"
+            console_logger.debug("successful")
+        except requests.exceptions.Timeout:
+            console_logger.debug("Request Timed Out!")
+        except requests.exceptions.ConnectionError:
+            console_logger.debug("Connection Error")
     
+    except Exception as e:
+        success = False
+        console_logger.debug("----- Bunker Consumption Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e
+        
+    finally:
+        console_logger.debug(f"success:{success}")
+        SchedulerResponse("save consumption data", f"{success}")
+        return {"message" : "Successful"}
+
+
+@router.get("/coal_bunker_graph", tags=["Coal bunker"])
+def coal_bunker_graph(response:Response, type: Optional[str] = "Daily",
+                              Month: Optional[str] = None, 
+                              Daily: Optional[str] = None, Year: Optional[str] = None):
+    try:
+        data={}
+        UTC_OFFSET_TIMEDELTA = datetime.datetime.utcnow() - datetime.datetime.now()
+
+        basePipeline = [
+            {
+                "$match": {
+                    "created_date": {
+                        "$gte": None,
+                    },
+                },
+            },
+            {
+                "$project": {
+                    "ts": {
+                        # "$hour": {"date": "$created_date", "timezone": timezone},
+                        "$hour": {"date": "$created_date"},
+                    },
+                    "tagid": "$tagid",
+                    "bunkering": "$bunkering",
+                    "_id": 0
+                },
+            },
+            {
+                "$group": {
+                    "_id": {
+                        "ts": "$ts",
+                        "tagid": "$tagid"
+                    },
+                    "data": {
+                        "$push": "$bunkering"
+                    }
+                }
+            },
+        ]
+        
+        if type == "Daily":
+
+            date=Daily
+            end_date =f'{date} 23:59:59'
+            start_date = f'{date} 00:00:00'
+            format_data = "%Y-%m-%d %H:%M:%S"
+            endd_date=datetime.datetime.strptime(end_date,format_data)
+            startd_date=datetime.datetime.strptime(start_date,format_data)
+
+            basePipeline[0]["$match"]["created_date"]["$lte"] = (endd_date)
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (startd_date)
+            
+
+            result = {
+                "data": {
+                    "labels": [str(i) for i in range(0, 24)],
+                    "datasets": [
+                        {"label": "Unit 1", "data": [0 for i in range(0, 24)]},             
+                        {"label": "Unit 2", "data": [0 for i in range(0, 24)]},             
+                    ],
+                }
+            }
+
+        elif type == "Week":
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (
+                datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                + UTC_OFFSET_TIMEDELTA
+                - datetime.timedelta(days=7)
+            )
+            basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$created_date"}
+            result = {
+                "data": {
+                    "labels": [
+                        (
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
+                            + datetime.timedelta(days=i + 1)
+                        ).strftime("%d")
+                        for i in range(1, 8)
+                    ],
+                    "datasets": [
+                        {"label": "Unit 1", "data": [0 for i in range(1, 8)]},              
+                        {"label": "Unit 2", "data": [0 for i in range(1, 8)]},              
+                    ],
+                }
+            }
+
+        elif type == "Month":
+
+            date=Month
+            format_data = "%Y - %m-%d"
+
+            start_date = f'{date}-01'
+            startd_date=datetime.datetime.strptime(start_date,format_data)
+            
+            end_date = startd_date + relativedelta( day=31)
+            end_label = (end_date).strftime("%d")
+
+            basePipeline[0]["$match"]["created_date"]["$lte"] = (end_date)
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (startd_date)
+            basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$created_date"}
+            result = {
+                "data": {
+                    "labels": [
+                        (
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
+                            + datetime.timedelta(days=i + 1)
+                        ).strftime("%d")
+                        for i in range(-1, (int(end_label))-1)
+                    ],
+                    "datasets": [
+                        {"label": "Unit 1", "data": [0 for i in range(-1, (int(end_label))-1)]},        
+                        {"label": "Unit 2", "data": [0 for i in range(-1, (int(end_label))-1)]},        
+                    ],
+                }
+            }
+
+        elif type == "Year":
+
+            date=Year
+            end_date =f'{date}-12-31 23:59:59'
+            start_date = f'{date}-01-01 00:00:00'
+            format_data = "%Y-%m-%d %H:%M:%S"
+            endd_date=datetime.datetime.strptime(end_date,format_data)
+            startd_date=datetime.datetime.strptime(start_date,format_data)
+
+            basePipeline[0]["$match"]["created_date"]["$lte"] = (
+                endd_date
+            )
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (
+                startd_date          
+            )
+
+            basePipeline[1]["$project"]["ts"] = {"$month": "$created_date"}
+            result = {
+                "data": {
+                    "labels": [
+                        (
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
+                            + relativedelta(months=i)
+                        ).strftime("%m")
+                        for i in range(0, 12)
+                    ],
+                    "datasets": [
+                        {"label": "Unit 1", "data": [0 for i in range(0, 12)]},                     
+                        {"label": "Unit 2", "data": [0 for i in range(0, 12)]},                     
+                    ],
+                }
+            }
+        console_logger.debug(basePipeline)
+        output = bunkerAnalysis.objects().aggregate(basePipeline)
+        outputDict = {}
+
+        for data in output:
+            if "_id" in data:
+                ts = data["_id"]["ts"]
+                tag_id = data["_id"]["tagid"]
+
+                data_list = data.get('data', [])
+                sum_list = []
+                for item in data_list:
+                    try:
+                        sum_value = float(item)
+                        sum_list.append(sum_value)
+                    except ValueError:
+                        pass
+                
+                if ts not in outputDict:
+                    outputDict[ts] = {tag_id: sum_list}
+                else:
+                    if tag_id not in outputDict[ts]:
+                        outputDict[ts][tag_id] = sum_list
+                    else:
+                        outputDict[ts][tag_id].append(sum_list)
+
+        modified_labels = [i for i in range(len(result["data"]["labels"]))]
+
+        for index, label in enumerate(result["data"]["labels"]):
+            if type == "Week":
+                modified_labels = [
+                    (
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
+                        + datetime.timedelta(days=i + 1)
+                    ).strftime("%d-%m-%Y,%a")
+                    for i in range(1, 8)
+                ]
+            
+            elif type == "Month":
+                modified_labels = [
+                    (
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
+                        + datetime.timedelta(days=i + 1)
+                    ).strftime("%d/%m")
+                    for i in range(-1, (int(end_label))-1)
+                ]
+
+            elif type == "Year":
+                modified_labels = [
+                    (
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
+                        + relativedelta(months=i)
+                    ).strftime("%b %y")
+                    for i in range(0, 12)
+                ]
+
+            if int(label) in outputDict:
+                for key, val in outputDict[int(label)].items():
+                    total_sum = sum(val)
+                    if key == 15274:
+                        result["data"]["datasets"][0]["data"][index] = total_sum
+                    if key == 15275:
+                        result["data"]["datasets"][1]["data"][index] = total_sum
+
+        result["data"]["labels"] = copy.deepcopy(modified_labels)
+        console_logger.debug(f"-------- Bunker Graph Response -------- {result}")
+        return result
+    
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(e)
+        return e
+
+
+@router.get("/coal_bunker_table", tags=["Coal bunker"])
+def coal_bunker_table(response:Response, specified_date: Optional[str] = None):
+    try:
+        DataExecutionsHandler = DataExecutions()
+        response =  DataExecutionsHandler.bunker_coal_table_email(specified_date=specified_date)
+        return response
+    except Exception as e:
+        success = False
+        console_logger.debug("----- Coal Testing Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e
+
+@router.get("/coal_bunker_analysis", tags=["Coal bunker"])
+def coal_bunker_analysis(response:Response, specified_date: Optional[str] = None):
+    try:
+        DataExecutionsHandler = DataExecutions()
+        response =  DataExecutionsHandler.bunker_coal_analysis(specified_date=specified_date)
+        return response
+    except Exception as e:
+        success = False
+        console_logger.debug("----- Coal Testing Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e
+
+@router.get("/fetch/coalbunkerdata", tags=["Coal bunker"])
+def fetch_coal_bunker_data(response: Response, currentPage: Optional[int] = None,perPage: Optional[int] = None, start_timestamp: Optional[str] = None, end_timestamp: Optional[str] = None, search_text: Optional[str] = None, type: Optional[str] = "display"):
+    try:
+        DataExecutionsHandler = DataExecutions()
+        response =  DataExecutionsHandler.bunker_coal_data(currentPage=currentPage, perPage=perPage, start_timestamp=start_timestamp, end_timestamp=end_timestamp, search_text=search_text, type=type)
+        return response
+    except Exception as e:
+        success = False
+        console_logger.debug("----- Coal Testing Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e
+
+@router.post("/update/coalbunkerdata", tags=["Coal bunker"])
+def update_coal_bunker_data(response: Response, Data: BunkerAnalysisData):
+    try:
+        payload = Data.dict()
+        console_logger.debug(payload)
+        DataExecutionsHandler = DataExecutions()
+        response = DataExecutionsHandler.update_coalbunker_analysis_data(payload=payload)
+        return response
+    except Exception as e:
+        success = False
+        console_logger.debug("----- Coal Testing Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e
 
 @router.get("/load_coal_bunker_data", tags=["Coal bunker"])
 def extract_bunker_data(response: Response, start_date: Optional[str] = None, end_date: Optional[str] = None):
@@ -10027,6 +10852,7 @@ def extract_bunker_data(response: Response, start_date: Optional[str] = None, en
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         success = e 
 
+
 @router.get("/fetch/coalbunker", tags=["Coal bunker"])
 def fetch_bunker_data(response: Response, currentPage: Optional[int] = None, perPage: Optional[int] = None, search_text: Optional[str] = None, start_timestamp: Optional[str] = None, end_timestamp: Optional[str] = None, month_date: Optional[str] = None, type: Optional[str] = "display"):
     try:
@@ -10042,6 +10868,7 @@ def fetch_bunker_data(response: Response, currentPage: Optional[int] = None, per
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         success = e 
 
+
 @router.get("/fetch/testing/bunker", tags=["Vipin Data"])
 def fetch_bunker_data(response: Response):
     try:
@@ -10056,6 +10883,7 @@ def fetch_bunker_data(response: Response):
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         success = e 
+
 
 def update_dictionary(data):
     # Check if key 2 is empty and key 3 contains a space
@@ -10236,7 +11064,7 @@ def fetch_data_rail_logistics(response:Response, specified_date: str):
 
 
 @router.get("/bunker/report", tags=["bunker"])
-def display_pdf_report_bunker(response:Response, sample_id: str):
+def fetch_pdf_report_bunker(response:Response, sample_id: str):
     try:
         DataExecutionsHandler = DataExecutions()
         response = DataExecutionsHandler.display_pdf_report_bunker_addons(sample_id=sample_id)
@@ -10250,8 +11078,9 @@ def display_pdf_report_bunker(response:Response, sample_id: str):
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
 
+
 @router.get("/update/scheduler/status", tags=["scheduler"])
-def display_pdf_report_bunker(response:Response, scheduler_name: str, active: bool):
+def update_pdf_report_bunker(response:Response, scheduler_name: str, active: bool):
     try:
         DataExecutionsHandler = DataExecutions()
         response = DataExecutionsHandler.update_schheduler_status(scheduler_name=scheduler_name, active=active)
@@ -10325,10 +11154,390 @@ def generate_email(response: Response, email:dict):
         return e
 
 
+@router.post("/truck_tare_email_alert", tags=["Generate_Email"])
+def generate_truck_tare_email_alert(response: Response, data: TruckEmailTrigger):
+    try:
+        console_logger.debug((data.dict()))
+        payload = data.dict()
+        console_logger.debug(payload['details'][0]['vehicle_number'])
+        reportSchedule = ReportScheduler.objects()
+        if reportSchedule[6].active == False:
+            console_logger.debug("scheduler is off")
+            return {"detail": "scheduler is off"}
+        elif reportSchedule[6].active == True:
+            console_logger.debug("inside Truck Tare Difference Alert")
+            response_code, fetch_email = fetch_email_data()
+            if response_code == 200:
+                console_logger.debug(reportSchedule[6].recipient_list)
+                subject = f"Truck Tare Difference Alert Report {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                table_data = "<tr>"
+                table_data += f"<td>{payload['details'][0]['vehicle_number']}</td>"
+                table_data += f"<td>{payload['details'][0]['current_gwel_tare_time']}</td>"
+                table_data += f"<td>{payload['details'][0]['current_gwel_tare_wt']}</td>"
+                table_data += f"<td>{payload['details'][0]['min_GWEL_Tare_Wt']}</td>"
+                table_data += f"<td>{payload['details'][0]['max_GWEL_Tare_Wt']}</td>"
+                table_data += f"<td>{payload['details'][0]['difference']}</td>"
+                table_data += "<tr>"
+
+                body = f"""
+                        <b>Truck Tare Difference Alert Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S'),'%Y-%m-%d %H:%M:%S').strftime('%d %B %Y %H:%M:%S')}</b>
+                        <br>
+                        <br>
+                        <!doctype html>
+                        <html>
+                        <head>
+                            <meta charset="utf-8">
+                            <title>Truck Tare Difference Alert</title>
+                        </head>
+                        <body>
+                            <table border='1'>
+                                <tr>
+                                    <th>Vehicle Number</th>
+                                    <th>Current GWEL Tare Time</th>
+                                    <th>Current GWEL Tare Wt(MT)</th>
+                                    <th>Min GWEL Tare Wt(MT)</th>
+                                    <th>Max GWEL Tare Wt(MT)</th>
+                                    <th>Difference(MT)</th>
+                                </tr>
+                                {table_data}
+                            </table>
+                        </body>
+                        </html>"""
+                console_logger.debug(os.getenv("DEVELOPMENT"))
+                if os.getenv("DEVELOPMENT") == "local":
+                    console_logger.debug("inside local")
+                    send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[6].recipient_list, body, "", reportSchedule[6].cc_list, reportSchedule[6].bcc_list)
+                elif os.getenv("DEVELOPMENT") == "prod":
+                    console_logger.debug("inside prod")
+                    send_data = {
+                        "sender_email": fetch_email.get("Smtp_user"),
+                        "subject": subject,
+                        "password": fetch_email.get("Smtp_password"),
+                        "smtp_host": fetch_email.get("Smtp_host"),
+                        "smtp_port": fetch_email.get("Smtp_port"),
+                        "receiver_email": reportSchedule[6].recipient_list,
+                        "body": body,
+                        "file_path": "",
+                        "cc_list": reportSchedule[6].cc_list,
+                        "bcc_list": reportSchedule[6].bcc_list
+                    }
+                    console_logger.debug(send_data)
+                    generate_email(Response, email=send_data)
+        return {"detail": "success"}
+    except Exception as e:
+        console_logger.debug("----- Email Generation Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.get("/road/mine_wise_vehicle_count", tags=["Road Map"])
+def minewise_day_vehicle_scanned_count(response:Response, specified_time: str):
+    try:
+        # current_time = datetime.datetime.now(IST)
+        # today = current_time.date()
+        # startdate = f'{today} 00:00:00'
+        # # from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
+        # from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
+        timezone = pytz.timezone('Asia/Kolkata')
+        current_time = datetime.datetime.now(timezone)
+        UTC_OFFSET_TIMEDELTA = datetime.datetime.utcnow() - datetime.datetime.now()
+
+        basePipeline = [
+            {
+                '$match': {
+                    'created_at': {
+                        '$gte': None,
+                        '$lte': None,
+                    }
+                }
+            }, {
+                '$group': {
+                    '_id': '$mine', 
+                    'vehicle_count': {
+                        '$sum': 1
+                    }
+                }
+            }
+        ]
+
+        date = specified_time
+        end_date = f'{date} 23:59:59'
+        start_date = f'{date} 00:00:00'
+        format_data = "%Y-%m-%d %H:%M:%S"
+        endd_date = convert_to_utc_format(end_date.__str__(), format_data)
+        startd_date = convert_to_utc_format(start_date.__str__(), format_data)
+
+        basePipeline[0]["$match"]["created_at"]["$lte"] = endd_date
+        basePipeline[0]["$match"]["created_at"]["$gte"] = startd_date
+
+        output = Gmrdata.objects().aggregate(basePipeline)
+        listdata = []
+        for data in output:
+            outputDict = {}
+            console_logger.debug(data)
+            outputDict['mine_name'] = data.get("_id")
+            outputDict['vehicle_count'] = data.get("vehicle_count")
+            listdata.append(outputDict)
+
+        console_logger.debug(listdata)
+
+        return listdata
+
+    except Exception as e:
+        console_logger.debug("----- Vehicle Scanned Count Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.post("/coalstocktracker", tags=["Coal Tracker"])
+def endpoint_to_fetch_coal_stock_tracker(response: Response, specified_date: str):
+    try:
+        console_logger.debug(specified_date)
+
+        specified_change_date = datetime.datetime.strftime(datetime.datetime.strptime(specified_date, "%Y-%m-%d"), "%d-%m-%Y")
+
+        url = "https://gateway.grid-india.in/POSOCO/reports/1.0/WebAccessAPI/GetUtilityExternalSharedData?apikey=fdcfa9a0-3e10-45cc-ac8b-a0b076b0b21f"
+
+        payload = json.dumps({
+        "Date": specified_change_date,
+        "SchdRevNo": -1,
+        "UserName": "usr_GMR_WARORA",
+        "UtilAcronymList": []
+        })
+        headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Basic dXNyX0dNUl9XQVJPUkE6V2Jlc0ludGVAMDIwNzIwMzg='
+        }
+
+        response = requests.request("POST", url, headers=headers, data=payload)
+
+        if response.status_code == 200:
+            console_logger.debug(response.text)
+
+    except Exception as e:
+        console_logger.debug("----- Vehicle Scanned Count Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.post("/geofence_email_alert", tags=["Generate_Email"])
+def generate_truck_tare_email_alert(response: Response, data: geofenceEmailTrigger):
+    try:
+        console_logger.debug((data.dict()))
+        payload = data.dict()
+        reportSchedule = ReportScheduler.objects()
+        if reportSchedule[8].active == False:
+            console_logger.debug("scheduler is off")
+            return {"detail": "scheduler is off"}
+        elif reportSchedule[8].active == True:
+            console_logger.debug("inside Truck Tare Difference Alert")
+            response_code, fetch_email = fetch_email_data()
+            if response_code == 200:
+                console_logger.debug(reportSchedule[8].recipient_list)
+                subject = f"Geofence Alert {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                title_data = ""
+                if payload.get("geo_fence") == "outside":
+                    title_data = f"<b>Vehicle Number {payload.get('vehicle_number')} is outside the geofenced area.</b>"
+                elif payload.get("geo_fence") == "inside":
+                    title_data = f"<b>Vehicle Number {payload.get('vehicle_number')} is inside the geofenced area.</b>"
+                body = f"""
+                        <b>Geofence Alert: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S'),'%Y-%m-%d %H:%M:%S').strftime('%d %B %Y %H:%M:%S')}</b>
+                        <br>
+                        <br>
+                        <!doctype html>
+                        <html>
+                        <head>
+                            <meta charset="utf-8">
+                            <title>Geofence Alert</title>
+                        </head>
+                        <body>
+                            {title_data}
+                            <br>
+                            <br>
+                            <table border='1'>
+                                <tr>
+                                    <th>Vehicle Number</th>
+                                    <th>Current Lat Long</th>
+                                    <th>Map Location</th>
+                                    <th>Source Location</th>
+                                </tr>
+                                <tr>
+                                    <td>{payload.get('vehicle_number')}</td>
+                                    <td>{payload.get('lat_long')}</td>
+                                    <td><a href='https://maps.google.com/?q={payload.get('lat_long')}'>Location</a></td>
+                                    <td>{payload.get('mine_name')}</td>
+                                </tr>
+                            </table>
+                        </body>
+                        </html>"""
+                console_logger.debug(os.getenv("DEVELOPMENT"))
+                if os.getenv("DEVELOPMENT") == "local":
+                    console_logger.debug("inside local")
+                    send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[8].recipient_list, body, "", reportSchedule[8].cc_list, reportSchedule[8].bcc_list)
+                elif os.getenv("DEVELOPMENT") == "prod":
+                    console_logger.debug("inside prod")
+                    send_data = {
+                        "sender_email": fetch_email.get("Smtp_user"),
+                        "subject": subject,
+                        "password": fetch_email.get("Smtp_password"),
+                        "smtp_host": fetch_email.get("Smtp_host"),
+                        "smtp_port": fetch_email.get("Smtp_port"),
+                        "receiver_email": reportSchedule[8].recipient_list,
+                        "body": body,
+                        "file_path": "",
+                        "cc_list": reportSchedule[8].cc_list,
+                        "bcc_list": reportSchedule[8].bcc_list
+                    }
+                    console_logger.debug(send_data)
+                    generate_email(Response, email=send_data)
+        return {"detail": "success"}
+    except Exception as e:
+        console_logger.debug("----- Email Generation Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.post("/insert/shift/schedule", tags=["scheduler"])
+def endpoint_to_insert_shift_schedule(response: Response, data: ShiftMainData, report_name: str):
+    try:
+        console_logger.debug(data)
+        inputData = data.dict()
+        console_logger.debug(inputData)
+        fetchAllScheduler = shiftScheduler.objects(report_name=report_name)
+        if fetchAllScheduler:
+            fetchAllScheduler.delete()
+
+        for single_data in inputData.get("data"):
+            shiftScheduler(shift_name = single_data.get('shift_name'), start_shift_time = single_data.get("start_shift_time"), end_shift_time = single_data.get("end_shift_time"), report_name=report_name).save()
+        return {"details": "success"}
+    except Exception as e:
+        console_logger.debug("----- Email Generation Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.get("/fetch/shift/schedule", tags=["scheduler"])
+def endpoint_to_fetch_shift_schedule(response: Response):
+    try:
+        listData = []
+        try:
+            fetchShiftSchedule = shiftScheduler.objects()
+            for single_schedule in fetchShiftSchedule:
+                listData.append(single_schedule.payload())
+            return listData
+        except DoesNotExist as e:
+            return {"details": "No data found"}
+    except Exception as e:
+        console_logger.debug("----- Email Generation Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.get("/fetch/single/shiftschedule", tags=["scheduler"])
+def endpoint_to_fetch_single_shift_schedule(response: Response, report_name: str):
+    try:
+        fetchSingleShiftSchedule = shiftScheduler.objects(report_name=report_name)
+        listData = []
+        if fetchSingleShiftSchedule:
+            for singleShiftSchedule in fetchSingleShiftSchedule:
+                listData.append(singleShiftSchedule.payload())
+        return listData
+    except Exception as e:
+        console_logger.debug("----- Email Generation Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+
+def bunker_scheduler(**kwargs):
+    try:
+
+        time_format = "%H:%M"
+        # Time to subtract: 5 hours and 30 minutes
+        time_to_subtract = datetime.timedelta(hours=5, minutes=30)
+
+        # fetchShiftSchedule = shiftScheduler.objects()
+        # for single_shift in fetchShiftSchedule:
+        #     console_logger.debug(single_shift.shift_name)
+        #     console_logger.debug(single_shift.start_shift_time)
+        #     console_logger.debug(single_shift.end_shift_time)
+        # start_shift_time = datetime.datetime.strptime(kwargs["start_time"], time_format)
+        # start_shift_time_ist = start_shift_time - time_to_subtract
+        # start_shift_hh, start_shift_mm = start_shift_time_ist.strftime(time_format).split(":")
+        # start_shift_hh, start_shift_mm = kwargs["start_time"].strftime(time_format).split(":")
+        console_logger.debug(kwargs["start_time"])
+        console_logger.debug(type(kwargs["start_time"]))
+        start_shift_hh, start_shift_mm = kwargs["start_time"].split(":")
+        # end_shift_time = datetime.datetime.strptime(kwargs["end_time"], time_format)
+        # end_shift_time_ist = end_shift_time - time_to_subtract
+        # end_shift_hh, end_shift_mm = end_shift_time_ist.strftime(time_format).split(":")
+        # end_shift_hh, end_shift_mm = kwargs["end_time"].strftime(time_format).split(":")
+        console_logger.debug(kwargs["end_time"])
+        console_logger.debug(type(kwargs["end_time"]))
+        end_shift_hh, end_shift_mm = kwargs["end_time"].split(":")
+
+        console_logger.debug(kwargs["shift_name"])
+
+        start_date = datetime.datetime.now().strftime("%Y-%m-%d")
+        start_ddate = f"{start_date}T{start_shift_hh}:{start_shift_mm}:00"
+        end_ddate = f"{start_date}T{end_shift_hh}:{end_shift_mm}:00"
+
+        console_logger.debug(start_ddate)
+        console_logger.debug(end_ddate)
+
+        # backgroundTaskHandler.run_job(
+        #     task_name=f"{single_shift.shift_name}", 
+        #     func=send_report_generate, 
+        #     trigger="cron", **{"day": "*", "hour": shift_hh, "minute": shift_mm}, 
+        #     func_kwargs={"report_name":f"{single_shift.shift_name}, start_time"}, 
+        #     func_args=[fetchShiftSchedule.shift_name],
+        #     max_instances=1)
+        save_bunker_data(start_ddate, end_ddate, kwargs["shift_name"])
+    except Exception as e:
+        console_logger.debug("----- Email Generation Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+
+
+
 #  x------------------------------    Scheduler To Tigger Coal API's    ------------------------------------x
 
 
 params = UsecaseParameters.objects.first()
+
 
 if not params:
     testing_hr, testing_min = "00", "00"
@@ -10350,37 +11559,65 @@ if params:
         console_logger.debug(f"---- Coal Testing Schedular ----         {testing_scheduler}")
         testing_hr, testing_min = testing_scheduler.split(":")
 
-    consumption_scheduler = None
-    try:
-        gmr_dict = params.Parameters.get('gmr_api', {})
-        roi_dict = gmr_dict.get('roi1', {})
-        consumption_dict = roi_dict.get('Coal Consumption Scheduler', {})
-        if consumption_dict:
-            consumption_scheduler = consumption_dict.get("time")
-    except AttributeError:
-        console_logger.error("Error accessing nested dictionary for consumption_scheduler.")
-        consumption_scheduler = None
+    # consumption_scheduler = None
+    # try:
+    #     gmr_dict = params.Parameters.get('gmr_api', {})
+    #     roi_dict = gmr_dict.get('roi1', {})
+    #     consumption_dict = roi_dict.get('Coal Consumption Scheduler', {})
+    #     if consumption_dict:
+    #         consumption_scheduler = consumption_dict.get("time")
+    # except AttributeError:
+    #     console_logger.error("Error accessing nested dictionary for consumption_scheduler.")
+    #     consumption_scheduler = None
 
-    if consumption_scheduler is not None:
-        console_logger.debug(f"---- Coal Consumption Schedular ----     {consumption_scheduler}")
-        consumption_hr, consumption_min = consumption_scheduler.split(":")
+    # if consumption_scheduler is not None:
+    #     console_logger.debug(f"---- Coal Consumption Schedular ----     {consumption_scheduler}")
+    #     consumption_hr, consumption_min = consumption_scheduler.split(":")
 
 
 console_logger.debug(f"---- Coal Testing Hr ----          {testing_hr}")
 console_logger.debug(f"---- Coal Testing Min ----         {testing_min}")
-console_logger.debug(f"---- Coal Consumption Hr ----      {consumption_hr}")
-console_logger.debug(f"---- Coal Consumption Min ----     {consumption_min}")
 
 
 backgroundTaskHandler.run_job(task_name="save consumption data",
                                 func=extract_historian_data,
                                 trigger="cron",
-                                **{"day": "*", "hour": consumption_hr, "minute": consumption_min})
+                                **{"day": "*", "hour": "*", "minute": 0})
 
 backgroundTaskHandler.run_job(task_name="save testing data",
                                 func=coal_test,
                                 trigger="cron",
                                 **{"day": "*", "hour": testing_hr, "minute": testing_min})
+
+# Time format for parsing and formatting time
+time_format = "%H:%M"
+# Time to subtract: 5 hours and 30 minutes
+time_to_subtract = datetime.timedelta(hours=5, minutes=30)
+fetchShiftSchedule = shiftScheduler.objects(report_name="bunker_db_schedule")
+for single_shift in fetchShiftSchedule:
+    console_logger.debug(single_shift.shift_name)
+    console_logger.debug(single_shift.start_shift_time)
+    console_logger.debug(single_shift.end_shift_time)
+    # Parse end_shift_time
+    end_shift_time = datetime.datetime.strptime(single_shift.end_shift_time, time_format)
+    # Adjust for timezone by subtracting the specified duration
+    end_shift_time_ist = end_shift_time - time_to_subtract
+    # Convert the adjusted time back to hours and minutes
+    end_shift_hh, end_shift_mm = end_shift_time_ist.strftime(time_format).split(":")
+    # Schedule the background task
+    backgroundTaskHandler.run_job(
+        task_name=single_shift.shift_name,
+        func=bunker_scheduler,
+        trigger="cron",
+        **{"day": "*", "hour": end_shift_hh, "minute": end_shift_mm}, 
+        func_kwargs={
+            "shift_name": single_shift.shift_name, 
+            "start_time": single_shift.start_shift_time, 
+            "end_time": single_shift.end_shift_time
+        }
+    )                              
+
+
 
 
 if __name__ == "__main__":

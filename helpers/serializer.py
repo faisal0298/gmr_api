@@ -142,33 +142,33 @@ class RailwayDataDetails(BaseModel):
     rly_sliding_adjustment: str
 
 class RailwayData(BaseModel):
-    rr_no: str
-    rr_qty: str
-    po_no: str
-    po_date: str
-    line_item: str
-    source: str
-    placement_date: str
-    completion_date: str
-    drawn_date: str
-    total_ul_wt: str
-    boxes_supplied: str
-    total_secl_gross_wt: str
-    total_secl_tare_wt: str
-    total_secl_net_wt: str
-    total_secl_ol_wt: str
-    boxes_loaded: str
-    total_rly_gross_wt: str
-    total_rly_tare_wt: str
-    total_rly_net_wt: str
-    total_rly_ol_wt: str
-    total_secl_chargable_wt: str
-    total_rly_chargable_wt: str
-    freight: str
-    gst: str
-    pola: str
-    total_freight: str
-    source_type: str
+    rr_no: Optional[str] = None
+    rr_qty: Optional[str] = None
+    po_no: Optional[str] = None
+    po_date: Optional[str] = None
+    line_item: Optional[str] = None
+    source: Optional[str] = None
+    placement_date: Optional[str] = None
+    completion_date: Optional[str] = None
+    drawn_date: Optional[str] = None
+    total_ul_wt: Optional[str] = None
+    boxes_supplied: Optional[str] = None
+    total_secl_gross_wt: Optional[str] = None
+    total_secl_tare_wt: Optional[str] = None
+    total_secl_net_wt: Optional[str] = None
+    total_secl_ol_wt: Optional[str] = None
+    boxes_loaded: Optional[str] = None
+    total_rly_gross_wt: Optional[str] = None
+    total_rly_tare_wt: Optional[str] = None
+    total_rly_net_wt: Optional[str] = None
+    total_rly_ol_wt: Optional[str] = None
+    total_secl_chargable_wt: Optional[str] = None
+    total_rly_chargable_wt: Optional[str] = None
+    freight: Optional[str] = None
+    gst: Optional[str] = None
+    pola: Optional[str] = None
+    total_freight: Optional[str] = None
+    source_type: Optional[str] = None
     secl_rly_data: List[dict]
 
 

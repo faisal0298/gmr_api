@@ -1114,8 +1114,14 @@ class bunkerAnalysis(Document):
             "mgcv": self.mgcv,
             "hgcv": self.hgcv,
             "ratio": self.ratio,
-            "date": self.created_date,
-            "created_at": str(self.created_at)
+
+            "Date": datetime.datetime.fromisoformat(
+                    self.created_date.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_date else None,
+
+            "created_at": datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
         }
 
 
@@ -1136,4 +1142,15 @@ class shiftScheduler(Document):
             "end_shift_time": self.end_shift_time,
             # "report_name": self.report_name,
             "created_at": self.created_at,
+        }
+    
+
+class EmailDevelopmentCheck(Document):
+    development = StringField(default=None)
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "EmailDevelopmentCheck"}
+
+    def payload(self):
+        return {
+            "development": self.development,
         }

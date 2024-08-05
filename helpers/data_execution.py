@@ -86,7 +86,7 @@ class DataExecutions:
                             fetchBunkerData = BunkerData.objects.get(sample_details_id=single_data.get("sample_Details_Id"))
                         except DoesNotExist as e:
                             if single_data.get("sample_Desc") == "Bunker U#02":
-                                console_logger.debug(single_data["sample_Desc"])
+                                # console_logger.debug(single_data["sample_Desc"])
                                 sample_list_data = []
                                 for final_single_data in single_data.get("sample_Parameters", []):
                                     bunker_sample_para = {
@@ -451,7 +451,7 @@ class DataExecutions:
 
     def coal_test_road_excel(self, start_date, end_date, filter_type):
         try:
-            console_logger.debug(filter_type)
+            # console_logger.debug(filter_type)
             file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
             target_directory = f"static_server/gmr_ai/{file}"
             os.umask(0)
@@ -758,15 +758,15 @@ class DataExecutions:
 
     def coal_rail_excel(self, start_date, end_date, filter_type):
         try:
-            console_logger.debug(filter_type)
+            # console_logger.debug(filter_type)
             file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
             target_directory = f"static_server/gmr_ai/{file}"
             os.umask(0)
             os.makedirs(target_directory, exist_ok=True, mode=0o777)
 
             data = Q()
-            console_logger.debug(start_date)
-            console_logger.debug(end_date)
+            # console_logger.debug(start_date)
+            # console_logger.debug(end_date)
             if start_date:
                 start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M")
                 data &= Q(created_at__gte = start_date)
@@ -1322,7 +1322,6 @@ class DataExecutions:
 
     def download_road_coal_logistics(self, specified_date: str, mine: Optional[str] = "All"):
         try:
-            # if specified_date:
             data = {}
             result = {
                 "labels": [],
@@ -1346,8 +1345,10 @@ class DataExecutions:
 
             logs = (
                 Gmrdata.objects(actual_tare_qty__ne=None, gate_approved=True)
+                # Gmrdata.objects()
                 .order_by("-created_at")
             )
+            # coal_testing = CoalTesting.objects(receive_date__gte=start_date, receive_date__lte=end_date).order_by("-ID")
             if any(logs):
                 aggregated_data = defaultdict(
                     lambda: defaultdict(
@@ -1365,6 +1366,7 @@ class DataExecutions:
                     )
                 )
 
+
                 start_dates = {}
                 grade = 0
                 for log in logs:
@@ -1375,44 +1377,36 @@ class DataExecutions:
                         result["labels"] = list(payload.keys())
                         mine_name = payload.get("Mines_Name")
                         do_no = payload.get("DO_No")
-                        # console_logger.debug(do_no)
-                        
                         if payload.get("Grade") is not None:
                             if '-' in payload.get("Grade"):
                                 grade = payload.get("Grade").split("-")[0]
                             else:
                                 grade = payload.get("Grade")
-                        # console_logger.debug(grade)
                         # If start_date is None or the current vehicle_in_time is earlier than start_date, update start_date
                         if do_no not in start_dates:
                             start_dates[do_no] = date
                         elif date < start_dates[do_no]:
                             start_dates[do_no] = date
-
-                        # start_dates[do_no] = date
-
-                        # console_logger.debug(start_dates)
                         if payload.get("DO_Qty"):
-                            # console_logger.debug(float(payload["DO_Qty"]))
-                            aggregated_data[date][do_no]["DO_Qty"] = float(payload["DO_Qty"])
+                            aggregated_data[date][do_no]["DO_Qty"] = float(
+                                payload["DO_Qty"]
+                            )
                         else:
                             aggregated_data[date][do_no]["DO_Qty"] = 0
-
                         if payload.get("Challan_Net_Wt(MT)"):
                             aggregated_data[date][do_no]["challan_lr_qty"] += float(
                                 payload.get("Challan_Net_Wt(MT)")
                             )
                         else:
                             aggregated_data[date][do_no]["challan_lr_qty"] = 0
-
                         if payload.get("Mines_Name"):
                             aggregated_data[date][do_no]["mine_name"] = payload[
                                 "Mines_Name"
                             ]
                         else:
-                            aggregated_data[date][do_no]["mine_name"] = 0
+                            aggregated_data[date][do_no]["mine_name"] = "-"
                         aggregated_data[date][do_no]["count"] += 1 
-                # console_logger.debug(aggregated_data)
+
                 dataList = [
                     {
                         "date": date,
@@ -1429,6 +1423,7 @@ class DataExecutions:
                     }
                     for date in aggregated_data
                 ]
+                
                 final_data = []
                 for entry in dataList:
                     date = entry["date"]
@@ -1439,13 +1434,14 @@ class DataExecutions:
                         dictData["DO_No"] = data_dom
                         dictData["mine_name"] = values["mine_name"]
                         dictData["DO_Qty"] = values["DO_Qty"]
-                        dictData["challan_lr_qty"] = values["challan_lr_qty"]
+                        dictData["club_challan_lr_qty"] = values["challan_lr_qty"]
                         dictData["date"] = values["date"]
                         dictData["cumulative_challan_lr_qty"] = 0
                         dictData["balance_qty"] = 0
                         dictData["percent_supply"] = 0
                         dictData["asking_rate"] = 0
                         dictData['average_GCV_Grade'] = values["grade"]
+                        
                         
                         if data_dom in start_dates:
                             # console_logger.debug(start_dates)
@@ -1460,57 +1456,48 @@ class DataExecutions:
                         
                         final_data.append(dictData)
 
-                    # console_logger.debug(final_data)
-
                 if final_data:
-                    index_of_month = next((index for index, item in enumerate(dataList)))
-                    # If the month is not found, exit or handle the case
-                    if index_of_month is None:
-                        print("Month data not found.")
-                        exit()
+                    filtered_data = [
+                        entry for entry in dataList if entry["date"] == specified_date
+                    ]
 
                     # Create a dictionary to store the latest entries based on DO_No
-                    latest_entries = {}
+                    data_by_do = {}
 
                     for entry in final_data:
-                        do_no = entry["DO_No"]
-                        entry_date = entry["date"]
+                        do_no = entry['DO_No']
                         
-                        if do_no not in latest_entries or entry_date > latest_entries[do_no]["date"]:
-                            latest_entries[do_no] = entry
-                    # console_logger.debug(latest_entries)
-                    # Step 2: Iterate over the latest_entries to perform the remaining calculations
-                    for do_no, entry in latest_entries.items():
-                        cumulative_lr_qty = 0
-                        
-                        # Iterate over dataList from the first month to the current month
-                        # for i in range(index_of_month + 1):
-                        for i in range(12):
-                            month_data = dataList[i]
-                            data = month_data["data"].get(do_no)
-                            
-                            # If data is found for the DO_No in the current month, update cumulative_lr_qty
-                            if data:
-                                cumulative_lr_qty += data['challan_lr_qty']
-                        
-                        # Update cumulative_challan_lr_qty in the latest_entries
-                        entry['cumulative_challan_lr_qty'] = cumulative_lr_qty
-                        if data and data["DO_Qty"] != 0 and entry["cumulative_challan_lr_qty"] != 0:
-                            entry["percent_supply"] = (entry["cumulative_challan_lr_qty"] / data["DO_Qty"]) * 100
+                        # clubbing all challan_lr_qty to get cumulative_challan_lr_qty
+                        if do_no not in data_by_do:
+                            data_by_do[do_no] = entry
+                            data_by_do[do_no]['cumulative_challan_lr_qty'] = round(entry['club_challan_lr_qty'], 2)
                         else:
-                            entry["percent_supply"] = 0
-
-                        if data and entry["cumulative_challan_lr_qty"] != 0 and data["DO_Qty"] != 0:
-                            entry["balance_qty"] = (data["DO_Qty"] - entry["cumulative_challan_lr_qty"])
-                        else:
-                            entry["balance_qty"] = 0
+                            data_by_do[do_no]['cumulative_challan_lr_qty'] += round(entry['club_challan_lr_qty'], 2)
                         
-                        if data and entry["balance_days"] and entry["balance_qty"] != 0:
-                            if entry["balance_days"]:
-                                entry["asking_rate"] = entry["balance_qty"] / entry["balance_days"]
-                    
+                        data = filtered_data[0]["data"]
+                        # Update challan_lr_qty if the DO_No matches
+                        if do_no in data:
+                            data_by_do[do_no]['challan_lr_qty'] = round(data[do_no]['challan_lr_qty'], 2)
+                        else:
+                            data_by_do[do_no]['challan_lr_qty'] = 0
 
-                    console_logger.debug(final_data)
+                        # Update calculated fields
+                        if data_by_do[do_no]['DO_Qty'] != 0 and data_by_do[do_no]['cumulative_challan_lr_qty'] != 0:
+                            data_by_do[do_no]['percent_supply'] = round((data_by_do[do_no]['cumulative_challan_lr_qty'] / data_by_do[do_no]['DO_Qty']) * 100, 2)
+                        else:
+                            data_by_do[do_no]['percent_supply'] = 0
+
+                        if data_by_do[do_no]['cumulative_challan_lr_qty'] != 0 and data_by_do[do_no]['DO_Qty'] != 0:
+                            data_by_do[do_no]['balance_qty'] = round(data_by_do[do_no]['DO_Qty'] - data_by_do[do_no]['cumulative_challan_lr_qty'], 2)
+                        else:
+                            data_by_do[do_no]['balance_qty'] = 0
+                        
+                        if data_by_do[do_no]['balance_days'] and data_by_do[do_no]['balance_qty'] != 0:
+                            data_by_do[do_no]['asking_rate'] = round(data_by_do[do_no]['balance_qty'] / data_by_do[do_no]['balance_days'], 2)
+
+                    # Convert the data back to a list
+                    final_data = list(data_by_do.values())
+
                     if final_data:
                         per_data = ""
                         per_data += "<table border='1'>"
@@ -1532,7 +1519,7 @@ class DataExecutions:
                         per_data += "</thead>"
                         per_data += "<tbody>"
                         for single_final_data in final_data:
-                            console_logger.debug(single_final_data)
+                            # console_logger.debug(single_final_data)
                             per_data += "<tr>"
                             per_data += f"<td>{single_final_data.get('mine_name')}</td>"
                             per_data += f"<td>{single_final_data.get('DO_No')}</td>"
@@ -1551,7 +1538,7 @@ class DataExecutions:
                         per_data += "</tbody>"
                         per_data += "</table>"
 
-                        console_logger.debug(per_data)
+                        # console_logger.debug(per_data)
                         return per_data
                     else:
                         return 404
@@ -1651,10 +1638,14 @@ class DataExecutions:
                                 aggregated_data[date][rr_no]["challan_lr_qty"] += float(
                                     payload.get("total_secl_net_wt")
                                 )
+                            else:
+                                aggregated_data[date][rr_no]["challan_lr_qty"] = 0
                             if payload.get("source"):
                                 aggregated_data[date][rr_no]["source"] = payload[
                                     "source"
                                 ]
+                            else:
+                                aggregated_data[date][rr_no]["source"] = "-"
                             aggregated_data[date][rr_no]["count"] += 1 
 
                     dataList = [
@@ -1938,7 +1929,7 @@ class DataExecutions:
             console_logger.debug(e)
 
     
-    def bunker_coal_data(self, currentPage, perPage, start_timestamp, end_timestamp, search_text, type):
+    def bunker_coal_data(self, currentPage, perPage, start_timestamp, end_timestamp, search_text, type, date):
         try:
             data = {}
             result = {        
@@ -1961,17 +1952,24 @@ class DataExecutions:
                     page_len = perPage
                     result["page_size"] = perPage
 
-                # Constructing the base for query
                 data = Q()
 
-                # based on condition for timestamp playing with & and | 
+                if date:
+                    end_date =f'{date}T23:59:59'
+
+                    start_date = f'{date}T00:00:00'
+                    endd_date=self.convert_to_utc_format(end_date,"%Y-%m-%dT%H:%M:%S")
+                    startd_date=self.convert_to_utc_format(start_date,"%Y-%m-%dT%H:%M:%S")
+                    date_query = Q(created_date__gte=startd_date) & Q(created_date__lte=endd_date)
+                    data &= date_query
+
                 if start_timestamp:
                     start_date = self.convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
-                    data &= Q(created_at__gte = start_date)
+                    data &= Q(created_date__gte = start_date)
 
                 if end_timestamp:
                     end_date = self.convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
-                    data &= Q(created_at__lte = end_date)
+                    data &= Q(created_date__lte = end_date)
 
                 if search_text:
                     if search_text.isdigit():
@@ -1983,7 +1981,7 @@ class DataExecutions:
 
                 logs = (
                     bunkerAnalysis.objects(data)
-                    .order_by("-created_at")
+                    .order_by("-created_date")
                     .skip(offset)
                     .limit(page_len)
                 )
@@ -2007,11 +2005,11 @@ class DataExecutions:
 
                 if start_timestamp:
                     start_date = self.convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
-                    data &= Q(created_at__gte = start_date)
+                    data &= Q(created_date__gte = start_date)
 
                 if end_timestamp:
                     end_date = self.convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
-                    data &= Q(created_at__lte = end_date)
+                    data &= Q(created_date__lte = end_date)
                 
                 if search_text:
                     if search_text.isdigit():
@@ -2019,7 +2017,7 @@ class DataExecutions:
                     else:
                         data &= (Q(units__icontains=search_text))
                 
-                usecase_data = bunkerAnalysis.objects(data).order_by("-created_at")
+                usecase_data = bunkerAnalysis.objects(data).order_by("-created_date")
                 count = len(usecase_data)
                 path = None
                 if usecase_data:

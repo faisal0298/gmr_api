@@ -1,15 +1,15 @@
-# from weasyprint import HTML, CSS
+from weasyprint import HTML, CSS
 import base64
 import os, sys
-# from weasyprint.text.fonts import FontConfiguration
-# from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageChops
-# import PyPDF2
-# from reportlab.pdfgen import canvas
+from weasyprint.text.fonts import FontConfiguration
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageChops
+import PyPDF2
+from reportlab.pdfgen import canvas
 from io import BytesIO
-# from reportlab.lib.pagesizes import letter, A4
-# from reportlab.lib import colors
-# from reportlab.lib.units import inch
-# from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
 import warnings
 import shutil
 from collections import OrderedDict, Counter, defaultdict
@@ -20,20 +20,20 @@ import string
 from helpers.logger import console_logger
 from service import client, db
 import subprocess, json, os, sys
-# import matplotlib.pyplot as plt
-# from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 import pandas as pd
-# import matplotlib
+import matplotlib
 import numpy as np
 from itertools import cycle
-# import matplotlib.cm as cm
+import matplotlib.cm as cm
 import warnings
 import shutil
 from dateutil.relativedelta import *
 from pandas.tseries.offsets import DateOffset
 import requests
 from pathlib import Path
-# import matplotlib.patches as mpatches
+import matplotlib.patches as mpatches
 
 
 # client = MongoClient(f"mongodb://{host}:{db_port}/")

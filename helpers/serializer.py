@@ -116,6 +116,7 @@ class RequestData(BaseModel):
     Total_Net_Amount_of_Figures: str = None
     Chassis_No: Optional[str] = None
     Certificate_will_expire_on: str = None
+    Tare_Qty: Optional[str] = None
 
 
 class RailwayDataDetails(BaseModel):

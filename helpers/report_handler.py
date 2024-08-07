@@ -1077,19 +1077,19 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
         # normal pdf name
         pdf_file = f"{store_data}/daily_coal_logistic_report_{image_name}.pdf"
         # watermark pdf name
-        output_file = f"{store_data}/daily_coal_logistic_report_wm_{image_name}.pdf"
+        output_file = f"{store_data}/daily_coal_logistic_report__{image_name}.pdf"
         data = {}
         if template_data.get("logo_as_watermark") == "title":
             data["wm_angle"] = "vertical"
             apply_pdf_watermark(pdf_file, output_file, text_watermark=text_watermark_pdf, data=data)
-            data_file = f"static_server/gmr_ai/{file}/daily_coal_logistic_report_wm_{image_name}.pdf"
+            data_file = f"static_server/gmr_ai/{file}/daily_coal_logistic_report__{image_name}.pdf"
             # deleting original generated pdf as we are getting here two pdf first without watermark and second with watermark
             os.remove(f"{store_data}/daily_coal_logistic_report_{image_name}.pdf")
         
         elif template_data.get("logo_as_watermark") == "logo":
             data["wm_angle"] = "vertical"
             apply_pdf_watermark(pdf_file, output_file, picture_path=f'{os.path.join(os.getcwd())}/{template_data["logo_path"]}', data=data)
-            data_file = f"static_server/gmr_ai/{file}/daily_coal_logistic_report_wm_{image_name}.pdf"  
+            data_file = f"static_server/gmr_ai/{file}/daily_coal_logistic_report__{image_name}.pdf"  
             # deleting original generated pdf as we are getting here two pdf first without watermark and second with watermark
             os.remove(f"{store_data}/daily_coal_logistic_report_{image_name}.pdf")
         

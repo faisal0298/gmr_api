@@ -1338,15 +1338,12 @@ class DataExecutions:
                 # specified_change_date = datetime.datetime.strptime(specified_date, "%Y-%m-%d")
                 specified_change_date = self.convert_to_utc_format(specified_date, "%Y-%m-%d")
 
-                start_of_month = specified_change_date.replace(day=1)
-
-                start_date = datetime.datetime.strftime(start_of_month, '%Y-%m-%d')
-                end_date = datetime.datetime.strftime(specified_change_date, '%Y-%m-%d')
+                to_ts = self.convert_to_utc_format(f'{specified_date} 23:59:59', "%Y-%m-%d %H:%M:%S")
 
             logs = (
-                Gmrdata.objects(actual_tare_qty__ne=None, gate_approved=True)
+                Gmrdata.objects(GWEL_Tare_Time__lte=to_ts, actual_tare_qty__ne=None, gate_approved=True, GWEL_Tare_Time__ne=None)
                 # Gmrdata.objects()
-                .order_by("-created_at")
+                .order_by("-GWEL_Tare_Time")
             )
             # coal_testing = CoalTesting.objects(receive_date__gte=start_date, receive_date__lte=end_date).order_by("-ID")
             if any(logs):
@@ -1355,6 +1352,7 @@ class DataExecutions:
                         lambda: {
                             "DO_Qty": 0,
                             "challan_lr_qty": 0,
+                            "challan_lr_qty_full": 0,
                             "mine_name": "",
                             "balance_qty": 0,
                             "percent_of_supply": 0,
@@ -1370,9 +1368,9 @@ class DataExecutions:
                 start_dates = {}
                 grade = 0
                 for log in logs:
-                    if log.vehicle_in_time!=None:
-                        month = log.vehicle_in_time.strftime("%Y-%m")
-                        date = log.vehicle_in_time.strftime("%Y-%m-%d")
+                    if log.GWEL_Tare_Time!=None:
+                        month = log.GWEL_Tare_Time.strftime("%Y-%m")
+                        date = log.GWEL_Tare_Time.strftime("%Y-%m-%d")
                         payload = log.payload()
                         result["labels"] = list(payload.keys())
                         mine_name = payload.get("Mines_Name")
@@ -1382,7 +1380,7 @@ class DataExecutions:
                                 grade = payload.get("Grade").split("-")[0]
                             else:
                                 grade = payload.get("Grade")
-                        # If start_date is None or the current vehicle_in_time is earlier than start_date, update start_date
+                        # If start_date is None or the current GWEL_Tare_Time is earlier than start_date, update start_date
                         if do_no not in start_dates:
                             start_dates[do_no] = date
                         elif date < start_dates[do_no]:
@@ -1393,12 +1391,16 @@ class DataExecutions:
                             )
                         else:
                             aggregated_data[date][do_no]["DO_Qty"] = 0
-                        if payload.get("Challan_Net_Wt(MT)"):
-                            aggregated_data[date][do_no]["challan_lr_qty"] += float(
-                                payload.get("Challan_Net_Wt(MT)")
-                            )
-                        else:
-                            aggregated_data[date][do_no]["challan_lr_qty"] = 0
+                        challan_net_wt = payload.get("Challan_Net_Wt(MT)")    
+                
+                        if challan_net_wt:
+                            aggregated_data[date][do_no]["challan_lr_qty"] += float(challan_net_wt)
+                        # if payload.get("Challan_Net_Wt(MT)"):
+                        #     aggregated_data[date][do_no]["challan_lr_qty"] += float(
+                        #         payload.get("Challan_Net_Wt(MT)")
+                        #     )
+                        # else:
+                        #     aggregated_data[date][do_no]["challan_lr_qty"] = 0
                         if payload.get("Mines_Name"):
                             aggregated_data[date][do_no]["mine_name"] = payload[
                                 "Mines_Name"
@@ -1457,14 +1459,53 @@ class DataExecutions:
                         final_data.append(dictData)
 
                 if final_data:
-                    filtered_data = [
-                        entry for entry in dataList if entry["date"] == specified_date
-                    ]
+                    startdate = f'{specified_date} 00:00:00'
+                    enddate = f'{specified_date} 23:59:59'
+                    # to_ts = datetime.datetime.strptime(enddate,"%Y-%m-%d %H:%M:%S")
+                    from_ts = self.convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
+                    to_ts = self.convert_to_utc_format(enddate, "%Y-%m-%d %H:%M:%S")
+                    
+                    pipeline = [
+                        {
+                            "$match": {
+                                "GWEL_Tare_Time": {"$gte": from_ts, "$lte": to_ts},
+                                    "net_qty": {"$ne": None}
+                                }
+                        },
+                        {
+                        '$group': {
+                            '_id': {
+                                'date': {
+                                    '$dateToString': {
+                                        'format': '%Y-%m-%d', 
+                                        'date': '$GWEL_Tare_Time'
+                                    }
+                                }, 
+                                'do_no': '$arv_cum_do_number'
+                            }, 
+                            'total_net_qty': {
+                                '$sum': {
+                                    '$toDouble': '$net_qty'
+                                }
+                            }
+                        }
+                    }]
+
+                    # filtered_data = [
+                    #     entry for entry in dataList if entry["date"] == specified_date
+                    # ]
+
+                    filtered_data_new = Gmrdata.objects.aggregate(pipeline)
+                    aggregated_totals = defaultdict(float)
+                    for single_data_entry in filtered_data_new:
+                        do_no = single_data_entry['_id']['do_no']
+                        total_net_qty = single_data_entry['total_net_qty']
+                        aggregated_totals[do_no] += total_net_qty
 
                     # Create a dictionary to store the latest entries based on DO_No
                     data_by_do = {}
-
-                    for entry in final_data:
+                    finaldataMain = [single_data_list for single_data_list in final_data if single_data_list.get("balance_days") >= 0]
+                    for entry in finaldataMain:
                         do_no = entry['DO_No']
                         
                         # clubbing all challan_lr_qty to get cumulative_challan_lr_qty
@@ -1474,10 +1515,10 @@ class DataExecutions:
                         else:
                             data_by_do[do_no]['cumulative_challan_lr_qty'] += round(entry['club_challan_lr_qty'], 2)
                         
-                        data = filtered_data[0]["data"]
+                        # data = filtered_data[0]["data"]
                         # Update challan_lr_qty if the DO_No matches
-                        if do_no in data:
-                            data_by_do[do_no]['challan_lr_qty'] = round(data[do_no]['challan_lr_qty'], 2)
+                        if do_no in aggregated_totals:
+                            data_by_do[do_no]['challan_lr_qty'] = round(aggregated_totals[do_no], 2)
                         else:
                             data_by_do[do_no]['challan_lr_qty'] = 0
 

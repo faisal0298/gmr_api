@@ -3498,11 +3498,7 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
 
 
 @router.get("/road_journey_table", tags=["Road Map"])
-def gmr_table(response:Response, filter_data: Optional[List[str]] = Query([]), currentPage: Optional[int] = None, perPage: Optional[int] = None,
-                    search_text: Optional[str] = None,
-                    start_timestamp: Optional[str] = None,
-                    end_timestamp: Optional[str] = None,
-                    type: Optional[str] = "display"):
+def gmr_table(response:Response, filter_data: Optional[List[str]] = Query([]), currentPage: Optional[int] = None, perPage: Optional[int] = None, search_text: Optional[str] = None, start_timestamp: Optional[str] = None, end_timestamp: Optional[str] = None, type: Optional[str] = "display", consumer_type: Optional[str] = "All"):
     try:
         result = {        
                 "labels": [],
@@ -3552,6 +3548,9 @@ def gmr_table(response:Response, filter_data: Optional[List[str]] = Query([]), c
                     data &= Q(arv_cum_do_number__icontains=search_text) | Q(delivery_challan_number__icontains=search_text)
                 else:
                     data &= (Q(vehicle_number__icontains=search_text))
+            
+            if consumer_type and consumer_type != "All":
+                data &= Q(type_consumer__icontains=consumer_type)
 
             offset = (page_no - 1) * page_len
             
@@ -3844,6 +3843,10 @@ def fitness_dc_record(
 
             if search_type == "fitness":
                 data &= Q(request="Fitness_Expiry_Request")
+
+            elif search_type == "tare":
+                data &= Q(request="Tare_Diff_Request")
+
             else:
                 data &= Q(request="DC_Expiry_Request")
 
@@ -3888,6 +3891,10 @@ def fitness_dc_record(
 
             if search_type == "fitness":
                 data &= Q(request="Fitness_Expiry_Request")
+
+            elif search_type == "tare":
+                data &= Q(request="Tare_Diff_Request")
+                
             else:
                 data &= Q(request="DC_Expiry_Request")
 
@@ -4127,6 +4134,115 @@ def delete_expiry(delivery_challan_number: str):
         raise HTTPException(status_code=404, detail="Entry not found")
 
 
+@router.post("/save_tare_request_data", tags=["Road Map Request"])
+async def store_tare_request_data(data:RequestData):
+    try:
+        challan_no = data.Delivery_Challan_Number
+        record = Gmrdata.objects(delivery_challan_number = challan_no).order_by("-created_at").first()
+        entry_exists = Gmrrequest.objects(delivery_challan_number=challan_no,vehicle_number__exists=True).order_by("-created_at").first()
+        
+        if not record:    
+            raise HTTPException(status_code=404, detail="Record not found")
+        record.tare_request = True
+        record.save()
+
+        if not entry_exists:
+            tare_data = Gmrrequest(
+                                    delivery_challan_number = challan_no,
+                                    vehicle_number = data.Vehicle_Truck_Registration_No.upper().strip() if data.Vehicle_Truck_Registration_No else data.Vehicle_Truck_Registration_No.strip(),
+                                    arv_cum_do_number = data.ARV_Cum_DO_Number,
+                                    mine = data.Mine_Name.upper(),
+                                    net_qty = data.Net_Qty,
+                                    tare_qty = data.Tare_Qty,
+                                    delivery_challan_date = data.Delivery_Challan_Date,
+                                    total_net_amount = data.Total_Net_Amount_of_Figures.replace(",",""),
+                                    vehicle_chassis_number = data.Chassis_No,
+                                    certificate_expiry = data.Certificate_will_expire_on,
+                                    request = "Tare_Diff_Request",
+                                    created_at = datetime.datetime.utcnow(),
+                                    ID=Gmrrequest.objects.count() + 1)
+            tare_data.save()
+            record_num = Gmrrequest.objects(delivery_challan_number=challan_no,record_id__exists=True).order_by("-created_at").first()
+            console_logger.debug(record_num.record_id)
+            return {"message": "Successful"}
+        return {"message": "Entry with this challan Number exist"}
+
+    except NotUniqueError:
+        new_record_id = uuid.uuid4().hex
+        tare_data = Gmrrequest(
+                            record_id=new_record_id,
+                            delivery_challan_number = challan_no,
+                            vehicle_number = data.Vehicle_Truck_Registration_No.upper().strip() if data.Vehicle_Truck_Registration_No else data.Vehicle_Truck_Registration_No.strip(),
+                            arv_cum_do_number = data.ARV_Cum_DO_Number,
+                            mine = data.Mine_Name.upper(),
+                            net_qty = data.Net_Qty,
+                            tare_qty = data.Tare_Qty,
+                            delivery_challan_date = data.Delivery_Challan_Date,
+                            total_net_amount = data.Total_Net_Amount_of_Figures.replace(",",""),
+                            vehicle_chassis_number = data.Chassis_No,
+                            certificate_expiry = data.Certificate_will_expire_on,
+                            request = "Tare_Diff_Request",                                
+                            created_at = datetime.datetime.utcnow(),
+                            ID=Gmrrequest.objects.count() + 1)
+        tare_data.save()
+        record_num = Gmrrequest.objects(delivery_challan_number=challan_no,record_id__exists=True).order_by("-created_at").first()
+        console_logger.debug(record_num.record_id)
+        return {"message": "Successful"}
+
+
+@router.put("/road/approve_tare_req", tags=["Road Map Request"])
+async def update_tare(challan_no: str, remark: Optional[str] = None):
+    try:
+        record = Gmrdata.objects(delivery_challan_number = challan_no).order_by("-created_at").first()
+        request_record = Gmrrequest.objects(delivery_challan_number = challan_no, expiry_validation=True).order_by("-created_at").first()
+
+        if remark == None:
+            remark = "Tare Approved"
+
+        if request_record:
+            request_record.expiry_validation = False
+            request_record.approved_at =  datetime.datetime.utcnow()
+            request_record.remark = remark
+            request_record.save()
+
+        if not record:
+            raise HTTPException(status_code=404, detail="Record not found")
+        
+        # record.gate_approved = True
+        record.tare_request = False
+        record.save()
+
+        return {"message": "Record updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/road/decline_tare_req", tags=["Road Map Request"])
+async def decline_tare_req(challan_no: str, remark: Optional[str] = None):
+    try:
+        record = Gmrdata.objects(delivery_challan_number = challan_no).order_by("-created_at").first()
+        request_record = Gmrrequest.objects(delivery_challan_number = challan_no, expiry_validation=True).order_by("-created_at").first()
+
+        if remark == None:
+            remark = "Tare Declined"
+
+        if request_record:
+            request_record.expiry_validation = False
+            request_record.approved_at =  datetime.datetime.utcnow()
+            request_record.remark = remark
+            request_record.save()
+
+        if not record:
+            raise HTTPException(status_code=404, detail="Record not found")
+        
+        record.tare_request = True
+        record.save()
+            
+        return {"message": "Record updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/road/minewise_road_graph", tags=["Road Map"])
 def minewise_road_analysis(response:Response,type: Optional[str] = "Daily",
                             Month: Optional[str] = None, Daily: Optional[str] = None, 
@@ -4134,8 +4250,6 @@ def minewise_road_analysis(response:Response,type: Optional[str] = "Daily",
     try:
         data={}
         timezone = pytz.timezone('Asia/Kolkata')
-        current_time = datetime.datetime.now(timezone)
-        UTC_OFFSET_TIMEDELTA = datetime.datetime.utcnow() - datetime.datetime.now()
 
         basePipeline = [
             {
@@ -4602,8 +4716,11 @@ def daywise_vehicle_scanned_count(response:Response):
         current_time = datetime.datetime.now(IST)
         today = current_time.date()
         startdate = f'{today} 00:00:00'
+        # from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
+        from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
 
-        vehicle_count = Gmrdata.objects(GWEL_Tare_Time__gte=startdate, GWEL_Tare_Time__ne=None).count()
+        # vehicle_count = Gmrdata.objects(created_at__gte=from_ts, created_at__ne=None).count()
+        vehicle_count = Gmrdata.objects(GWEL_Tare_Time__gte=from_ts, GWEL_Tare_Time__ne=None).count()
 
         return {"title": "Today's Mine Vehicle Scanned",
                 "icon" : "vehicle",
@@ -4620,41 +4737,17 @@ def daywise_vehicle_scanned_count(response:Response):
         return e
 
 
-# @router.get("/road/vehicle_in_count", tags=["Road Map"])
-# def daywise_in_vehicle_count(response:Response):
-#     try:
-#         current_time = datetime.datetime.now(IST)
-#         today = current_time.date()
-#         startdate = f'{today} 00:00:00'
-#         # from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
-#         from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
-
-#         vehicle_in_count = Gmrdata.objects(vehicle_in_time__gte=from_ts, vehicle_in_time__ne=None).count()
-
-#         return {"title": "Today's Gate Vehicle In",
-#                 "icon" : "vehicle",
-#                 "data": vehicle_count,
-#                 "last_updated": today}
-
-#     except Exception as e:
-#         console_logger.debug("----- Road Vehicle Count Error -----",e)
-#         response.status_code = 400
-#         exc_type, exc_obj, exc_tb = sys.exc_info()
-#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
-#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
-#         return e
-
-
 @router.get("/road/vehicle_count", tags=["Road Map"])
 def daywise_vehicle_count(response:Response):
     try:
         current_time = datetime.datetime.now(IST)
         today = current_time.date()
         startdate = f'{today} 00:00:00'
+        # from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
+        from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
 
-        vehicle_in_count = Gmrdata.objects(GWEL_Tare_Time__gte=startdate, GWEL_Tare_Time__ne=None).count()
-        vehicle_out_count = Gmrdata.objects(GWEL_Tare_Time__gte=startdate, GWEL_Tare_Time__ne=None).count()
+        vehicle_in_count = Gmrdata.objects(GWEL_Tare_Time__gte=from_ts, GWEL_Tare_Time__ne=None).count()
+        vehicle_out_count = Gmrdata.objects(GWEL_Tare_Time__gte=from_ts, GWEL_Tare_Time__ne=None).count()
 
         return {"title": "Today's Gate Vehicle",
                 "icon" : "vehicle",
@@ -4677,11 +4770,13 @@ def daywise_grn_receive(response:Response):
         current_time = datetime.datetime.now(IST)
         today = current_time.date()
         startdate = f'{today} 00:00:00'
+        # from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
+        from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
 
         pipeline = [
                     {
                         "$match": {
-                            "GWEL_Tare_Time": {"$gte": startdate},
+                            "GWEL_Tare_Time": {"$gte": from_ts},
                             "net_qty": {"$ne": None}
                         }
                     },
@@ -4690,7 +4785,7 @@ def daywise_grn_receive(response:Response):
                             "_id": None,
                             "total_net_qty": {
                                 "$sum": {
-                                    "$toDouble": "$net_qty"  # Convert net_qty to a numeric type before summing
+                                    "$toDouble": "$net_qty"
                                 }
                             }
                         }
@@ -4723,12 +4818,14 @@ def daywise_transit_loss(response:Response):
         current_time = datetime.datetime.now(IST)
         today = current_time.date()
         startdate = f'{today} 00:00:00'
+        # from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
+        from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
     
         pipeline = [
             {
                 '$match': {
                     'GWEL_Tare_Time': {
-                        '$gte': startdate
+                        '$gte': from_ts
                     }
                 }
             }, {
@@ -4770,7 +4867,7 @@ def daywise_transit_loss(response:Response):
                 "last_updated": today}
 
     except Exception as e:
-        console_logger.debug("----- Gate Vehicle Count Error -----",e)
+        console_logger.debug("----- Transit Loss Error -----",e)
         response.status_code = 400
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -4785,11 +4882,14 @@ def daywise_gwel_receive(response:Response):
         current_time = datetime.datetime.now(IST)
         today = current_time.date()
         startdate = f'{today} 00:00:00'
+        # from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
+        from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
+
 
         pipeline = [
                     {
                         "$match": {
-                            "GWEL_Tare_Time": {"$gte": startdate},
+                            "GWEL_Tare_Time": {"$gte": from_ts},
                             "actual_net_qty": {"$ne": None}
                         }
                     },
@@ -4798,7 +4898,7 @@ def daywise_gwel_receive(response:Response):
                             "_id": None,
                             "total_actual_net_qty": {
                                 "$sum": {
-                                    "$toDouble": "$actual_net_qty"  # Convert actual_net_qty to a numeric type before summing
+                                    "$toDouble": "$actual_net_qty"
                                 }
                             }
                         }
@@ -4816,7 +4916,7 @@ def daywise_gwel_receive(response:Response):
                 "last_updated": today}
 
     except Exception as e:
-        console_logger.debug("----- Gate Vehicle Count Error -----",e)
+        console_logger.debug("----- Total GWEL Coal Error -----",e)
         response.status_code = 400
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -4831,11 +4931,12 @@ def daywise_coal_generation(response: Response):
         current_time = datetime.datetime.now(IST)
         today = current_time.date()
         startdate = f'{today} 00:00:00'
+        from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
 
         pipeline = [
             {
                 "$match": {
-                    "created_date": {"$gte": startdate},
+                    "created_date": {"$gte": from_ts},
                     "tagid": {"$in": [3536, 2]},
                     "sum": {"$ne": None}
                 }
@@ -4892,11 +4993,12 @@ def daywise_coal_consumption(response: Response):
         current_time = datetime.datetime.now(IST)
         today = current_time.date()
         startdate = f'{today} 00:00:00'
+        from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
 
         pipeline = [
             {
                 "$match": {
-                    "created_date": {"$gte": startdate},
+                    "created_date": {"$gte": from_ts},
                     "tagid": {"$in": [16,3538]},
                     "sum": {"$ne": None}
                 }
@@ -4955,6 +5057,9 @@ def road_report(response:Response,start_timestamp: Optional[str] = None,
         current_time = datetime.datetime.now(IST)
         today = current_time.date()
         startdate = f'{today} 00:00:00'
+        # from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
+        from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
+
 
         data = {"data": {}, "Total": {"mine_vehicle_scanned": 0, 
                                       "Gate_vehicle_in":0,
@@ -4969,7 +5074,7 @@ def road_report(response:Response,start_timestamp: Optional[str] = None,
                     "weight": [
                         {
                             "$match": {
-                                "GWEL_Tare_Time": {"$gte": startdate}
+                                "GWEL_Tare_Time": {"$gte": from_ts}
                             }
                         },
                         {
@@ -5002,7 +5107,7 @@ def road_report(response:Response,start_timestamp: Optional[str] = None,
                     "scanned": [
                         {
                             "$match": {
-                                "GWEL_Tare_Time": {"$gte": startdate}
+                                "GWEL_Tare_Time": {"$gte": from_ts}
                             }
                         },
                         {
@@ -5022,7 +5127,7 @@ def road_report(response:Response,start_timestamp: Optional[str] = None,
                     "vehicle_in": [
                         {
                             "$match": {
-                                "GWEL_Tare_Time": {"$gte": startdate}
+                                "GWEL_Tare_Time": {"$gte": from_ts}
                             }
                         },
                         {
@@ -5044,7 +5149,7 @@ def road_report(response:Response,start_timestamp: Optional[str] = None,
                     "vehicle_out": [
                         {
                             "$match": {
-                                "GWEL_Tare_Time": {"$gte": startdate}
+                                "GWEL_Tare_Time": {"$gte": from_ts}
                             }
                         },
                         {
@@ -5730,9 +5835,6 @@ def transit_loss_gain_road_mode_month(date_object):
         start_date = f'{date}-01-01 00:00:00'
         format_data = "%Y-%m-%d %H:%M:%S"
 
-        # console_logger.debug(start_date)
-        # console_logger.debug(end_date)
-
         endd_date = timezone.localize(datetime.datetime.strptime(end_date, format_data))
         startd_date = timezone.localize(datetime.datetime.strptime(start_date, format_data))
 
@@ -5742,11 +5844,9 @@ def transit_loss_gain_road_mode_month(date_object):
         # basePipeline[1]["$project"]["ts"] = {"$month": "$GWEL_Tare_Time"}
         basePipeline[1]["$project"]["ts"] = {"$month": {"date": "$GWEL_Tare_Time", "timezone": "Asia/Kolkata"}}
 
-        labels = [(
-                    startd_date + relativedelta(months=i)
-                  ).strftime("%b %y")
-                    for i in range(12)
-                ]
+        labels = [(startd_date + relativedelta(months=i)).strftime("%b %y")
+                    for i in range(12)]
+        
         output = Gmrdata.objects().aggregate(basePipeline)
         outputDict = {}
         for data in output:
@@ -5766,7 +5866,7 @@ def transit_loss_gain_road_mode_month(date_object):
             # console_logger.debug(label)
             if index in outputDict:
                 for key, val in outputDict[index].items():
-                    console_logger.debug(key)
+                    # console_logger.debug(key)
                     if key == "Road":
                         # console_logger.debug(label)
                         # result["data"]["datasets"][0]["data"][index-1] = val
@@ -6151,7 +6251,6 @@ def rail_pdf(specified_date):
                     }
                     for date in aggregated_data
                 ]
-                # console_logger.debug(dataList)
                 coalDataList = [
                     {"date": coal_date, "data": {
                         rr_no: {
@@ -6286,14 +6385,10 @@ def generate_gmr_report(
         if specified_date:
             # specified_change_date = datetime.datetime.strptime(specified_date, "%Y-%m-%d")
             specified_change_date = convert_to_utc_format(specified_date, "%Y-%m-%d")
-
-            start_of_month = specified_change_date.replace(day=1)
-
-            start_date = datetime.datetime.strftime(start_of_month, '%Y-%m-%d')
-            end_date = datetime.datetime.strftime(specified_change_date, '%Y-%m-%d')
+            to_ts = convert_to_utc_format(f'{specified_date} 23:59:59', "%Y-%m-%d %H:%M:%S")
 
         logs = (
-            Gmrdata.objects(actual_tare_qty__ne=None, gate_approved=True, GWEL_Tare_Time__ne=None)
+            Gmrdata.objects(GWEL_Tare_Time__lte=to_ts, actual_tare_qty__ne=None, gate_approved=True, GWEL_Tare_Time__ne=None)
             # Gmrdata.objects()
             .order_by("-GWEL_Tare_Time")
         )
@@ -6383,9 +6478,7 @@ def generate_gmr_report(
             final_data = []
             for entry in dataList:
                 date = entry["date"]
-                # console_logger.debug(entry)
                 for data_dom, values in entry['data'].items():
-                    # console_logger.debug(values["grade"])
                     dictData = {}
                     dictData["DO_No"] = data_dom
                     dictData["mine_name"] = values["mine_name"]
@@ -6445,24 +6538,23 @@ def generate_gmr_report(
                     }
                 }]
 
-                filtered_data = [
-                    entry for entry in dataList if entry["date"] == specified_date
-                ]
+                # filtered_data = [
+                #     entry for entry in dataList if entry["date"] == specified_date
+                # ]
                 
                 filtered_data_new = Gmrdata.objects.aggregate(pipeline)
                 # dictDaata = {}
                 aggregated_totals = defaultdict(float)
                 for single_data_entry in filtered_data_new:
-                    console_logger.debug(single_data_entry)
                     do_no = single_data_entry['_id']['do_no']
                     total_net_qty = single_data_entry['total_net_qty']
                     aggregated_totals[do_no] += total_net_qty
                     
-                console_logger.debug(aggregated_totals)
+                # console_logger.debug(aggregated_totals)
                 # Create a dictionary to store the latest entries based on DO_No
                 data_by_do = {}
-
-                for entry in final_data:
+                finaldataMain = [single_data_list for single_data_list in final_data if single_data_list.get("balance_days") >= 0]
+                for entry in finaldataMain:
                     do_no = entry['DO_No']
                     
                     # clubbing all challan_lr_qty to get cumulative_challan_lr_qty
@@ -6472,8 +6564,8 @@ def generate_gmr_report(
                     else:
                         data_by_do[do_no]['cumulative_challan_lr_qty'] += round(entry['club_challan_lr_qty'], 2)
                     
-                    data = filtered_data[0]["data"]
-                    console_logger.debug(data)
+                    # data = filtered_data[0]["data"]
+                    # console_logger.debug(data)
                     # Update challan_lr_qty if the DO_No matches
                     if do_no in aggregated_totals:
                         data_by_do[do_no]['challan_lr_qty'] = round(aggregated_totals[do_no], 2)
@@ -6941,8 +7033,8 @@ def send_report_generate(**kwargs):
                     console_logger.debug("inside logistic report")
                     # date_data = datetime.datetime.today().strftime('%Y-%m-%d')
                     # start_date = "2024-07-29"
-                    # generateReportData = generate_gmr_report(Response, datetime.date.today().strftime("%Y-%m-%d"), "All")
-                    generateReportData = generate_gmr_report(Response, "2024-08-01", "All")
+                    generateReportData = generate_gmr_report(Response, datetime.date.today().strftime("%Y-%m-%d"), "All")
+                    # generateReportData = generate_gmr_report(Response, "2024-08-01", "All")
                     console_logger.debug(f"{os.path.join(os.getcwd())}/{generateReportData}")
                     response_code, fetch_email = fetch_email_data()
                     if response_code == 200:
@@ -7295,6 +7387,57 @@ def send_report_generate(**kwargs):
                             generate_email(Response, email=send_data)
                 else:
                     return
+        elif kwargs["report_name"] == "road_coal_journey_report":
+            if reportSchedule[8].active == False:
+                console_logger.debug("scheduler is off")
+                return
+            elif reportSchedule[8].active == True:
+                if not check_existing_notification("road_coal_journey_report"):
+                    emailNotifications(notification_name="road_coal_journey_report").save()
+                    console_logger.debug("inside road coal journey report")
+                    date_data = datetime.datetime.today().strftime('%Y-%m-%d')
+                    # start_date = "2024-07-29"
+                    headers = {
+                        'accept': 'application/json',
+                    }
+
+                    params = {
+                        'filter_data': ["Sr.No.", "Mines_Name", "Type_of_consumer", "PO_No", "Line_Item", "Delivery_Challan_No", "DO_No", "LOT", "vehicle_number", "Challan_Gross_Wt(MT)", "Challan_Tare_Wt(MT)", "Challan_Net_Wt(MT)", "GWEL_Gross_Wt(MT)", "GWEL_Tare_Wt(MT)", "GWEL_Net_Wt(MT)", "GWEL_Gross_Time", "GWEL_Tare_Time", "Transit_Loss", "Transporter_LR_No", "Transporter_LR_Date", "Total_net_amount", "Vehicle_in_time", "Vehicle_out_time", "TAT_difference", "PO_Date", "DO_Qty", "Weightment_Date", "Weightment_Time", "Vehicle_Chassis_No", "Fitness_Expiry", "Driver_Name", "Gate_Pass_No", "Total_net_amount", "Eway_bill_No" ],
+                        'start_timestamp': f'{date_data}T00:00',
+                        'end_timestamp': f'{date_data}T23:59',
+                        'type': 'download',
+                    }
+                    response = requests.get(f'http://{ip}:7704/road_journey_table', params=params, headers=headers)
+                    if response.status_code == 200:
+                        finalData = json.loads(response.text)
+                        console_logger.debug(f"{os.path.join(os.getcwd())}/{finalData.get('File_Path')}")
+                        response_code, fetch_email = fetch_email_data()
+                        if response_code == 200:
+                            console_logger.debug(reportSchedule[8].recipient_list)
+                            subject = f"GMR Road Coal Journey Report {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                            body = f"Daily GMR Road Coal Journey Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                            checkEmailDevelopment = EmailDevelopmentCheck.objects()
+                            if checkEmailDevelopment[0].development == "local":
+                                console_logger.debug("inside local")
+                                send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[8].recipient_list, body, f"{os.path.join(os.getcwd())}/{finalData.get('File_Path')}", reportSchedule[8].cc_list, reportSchedule[8].bcc_list)
+                            elif checkEmailDevelopment[0].development == "prod":
+                                console_logger.debug("inside prod")
+                                send_data = {
+                                    "sender_email": fetch_email.get("Smtp_user"),
+                                    "subject": subject,
+                                    "password": fetch_email.get("Smtp_password"),
+                                    "smtp_host": fetch_email.get("Smtp_host"),
+                                    "smtp_port": fetch_email.get("Smtp_port"),
+                                    "receiver_email": reportSchedule[8].recipient_list,
+                                    "body": body,
+                                    "file_path": f"{os.path.join(os.getcwd())}/{finalData.get('File_Path')}",
+                                    "cc_list": reportSchedule[8].cc_list,
+                                    "bcc_list": reportSchedule[8].bcc_list
+                                }
+                                # console_logger.debug(send_data)
+                                generate_email(Response, email=send_data)
+                else:
+                    return
         return "success"
     except Exception as e:
         console_logger.debug(e)
@@ -7310,7 +7453,7 @@ def test_api(response: Response):
         # send_report_generate(**{'report_name': 'daily_coal_logistic_report'})
         # send_report_generate(**{'report_name': 'certificate_expiry_notifications'})
         # send_report_generate(**{'report_name': 'coal_bunkering_schedule'})
-        send_report_generate(**{'report_name': 'thirdparty_coal_report'})
+        send_report_generate(**{'report_name': 'road_coal_journey_report'})
         return {"detail": "success"}
     except Exception as e:
         console_logger.debug(e)
@@ -7911,13 +8054,8 @@ def coal_logistics_report(
                 result["page_size"] = perPage
 
             if specified_date:
-                # specified_change_date = datetime.datetime.strptime(specified_date, "%Y-%m-%d")
                 specified_change_date = convert_to_utc_format(specified_date, "%Y-%m-%d")
-
-                start_of_month = specified_change_date.replace(day=1)
-
-                start_date = datetime.datetime.strftime(start_of_month, '%Y-%m-%d')
-                end_date = datetime.datetime.strftime(specified_change_date, '%Y-%m-%d')
+                to_ts = convert_to_utc_format(f'{specified_date} 23:59:59', "%Y-%m-%d %H:%M:%S")
 
             if search_text:
                 data = Q()
@@ -7926,18 +8064,17 @@ def coal_logistics_report(
                 else:
                     data &= (Q(mine__icontains=search_text))
     
-                logs = (Gmrdata.objects(actual_tare_qty__ne=None, gate_approved=True, **data).order_by("-created_at"))
+                logs = (Gmrdata.objects(GWEL_Tare_Time__lte=to_ts, actual_tare_qty__ne=None, gate_approved=True, GWEL_Tare_Time__ne=None, **data).order_by("-GWEL_Tare_Time"))
             else:
-                console_logger.debug("inside else")
-                logs = Gmrdata.objects(actual_tare_qty__ne=None, gate_approved=True).order_by("-created_at")
+                logs = Gmrdata.objects(GWEL_Tare_Time__lte=to_ts, actual_tare_qty__ne=None, gate_approved=True, GWEL_Tare_Time__ne=None).order_by("-GWEL_Tare_Time")
 
-            # coal_testing = CoalTesting.objects(receive_date__gte=start_date, receive_date__lte=end_date).order_by("-ID")
             if any(logs):
                 aggregated_data = defaultdict(
                     lambda: defaultdict(
                         lambda: {
                             "DO_Qty": 0,
                             "challan_lr_qty": 0,
+                            "challan_lr_qty_full": 0,
                             "mine_name": "",
                             "balance_qty": 0,
                             "percent_of_supply": 0,
@@ -7949,13 +8086,12 @@ def coal_logistics_report(
                     )
                 )
 
-
                 start_dates = {}
                 grade = 0
                 for log in logs:
-                    if log.vehicle_in_time!=None:
-                        month = log.vehicle_in_time.strftime("%Y-%m")
-                        date = log.vehicle_in_time.strftime("%Y-%m-%d")
+                    if log.GWEL_Tare_Time!=None:
+                        month = log.GWEL_Tare_Time.strftime("%Y-%m")
+                        date = log.GWEL_Tare_Time.strftime("%Y-%m-%d")
                         payload = log.payload()
                         result["labels"] = list(payload.keys())
                         mine_name = payload.get("Mines_Name")
@@ -7976,12 +8112,18 @@ def coal_logistics_report(
                             )
                         else:
                             aggregated_data[date][do_no]["DO_Qty"] = 0
-                        if payload.get("Challan_Net_Wt(MT)"):
-                            aggregated_data[date][do_no]["challan_lr_qty"] += float(
-                                payload.get("Challan_Net_Wt(MT)")
-                            )
-                        else:
-                            aggregated_data[date][do_no]["challan_lr_qty"] = 0
+                        
+                        challan_net_wt = payload.get("Challan_Net_Wt(MT)")    
+                
+                        if challan_net_wt:
+                            aggregated_data[date][do_no]["challan_lr_qty"] += float(challan_net_wt)
+
+                        # if payload.get("Challan_Net_Wt(MT)"):
+                        #     aggregated_data[date][do_no]["challan_lr_qty"] += float(
+                        #         payload.get("Challan_Net_Wt(MT)")
+                        #     )
+                        # else:
+                        #     aggregated_data[date][do_no]["challan_lr_qty"] = 0
                         if payload.get("Mines_Name"):
                             aggregated_data[date][do_no]["mine_name"] = payload[
                                 "Mines_Name"
@@ -8041,19 +8183,55 @@ def coal_logistics_report(
                         final_data.append(dictData)
 
                 if final_data:
-                    filtered_data = [
-                        entry for entry in dataList if entry["date"] == specified_date
-                    ]
+                    # filtered_data = [
+                    #     entry for entry in dataList if entry["date"] == specified_date
+                    # ]
 
-                    # Create a dictionary to store the latest entries based on DO_No
+                    startdate = f'{specified_date} 00:00:00'
+                    enddate = f'{specified_date} 23:59:59'
+                    # to_ts = datetime.datetime.strptime(enddate,"%Y-%m-%d %H:%M:%S")
+                    from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
+                    to_ts = convert_to_utc_format(enddate, "%Y-%m-%d %H:%M:%S")
+                    
+                    pipeline = [
+                        {
+                            "$match": {
+                                "GWEL_Tare_Time": {"$gte": from_ts, "$lte": to_ts},
+                                    "net_qty": {"$ne": None}
+                                }
+                        },
+                        {
+                        '$group': {
+                            '_id': {
+                                'date': {
+                                    '$dateToString': {
+                                        'format': '%Y-%m-%d', 
+                                        'date': '$GWEL_Tare_Time'
+                                    }
+                                }, 
+                                'do_no': '$arv_cum_do_number'
+                            }, 
+                            'total_net_qty': {
+                                '$sum': {
+                                    '$toDouble': '$net_qty'
+                                }
+                            }
+                        }
+                    }]
+
+                    filtered_data_new = Gmrdata.objects.aggregate(pipeline)
+                    # dictDaata = {}
+                    aggregated_totals = defaultdict(float)
+                    for single_data_entry in filtered_data_new:
+                        do_no = single_data_entry['_id']['do_no']
+                        total_net_qty = single_data_entry['total_net_qty']
+                        aggregated_totals[do_no] += total_net_qty
+
                     data_by_do = {}
-
-                    for entry in final_data:
+                    finaldataMain = [single_data_list for single_data_list in final_data if single_data_list.get("balance_days") >= 0]
+                    for entry in finaldataMain:
                         do_no = entry['DO_No']
-                        console_logger.debug(do_no)
-                        # clubbing all challan_lr_qty to get cumulative_challan_lr_qty
-
-                        # Convert 'club_challan_lr_qty' to a float if it's not already
+                        
                         try:
                             club_challan_lr_qty = float(entry.get('club_challan_lr_qty', 0))
                         except ValueError:
@@ -8066,17 +8244,14 @@ def coal_logistics_report(
                             data_by_do[do_no]['cumulative_challan_lr_qty'] = round(
                                 data_by_do[do_no].get('cumulative_challan_lr_qty', 0) + club_challan_lr_qty, 2
                             )
-                        console_logger.debug(data_by_do[do_no]['cumulative_challan_lr_qty'])
-                        if filtered_data:
-                            data = filtered_data[0]["data"]
+                        if filtered_data_new:
+                            # data = filtered_data[0]["data"]
                             # Update challan_lr_qty if the DO_No matches
-                            if do_no in data:
-                                data_by_do[do_no]['challan_lr_qty'] = round(data[do_no]['challan_lr_qty'], 2)
+                            if do_no in aggregated_totals:
+                                data_by_do[do_no]['challan_lr_qty'] = round(aggregated_totals[do_no], 2)
                             else:
                                 data_by_do[do_no]['challan_lr_qty'] = 0
-                        # else:
-                        #     data_by_do[do_no]['challan_lr_qty'] = 0
-
+                        
                         # Update calculated fields
                         if data_by_do[do_no]['DO_Qty'] != 0 and data_by_do[do_no]['cumulative_challan_lr_qty'] != 0:
                             data_by_do[do_no]['percent_supply'] = round((data_by_do[do_no]['cumulative_challan_lr_qty'] / data_by_do[do_no]['DO_Qty']) * 100, 2)
@@ -8093,10 +8268,7 @@ def coal_logistics_report(
 
                         del entry['club_challan_lr_qty']
                     
-                # Convert the data back to a list
                 final_data = list(data_by_do.values())
-                    
-                console_logger.debug(final_data)
 
                 if final_data:
                     start_index = (page_no - 1) * page_len
@@ -8119,9 +8291,7 @@ def coal_logistics_report(
             os.makedirs(target_directory, exist_ok=True, mode=0o777)
             if specified_date:
                 specified_change_date = convert_to_utc_format(specified_date, "%Y-%m-%d")
-                start_of_month = specified_change_date.replace(day=1)
-                start_date = datetime.datetime.strftime(start_of_month, '%Y-%m-%d')
-                end_date = datetime.datetime.strftime(specified_change_date, '%Y-%m-%d')
+                to_ts = convert_to_utc_format(f'{specified_date} 23:59:59', "%Y-%m-%d %H:%M:%S")
 
             if search_text:
                 data = Q()
@@ -8130,10 +8300,10 @@ def coal_logistics_report(
                 else:
                     data &= (Q(mine__icontains=search_text))
     
-                logs = (Gmrdata.objects(actual_tare_qty__ne=None, gate_approved=True, **data).order_by("-created_at"))
+                logs = (Gmrdata.objects(GWEL_Tare_Time__lte=to_ts, actual_tare_qty__ne=None, gate_approved=True, GWEL_Tare_Time__ne=None, **data).order_by("-created_at"))
             else:
                 console_logger.debug("inside else")
-                logs = Gmrdata.objects(actual_tare_qty__ne=None, gate_approved=True).order_by("-created_at")
+                logs = Gmrdata.objects(GWEL_Tare_Time__lte=to_ts, actual_tare_qty__ne=None, gate_approved=True, GWEL_Tare_Time__ne=None).order_by("-created_at")
 
             # coal_testing = CoalTesting.objects(receive_date__gte=start_date, receive_date__lte=end_date).order_by("-ID")
             count = len(logs)
@@ -8144,6 +8314,7 @@ def coal_logistics_report(
                         lambda: {
                             "DO_Qty": 0,
                             "challan_lr_qty": 0,
+                            "challan_lr_qty_full": 0,
                             "mine_name": "",
                             "balance_qty": 0,
                             "percent_of_supply": 0,
@@ -8158,9 +8329,9 @@ def coal_logistics_report(
                 start_dates = {}
                 grade = 0
                 for log in logs:
-                    if log.vehicle_in_time!=None:
-                        month = log.vehicle_in_time.strftime("%Y-%m")
-                        date = log.vehicle_in_time.strftime("%Y-%m-%d")
+                    if log.GWEL_Tare_Time!=None:
+                        month = log.GWEL_Tare_Time.strftime("%Y-%m")
+                        date = log.GWEL_Tare_Time.strftime("%Y-%m-%d")
                         payload = log.payload()
                         result["labels"] = list(payload.keys())
                         mine_name = payload.get("Mines_Name")
@@ -8181,12 +8352,17 @@ def coal_logistics_report(
                             )
                         else:
                             aggregated_data[date][do_no]["DO_Qty"] = 0
-                        if payload.get("Challan_Net_Wt(MT)"):
-                            aggregated_data[date][do_no]["challan_lr_qty"] += float(
-                                payload.get("Challan_Net_Wt(MT)")
-                            )
-                        else:
-                            aggregated_data[date][do_no]["challan_lr_qty"] = 0
+
+                        challan_net_wt = payload.get("Challan_Net_Wt(MT)")    
+                
+                        if challan_net_wt:
+                            aggregated_data[date][do_no]["challan_lr_qty"] += float(challan_net_wt)
+                        # if payload.get("Challan_Net_Wt(MT)"):
+                        #     aggregated_data[date][do_no]["challan_lr_qty"] += float(
+                        #         payload.get("Challan_Net_Wt(MT)")
+                        #     )
+                        # else:
+                        #     aggregated_data[date][do_no]["challan_lr_qty"] = 0
                         if payload.get("Mines_Name"):
                             aggregated_data[date][do_no]["mine_name"] = payload[
                                 "Mines_Name"
@@ -8243,8 +8419,7 @@ def coal_logistics_report(
                             dictData["end_date"] = None
                             dictData["balance_days"] = None
                         
-                        final_data.append(dictData)
-                console_logger.debug(final_data)        
+                        final_data.append(dictData)  
                 if final_data:
                     path = os.path.join(
                         "static_server",
@@ -8272,15 +8447,55 @@ def coal_logistics_report(
                     cell_format.set_align("center")
                     cell_format.set_align("vcenter")
 
-                    filtered_data = [
-                        entry for entry in dataList if entry["date"] == specified_date
-                    ]
+                    startdate = f'{specified_date} 00:00:00'
+                    enddate = f'{specified_date} 23:59:59'
+                    from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
+                    to_ts = convert_to_utc_format(enddate, "%Y-%m-%d %H:%M:%S")
+                    
+                    pipeline = [
+                        {
+                            "$match": {
+                                "GWEL_Tare_Time": {"$gte": from_ts, "$lte": to_ts},
+                                    "net_qty": {"$ne": None}
+                                }
+                        },
+                        {
+                        '$group': {
+                            '_id': {
+                                'date': {
+                                    '$dateToString': {
+                                        'format': '%Y-%m-%d', 
+                                        'date': '$GWEL_Tare_Time'
+                                    }
+                                }, 
+                                'do_no': '$arv_cum_do_number'
+                            }, 
+                            'total_net_qty': {
+                                '$sum': {
+                                    '$toDouble': '$net_qty'
+                                }
+                            }
+                        }
+                    }]
+
+                    # filtered_data = [
+                    #     entry for entry in dataList if entry["date"] == specified_date
+                    # ]
+                    
+                    filtered_data_new = Gmrdata.objects.aggregate(pipeline)
+                    # dictDaata = {}
+                    aggregated_totals = defaultdict(float)
+                    for single_data_entry in filtered_data_new:
+                        console_logger.debug(single_data_entry)
+                        do_no = single_data_entry['_id']['do_no']
+                        total_net_qty = single_data_entry['total_net_qty']
+                        aggregated_totals[do_no] += total_net_qty
 
                     # Create a dictionary to store the latest entries based on DO_No
                     data_by_do = {}
-
-                    # Iterate over final_data
-                    for entry in final_data:
+                    finaldataMain = [single_data_list for single_data_list in final_data if single_data_list.get("balance_days") >= 0]
+                    # Iterate over final_data   
+                    for entry in finaldataMain:
                         do_no = entry['DO_No']
                 
                         # clubbing all challan_lr_qty to get cumulative_challan_lr_qty
@@ -8290,11 +8505,11 @@ def coal_logistics_report(
                         else:
                             data_by_do[do_no]['cumulative_challan_lr_qty'] += round(entry['club_challan_lr_qty'], 2)
                         
-                        if filtered_data:
-                            data = filtered_data[0]["data"]
+                        if filtered_data_new:
+                            # data = filtered_data[0]["data"]
                             # Update challan_lr_qty if the DO_No matches
-                            if do_no in data:
-                                data_by_do[do_no]['challan_lr_qty'] = round(data[do_no]['challan_lr_qty'], 2)
+                            if do_no in aggregated_totals:
+                                data_by_do[do_no]['challan_lr_qty'] = round(aggregated_totals[do_no], 2)
                             else:
                                 data_by_do[do_no]['challan_lr_qty'] = 0
 
@@ -8312,9 +8527,7 @@ def coal_logistics_report(
                         if data_by_do[do_no]['balance_days'] and data_by_do[do_no]['balance_qty'] != 0:
                             data_by_do[do_no]['asking_rate'] = round(data_by_do[do_no]['balance_qty'] / data_by_do[do_no]['balance_days'], 2)
 
-                    # Convert the data back to a list
                     final_data = list(data_by_do.values())
-                    console_logger.debug(final_data)
                     result["datasets"] = final_data
 
                     headers = ["Sr.No", "Mine Name", "DO_No", "Grade", "DO Qty", "Challan LR Qty", "Cumulative Challan Lr_Qty", "Balance Qty", "% of Supply", "Balance Days", "Asking Rate", "Do Start Date", "Do End Date"]
@@ -9538,7 +9751,6 @@ def endpoint_to_fetch_transit_loss(response: Response, type: Optional[str] = "Da
                     ],
                 }
             }
-            console_logger.debug(basePipeline)
         elif type == "Overall":
             date = Overall
             end_date = f'{int(date) + 1}-03-31 23:59:59'
@@ -9622,28 +9834,21 @@ def endpoint_to_fetch_transit_loss(response: Response, type: Optional[str] = "Da
                     ts = index
                 else:
                     ts = int(label)
-                console_logger.debug(outputDict)
-                # console_logger.debug(ts)
-                console_logger.debug(index)
 
                 if ts in outputDict:
-                    console_logger.debug(outputDict[ts])
                     for key, val in outputDict[ts].items():
                         if type == "Year":
                             if key == "Road":
-                                console_logger.debug(label)
                                 result["data"]["datasets"][0]["data"][index-1] = val
                             elif key == "Rail":
                                 result["data"]["datasets"][1]["data"][index-1] = val
                         else:
                             if key == "Road":
-                                console_logger.debug(index)
                                 result["data"]["datasets"][0]["data"][index] = val
                             elif key == "Rail":
                                 result["data"]["datasets"][1]["data"][index] = val
 
         result["data"]["labels"] = copy.deepcopy(modified_labels)
-        console_logger.debug(result)
         return result
 
     except Exception as e:
@@ -9713,29 +9918,6 @@ async def endpoint_to_add_sap_excel_data(response: Response, file: UploadFile = 
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
-    
-
-# @router.post("/addeditlatlong", tags=["Map Data"])
-# def endpoint_to_add_lat_long(response: Response, payload: LatLongPostIn, id: str = None):
-#     try:
-#         dataName = payload.dict()
-#         if id:
-#             selectedLocationData = SelectedLocation.objects.get(id=id)
-#             selectedLocationData.name = dataName.get("name")
-#             selectedLocationData.latlong = dataName.get("latlong")
-#             selectedLocationData.type = dataName.get("type")
-#             selectedLocationData.save()
-#         else:
-#             selectedLocationData = SelectedLocation(name=dataName.get("name"), latlong=dataName.get("latlong"), type=dataName.get("type"))
-#             selectedLocationData.save()
-#         return {"detail": "success"}
-#     except Exception as e:
-#         console_logger.debug("----- Add edit lat long Error -----",e)
-#         exc_type, exc_obj, exc_tb = sys.exc_info()
-#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
-#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
-#         return e
 
 def create_geofence(route_coordinates, tolerance_meters):
     try:
@@ -9801,13 +9983,7 @@ def fetch_geofencing_data(name, latlong):
             for polyline_point in polyline_points:
                 route_coordinates.extend(polyline.decode(polyline_point))
 
-        #     # Print and save the coordinates to a JSON file
-        #     with open(f'{Mine_Name}_route_coordinates.json', 'w') as json_file:
-        #         json.dump(route_coordinates, json_file)
-
-        #     print("Coordinates have been saved to 'route_coordinates.json'.")
             fetch_geofence = create_geofence(route_coordinates, tolerance_meters)
-            # console_logger.debug(fetch_geofence)
             res_geofence = [list(ele) for ele in fetch_geofence]
             # updateSchedulerData = SelectedLocation.objects(
             #     name=Mine_Name,
@@ -9834,7 +10010,6 @@ def endpoint_to_add_lat_long(response: Response, payload: LatLongPostIn, id: str
         dataName = payload.dict()
         console_logger.debug(id)
         if id:
-            console_logger.debug("inside id")
             # selectedLocationData = SelectedLocation.objects.get(id=id)
             # selectedLocationData.name = dataName.get("name")
             # selectedLocationData.latlong = dataName.get("latlong")
@@ -9844,7 +10019,6 @@ def endpoint_to_add_lat_long(response: Response, payload: LatLongPostIn, id: str
                 id=ObjectId(id),
             ).update(name=dataName.get("name"), latlong=dataName.get("latlong"), type=dataName.get("type"), geofence=dataName.get("geofencing"))
         else:
-            console_logger.debug("add")
             selectedLocationData = SelectedLocation(name=dataName.get("name"), latlong=dataName.get("latlong"), type=dataName.get("type"), geofence=dataName.get("geofencing"))
             selectedLocationData.save()
 
@@ -10413,7 +10587,6 @@ def endpoint_to_fetch_going_to_expiry_vehicle(response: Response, page_no:int=No
                 pipeline.append({"$skip": skip})
                 pipeline.append({"$limit": limit})
             
-            console_logger.debug(pipeline)
             results = list(Gmrdata.objects.aggregate(pipeline))
             # sorting data in ascending order i.e reverse=False
             # results_sorted = sorted(results, key=lambda record: record["latest_record"]["days_to_go"], reverse=False)
@@ -10889,27 +11062,21 @@ def save_bunker_data(start_date: Optional[str] = None, end_date: Optional[str] =
         entry = UsecaseParameters.objects.first()
         historian_ip = entry.Parameters.get('gmr_api', {}).get('roi1', {}).get('Coal Consumption IP') if entry else None
 
-        if not end_date:
-            end_date = (datetime.datetime.now(IST).replace(minute=00,second=00,microsecond=00).strftime("%Y-%m-%dT%H:%M:%S"))
-        if not start_date:
-            start_date = (datetime.datetime.now(IST).replace(minute=0,second=0,microsecond=0) - datetime.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
+        # if not end_date:
+        #     end_date = (datetime.datetime.now(IST).replace(minute=00,second=00,microsecond=00).strftime("%Y-%m-%dT%H:%M:%S"))
+        # if not start_date:
+        #     start_date = (datetime.datetime.now(IST).replace(minute=0,second=0,microsecond=0) - datetime.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
 
-        console_logger.debug(f" --- Bunker Start Date --- {start_date}")
-        console_logger.debug(f" --- Bunker End Date --- {end_date}")
-
-        payload = json.dumps({
-                    "StartTime": start_date,
-                    "EndTime": end_date, 
-                    "RetrievalType": "Aggregate", 
-                    "RetrievalMode": "History", 
-                    "TagID": ["15274","15275"],
-                    "RetrieveBy": "ID"
-                    })
-        
-        consumption_url = f"http://{historian_ip}/api/REST/HistoryData/LoadTagData"
-        # consumption_url = "http://10.100.12.28:8093/api/REST/HistoryData/LoadTagData"
+        headers_data = {
+            'accept': 'application/json',
+        }
+        params = {
+            'start_date': start_date,
+            'end_date': end_date,
+        }
         try:
-            response = requests.request("POST", url=consumption_url, headers=consumption_headers, data=payload, proxies=proxies)
+            # response = requests.request("POST", url=consumption_url, headers=consumption_headers, data=payload, proxies=proxies)
+            response = requests.get(f'http://{ip}/api/v1/host/bunker_extract_data', params=params, headers=headers_data)
             data = json.loads(response.text)
             for item in data["Data"]:
                 tag_id = item["Data"]["TagID"]
@@ -11736,14 +11903,14 @@ def generate_truck_tare_email_alert(response: Response, data: geofenceEmailTrigg
         console_logger.debug((data.dict()))
         payload = data.dict()
         reportSchedule = ReportScheduler.objects()
-        if reportSchedule[8].active == False:
+        if reportSchedule[7].active == False:
             console_logger.debug("scheduler is off")
             return {"detail": "scheduler is off"}
-        elif reportSchedule[8].active == True:
+        elif reportSchedule[7].active == True:
             console_logger.debug("inside Truck Tare Difference Alert")
             response_code, fetch_email = fetch_email_data()
             if response_code == 200:
-                console_logger.debug(reportSchedule[8].recipient_list)
+                console_logger.debug(reportSchedule[7].recipient_list)
                 subject = f"Geofence Alert {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
                 title_data = ""
                 if payload.get("geo_fence") == "outside":
@@ -11780,11 +11947,11 @@ def generate_truck_tare_email_alert(response: Response, data: geofenceEmailTrigg
                             </table>
                         </body>
                         </html>"""
-                console_logger.debug(os.getenv("DEVELOPMENT"))
-                if os.getenv("DEVELOPMENT") == "local":
+                checkEmailDevelopment = EmailDevelopmentCheck.objects()
+                if checkEmailDevelopment[7].development == "local":
                     console_logger.debug("inside local")
-                    send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[8].recipient_list, body, "", reportSchedule[8].cc_list, reportSchedule[8].bcc_list)
-                elif os.getenv("DEVELOPMENT") == "prod":
+                    send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[7].recipient_list, body, "", reportSchedule[7].cc_list, reportSchedule[7].bcc_list)
+                elif checkEmailDevelopment[7].development == "prod":
                     console_logger.debug("inside prod")
                     send_data = {
                         "sender_email": fetch_email.get("Smtp_user"),
@@ -11792,11 +11959,11 @@ def generate_truck_tare_email_alert(response: Response, data: geofenceEmailTrigg
                         "password": fetch_email.get("Smtp_password"),
                         "smtp_host": fetch_email.get("Smtp_host"),
                         "smtp_port": fetch_email.get("Smtp_port"),
-                        "receiver_email": reportSchedule[8].recipient_list,
+                        "receiver_email": reportSchedule[7].recipient_list,
                         "body": body,
                         "file_path": "",
-                        "cc_list": reportSchedule[8].cc_list,
-                        "bcc_list": reportSchedule[8].bcc_list
+                        "cc_list": reportSchedule[7].cc_list,
+                        "bcc_list": reportSchedule[7].bcc_list
                     }
                     console_logger.debug(send_data)
                     generate_email(Response, email=send_data)

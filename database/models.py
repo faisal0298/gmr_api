@@ -140,7 +140,7 @@ class Historian(Document):
     tagid = IntField()
     sum = StringField()
     created_date =  DateTimeField()
-    created_at = DateTimeField(default=datetime.datetime.utcnow())
+    created_at = DateTimeField(default=datetime.datetime.utcnow)
     ID = IntField(min_value=1)
 
     meta = {"db_alias" : "gmrDB-alias" , "collection" : "historian"}
@@ -380,6 +380,7 @@ class Gmrrequest(Document):
     certificate_expiry = StringField()
     delivery_challan_date = StringField()
     net_qty = StringField()
+    tare_qty = StringField(null=True)
     total_net_amount = StringField()
     expiry_validation = BooleanField(default = True)
     request = StringField(null=True)
@@ -516,6 +517,7 @@ class Gmrdata(Document):
     tare_weighbridge = StringField(null=True)
 
     dc_request = BooleanField(default=False)
+    tare_request = BooleanField(default=False)
 
     created_at = DateTimeField(default=datetime.datetime.utcnow())
 

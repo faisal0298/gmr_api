@@ -188,7 +188,7 @@ class CoalTesting(Document):
         for param in self.parameters:
             # console_logger.debug(param)
             param_name = f"{param['parameter_Name']}_{param['unit_Val'].replace(' ','')}"
-            payload_dict[param_name] = param["val1"]
+            payload_dict[f"GWEL_{param_name}"] = param["val1"]
 
         return payload_dict
     
@@ -294,7 +294,7 @@ class CoalTestingTrain(Document):
 
         for param in self.parameters:
             param_name = f"{param['parameter_Name']}_{param['unit_Val'].replace(' ','')}"
-            payload_dict[param_name] = param["val1"]
+            payload_dict[f"GWEL_{param_name}"] = param["val1"]
 
         return payload_dict
 

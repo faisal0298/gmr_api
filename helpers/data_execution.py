@@ -27,6 +27,14 @@ from dateutil import tz
 from helpers.bunker_report_handler import bunker_single_generate_report
 from bson.objectid import ObjectId
 
+import smbclient
+import re
+
+from dotenv import load_dotenv, dotenv_values
+from bson.objectid import ObjectId
+load_dotenv() 
+
+
 IST = pytz.timezone('Asia/Kolkata')
 
 class DataExecutions:
@@ -2238,6 +2246,111 @@ class DataExecutions:
             updateBunkerAnaylsisData = bunkerAnalysis.objects(
                 id=ObjectId(payload.get("id")),
             ).update(mgcv=payload.get("mgcv"), hgcv=payload.get("hgcv"), ratio=payload.get("ratio"))
+            return {"detail": "success"}
+        except Exception as e:
+            console_logger.debug(e)
+
+    
+    def fetch_coal_quality_gcv(self):
+        try:
+            # Replace with your actual network share details
+            server_name = os.getenv('smb_server_name')
+            share_name = os.getenv('smb_share_name')
+            username = os.getenv('smb_username')
+            password = os.getenv('smb_password')
+            # date = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            # local_directory = f"static_server/gmr_ai/{date}/coalqualitygcv"
+            os.umask(0)
+            # Specify the file to ignore
+            specific_file_to_ignore = "240731010458CalWinMeasurementExport.xlsx"
+
+            # # Ensure local directory exists
+            # os.makedirs(local_directory, exist_ok=True, mode=0o777)
+
+            # Register the server with credentials
+            smbclient.register_session(server_name, username=username, password=password)
+
+            # Path to the remote directory
+            remote_directory = f"//{server_name}/{share_name}"
+
+            # List and copy files in the directory
+            # try:
+            for file_name in smbclient.listdir(remote_directory):
+                if file_name not in ['.', '..']:  # Skip the current and parent directory entries
+                    if file_name.startswith("~$") or file_name == specific_file_to_ignore:
+                        print(f"Skipping {file_name}")
+                        continue  # Skip shortcut, temporary files, and the specific file
+                    
+                    remote_file_path = f"{remote_directory}/{file_name}"
+                    # local_file_path = os.path.join(local_directory, file_name)
+                    
+                    # try:
+                    # Read the file content
+                    with smbclient.open_file(remote_file_path, mode='rb') as remote_file:
+                        excel_data = pd.read_excel(BytesIO(remote_file.read()))
+
+                        # console_logger.debug(excel_data)
+                        data_excel_fetch = json.loads(excel_data.to_json(orient="records"))
+                        # for single_excel_data in data_excel_fetch:
+                        # console_logger.debug(data_excel_fetch)
+                        console_logger.debug(f"Sample name: {data_excel_fetch[1]['Unnamed: 4']}")
+                        console_logger.debug(f"Result (Ho): {data_excel_fetch[1]['Unnamed: 8']}")
+                        if "/" in str(data_excel_fetch[1]['Unnamed: 4']) and "," not in str(data_excel_fetch[1]['Unnamed: 4']):
+                            splitDataname = re.sub("\s\s+", " ", data_excel_fetch[1]['Unnamed: 4']).split("/")
+                            # console_logger.debug(f"Sample name: {splitDataname}")
+                            doNo = splitDataname[0]
+                            pattern = r'\b(LT|R|LOT-|LOT)\s?\d+\b'
+                            secondData = splitDataname[1].split(" ")
+                            # secondData = splitDataname[1].split(' ')[-2:]
+                            location = secondData[0]
+                            match = re.search(pattern, splitDataname[1])
+                            rakeNo = match.group()
+                            console_logger.debug(doNo)
+                            # console_logger.debug(location)
+                            console_logger.debug(rakeNo)
+                            if "LT" in rakeNo or "LOT" in rakeNo:
+                                console_logger.debug("inside road")
+                                # inside road
+                                # get last two alphabet from word
+                                splitData = rakeNo[-2:]
+                                # console_logger.debug(splitData.strip())
+                                # console_logger.debug(doNo)
+                                checkRoadTesting = CoalTesting.objects(rrNo=doNo, rake_no=f"LOT-{splitData.strip()}")
+                                if checkRoadTesting:
+                                    for single_road_data in checkRoadTesting:
+                                        # console_logger.debug(single_road_data.rrNo)
+                                        for oneData in single_road_data.parameters:
+                                            if oneData.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
+                                                oneData["val1"] = str(data_excel_fetch[1]['Unnamed: 8'])
+                                        single_road_data.save()
+                            elif "R" in rakeNo:
+                                console_logger.debug("inside rail")
+                                # inside railway
+                                # get last two alphabet from word
+                                splitData = rakeNo[-2:]
+                                console_logger.debug(int(splitData.strip()))
+                                checkRailTesting = CoalTestingTrain.objects(rrNo=doNo, rake_no=f"{splitData.strip()}")
+                                if checkRailTesting:
+                                    for single_rail_data in checkRailTesting:
+                                        # console_logger.debug(single_road_data.rrNo)
+                                        for oneData in single_rail_data.parameters:
+                                            if oneData.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
+                                                oneData["val1"] = str(data_excel_fetch[1]['Unnamed: 8'])
+                                        single_rail_data.save()
+
+                        # return {"details": "success"}
+                    # except smbclient.SMBException as e:
+                    #     print(f"Failed to copy {file_name}: {e}")
+                    # except smbclient.SMBException as e:
+                    #     console_logger.debug(e.error_code)
+                    #     if e.error_code == smbclient.errors.STATUS_ACCESS_DENIED:
+                    #         print("Access denied. Check your credentials.")
+                    #     elif e.error_code == smbclient.errors.STATUS_OBJECT_NAME_NOT_FOUND:
+                    #         print("File or directory not found.")
+                    #     else:
+                    #         print("SMB Error:", e)
+            # except smbclient.SMBException as e:
+            #     print(f"Failed to list directory: {e}")
             return {"detail": "success"}
         except Exception as e:
             console_logger.debug(e)

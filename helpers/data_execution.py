@@ -1343,9 +1343,6 @@ class DataExecutions:
                 data["mine__icontains"] = mine.upper()
 
             if specified_date:
-                # specified_change_date = datetime.datetime.strptime(specified_date, "%Y-%m-%d")
-                specified_change_date = self.convert_to_utc_format(specified_date, "%Y-%m-%d")
-
                 to_ts = self.convert_to_utc_format(f'{specified_date} 23:59:59', "%Y-%m-%d %H:%M:%S")
 
             logs = (
@@ -1353,7 +1350,9 @@ class DataExecutions:
                 # Gmrdata.objects()
                 .order_by("-GWEL_Tare_Time")
             )
-            # coal_testing = CoalTesting.objects(receive_date__gte=start_date, receive_date__lte=end_date).order_by("-ID")
+
+            sap_records = SapRecords.objects.all()
+        
             if any(logs):
                 aggregated_data = defaultdict(
                     lambda: defaultdict(
@@ -1368,6 +1367,9 @@ class DataExecutions:
                             "Gross_Calorific_Value_(Adb)": 0,
                             "count": 0,
                             "coal_count": 0,
+                            "start_date": "",
+                            "end_date": "",
+                            "source_type": "",
                         }
                     )
                 )
@@ -1388,27 +1390,35 @@ class DataExecutions:
                                 grade = payload.get("Grade").split("-")[0]
                             else:
                                 grade = payload.get("Grade")
-                        # If start_date is None or the current GWEL_Tare_Time is earlier than start_date, update start_date
-                        if do_no not in start_dates:
-                            start_dates[do_no] = date
-                        elif date < start_dates[do_no]:
-                            start_dates[do_no] = date
+                        # If start_date is None or the current vehicle_in_time is earlier than start_date, update start_date
+                        # if do_no not in start_dates:
+                        #     start_dates[do_no] = date
+                        # elif date < start_dates[do_no]:
+                        #     start_dates[do_no] = date
+                        if payload.get("start_date"):
+                            aggregated_data[date][do_no]["start_date"] = payload.get("start_date")
+                        else:
+                            aggregated_data[date][do_no]["start_date"] = "0"
+                        if payload.get("end_date"):
+                            aggregated_data[date][do_no]["end_date"] = payload.get("end_date")
+                        else:
+                            aggregated_data[date][do_no]["end_date"] = "0"
+
+                        if payload.get("Type_of_consumer"):
+                            aggregated_data[date][do_no]["source_type"] = payload.get("Type_of_consumer")
+
                         if payload.get("DO_Qty"):
                             aggregated_data[date][do_no]["DO_Qty"] = float(
                                 payload["DO_Qty"]
                             )
                         else:
                             aggregated_data[date][do_no]["DO_Qty"] = 0
+
                         challan_net_wt = payload.get("Challan_Net_Wt(MT)")    
-                
+                    
                         if challan_net_wt:
                             aggregated_data[date][do_no]["challan_lr_qty"] += float(challan_net_wt)
-                        # if payload.get("Challan_Net_Wt(MT)"):
-                        #     aggregated_data[date][do_no]["challan_lr_qty"] += float(
-                        #         payload.get("Challan_Net_Wt(MT)")
-                        #     )
-                        # else:
-                        #     aggregated_data[date][do_no]["challan_lr_qty"] = 0
+
                         if payload.get("Mines_Name"):
                             aggregated_data[date][do_no]["mine_name"] = payload[
                                 "Mines_Name"
@@ -1416,6 +1426,16 @@ class DataExecutions:
                         else:
                             aggregated_data[date][do_no]["mine_name"] = "-"
                         aggregated_data[date][do_no]["count"] += 1 
+                
+                for record in sap_records:
+                    do_no = record.do_no
+                    if do_no not in aggregated_data[specified_date]:
+                        aggregated_data[specified_date][do_no]["DO_Qty"] = float(record.do_qty) if record.do_qty else 0
+                        aggregated_data[specified_date][do_no]["mine_name"] = record.mine_name if record.mine_name else "-"
+                        aggregated_data[specified_date][do_no]["start_date"] = record.start_date if record.start_date else "0"
+                        aggregated_data[specified_date][do_no]["end_date"] = record.end_date if record.end_date else "0"
+                        aggregated_data[specified_date][do_no]["source_type"] = record.consumer_type if record.consumer_type else "Unknown"
+                        aggregated_data[specified_date][do_no]["count"] = 1
 
                 dataList = [
                     {
@@ -1427,42 +1447,50 @@ class DataExecutions:
                                 "mine_name": data["mine_name"],
                                 "grade": grade,
                                 "date": date,
+                                "start_date": data["start_date"],
+                                "end_date": data["end_date"],
+                                "source_type": data["source_type"]
                             }
                             for do_no, data in aggregated_data[date].items()
                         },
                     }
                     for date in aggregated_data
                 ]
-                
                 final_data = []
                 for entry in dataList:
                     date = entry["date"]
-                    # console_logger.debug(entry)
                     for data_dom, values in entry['data'].items():
-                        # console_logger.debug(values["grade"])
                         dictData = {}
                         dictData["DO_No"] = data_dom
                         dictData["mine_name"] = values["mine_name"]
                         dictData["DO_Qty"] = values["DO_Qty"]
                         dictData["club_challan_lr_qty"] = values["challan_lr_qty"]
                         dictData["date"] = values["date"]
+                        dictData["start_date"] = values["start_date"]
+                        dictData["end_date"] = values["end_date"]
+                        dictData["source_type"] = values["source_type"]
                         dictData["cumulative_challan_lr_qty"] = 0
                         dictData["balance_qty"] = 0
                         dictData["percent_supply"] = 0
                         dictData["asking_rate"] = 0
                         dictData['average_GCV_Grade'] = values["grade"]
                         
-                        
-                        if data_dom in start_dates:
-                            # console_logger.debug(start_dates)
-                            dictData["start_date"] = start_dates[data_dom]
-                            dictData["end_date"] = datetime.datetime.strptime(start_dates[data_dom], "%Y-%m-%d") + timedelta(days=44)
-                            balance_days = dictData["end_date"].date() - datetime.datetime.today().date()
+                        if dictData["start_date"] != "0" and dictData["end_date"] != "0":
+                            # balance_days = datetime.datetime.strptime(dictData["end_date"], "%Y-%m-%d").date() - datetime.datetime.strptime(dictData["start_date"], "%Y-%m-%d").date()
+                            balance_days = datetime.datetime.strptime(dictData["end_date"], "%Y-%m-%d").date() - datetime.datetime.today().date()
                             dictData["balance_days"] = balance_days.days
                         else:
-                            dictData["start_date"] = None
-                            dictData["end_date"] = None
-                            dictData["balance_days"] = None
+                            dictData["balance_days"] = 0
+
+                        # if data_dom in start_dates:
+                        #     dictData["start_date"] = start_dates[data_dom]
+                        #     dictData["end_date"] = datetime.datetime.strptime(start_dates[data_dom], "%Y-%m-%d") + timedelta(days=44)
+                        #     balance_days = dictData["end_date"].date() - datetime.datetime.today().date()
+                        #     dictData["balance_days"] = balance_days.days
+                        # else:
+                        #     dictData["start_date"] = None
+                        #     dictData["end_date"] = None
+                        #     dictData["balance_days"] = None
                         
                         final_data.append(dictData)
 
@@ -1502,92 +1530,137 @@ class DataExecutions:
                     # filtered_data = [
                     #     entry for entry in dataList if entry["date"] == specified_date
                     # ]
-
+                    
                     filtered_data_new = Gmrdata.objects.aggregate(pipeline)
                     aggregated_totals = defaultdict(float)
                     for single_data_entry in filtered_data_new:
                         do_no = single_data_entry['_id']['do_no']
                         total_net_qty = single_data_entry['total_net_qty']
                         aggregated_totals[do_no] += total_net_qty
-
-                    # Create a dictionary to store the latest entries based on DO_No
+                        
                     data_by_do = {}
                     finaldataMain = [single_data_list for single_data_list in final_data if single_data_list.get("balance_days") >= 0]
                     for entry in finaldataMain:
                         do_no = entry['DO_No']
                         
-                        # clubbing all challan_lr_qty to get cumulative_challan_lr_qty
                         if do_no not in data_by_do:
                             data_by_do[do_no] = entry
                             data_by_do[do_no]['cumulative_challan_lr_qty'] = round(entry['club_challan_lr_qty'], 2)
                         else:
                             data_by_do[do_no]['cumulative_challan_lr_qty'] += round(entry['club_challan_lr_qty'], 2)
-                        
-                        # data = filtered_data[0]["data"]
-                        # Update challan_lr_qty if the DO_No matches
+
                         if do_no in aggregated_totals:
                             data_by_do[do_no]['challan_lr_qty'] = round(aggregated_totals[do_no], 2)
                         else:
                             data_by_do[do_no]['challan_lr_qty'] = 0
 
-                        # Update calculated fields
                         if data_by_do[do_no]['DO_Qty'] != 0 and data_by_do[do_no]['cumulative_challan_lr_qty'] != 0:
                             data_by_do[do_no]['percent_supply'] = round((data_by_do[do_no]['cumulative_challan_lr_qty'] / data_by_do[do_no]['DO_Qty']) * 100, 2)
                         else:
                             data_by_do[do_no]['percent_supply'] = 0
 
-                        if data_by_do[do_no]['cumulative_challan_lr_qty'] != 0 and data_by_do[do_no]['DO_Qty'] != 0:
-                            data_by_do[do_no]['balance_qty'] = round(data_by_do[do_no]['DO_Qty'] - data_by_do[do_no]['cumulative_challan_lr_qty'], 2)
-                        else:
-                            data_by_do[do_no]['balance_qty'] = 0
+                        # if data_by_do[do_no]['cumulative_challan_lr_qty'] != 0 and data_by_do[do_no]['DO_Qty'] != 0:
+                        data_by_do[do_no]['balance_qty'] = round(data_by_do[do_no]['DO_Qty'] - data_by_do[do_no]['cumulative_challan_lr_qty'], 2)
+                        # else:
+                        #     data_by_do[do_no]['balance_qty'] = 0
                         
                         if data_by_do[do_no]['balance_days'] and data_by_do[do_no]['balance_qty'] != 0:
                             data_by_do[do_no]['asking_rate'] = round(data_by_do[do_no]['balance_qty'] / data_by_do[do_no]['balance_days'], 2)
 
-                    # Convert the data back to a list
-                    final_data = list(data_by_do.values())
-
+                    # final_data = list(data_by_do.values())
+                    sort_final_data = list(data_by_do.values())
+                    # Sort the data by 'balance_days', placing entries with 'balance_days' of 0 at the end
+                    final_data = sorted(sort_final_data, key=lambda x: (x['balance_days'] == 0, x['balance_days']))
                     if final_data:
+                        
+                        grouped_data = defaultdict(list)
+                        for single_data in final_data:
+                            source_type = single_data.get("source_type").strip()
+                            grouped_data[source_type].append(single_data)
+
+                        final_total_do_qty = 0
+                        final_total_challan_lr_qty = 0
+                        final_total_cc_lr_qty = 0
+                        final_total_balance_qty = 0
+
                         per_data = ""
                         per_data += "<table border='1'>"
-                        per_data += "<thead>"
-                        per_data += "<tr>"
-                        per_data += "<th>Mine Name</th>"
-                        per_data += "<th>DO No</th>"
-                        per_data += "<th>Grade</th>"
-                        per_data += "<th>DO Qty</th>"
-                        per_data += "<th>Challan LR Qty</th>"
-                        per_data += "<th>C.C. LR Qty</th>"
-                        per_data += "<th>Balance Qty</th>"
-                        per_data += "<th>% of Supply</th>"
-                        per_data += "<th>Balance Days</th>"
-                        per_data += "<th>Asking Rate</th>"
-                        per_data += "<th>Do Start date</th>"
-                        per_data += "<th>Do End date</th>"
-                        per_data += "</tr>"
-                        per_data += "</thead>"
-                        per_data += "<tbody>"
-                        for single_final_data in final_data:
-                            # console_logger.debug(single_final_data)
+                        for source_type, entries in grouped_data.items():
+                            # per_data += f"<span style='font-size: 10px; font-weight: 600'>{source_type}</span>"
+                            per_data += f"<tr><td colspan='12' style='text-align: center'><b>{source_type}</b></span></td></tr>"
+                            # per_data += "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
+                            per_data += (
+                                "<thead>"
+                            )
                             per_data += "<tr>"
-                            per_data += f"<td>{single_final_data.get('mine_name')}</td>"
-                            per_data += f"<td>{single_final_data.get('DO_No')}</td>"
-                            per_data += f"<td>{single_final_data.get('average_GCV_Grade')}</td>"
-                            per_data += f"<td>{single_final_data.get('DO_Qty')}</td>"
-                            per_data += f"<td>{round(single_final_data.get('challan_lr_qty'), 2)}</td>"
-                            per_data += f"<td>{round(single_final_data.get('cumulative_challan_lr_qty'), 2)}</td>"
-                            per_data += f"<td>{round(single_final_data.get('balance_qty'), 2)}</td>"
-                            per_data += f"<td>{round(single_final_data.get('percent_supply'), 2)}</td>"
-                            per_data += f"<td>{single_final_data.get('balance_days')}</td>"
-                            # per_data += f"<td>{single_final_data.get('date')}</td>"
-                            per_data += f"<td>{round(single_final_data.get('asking_rate'), 2)}</td>"
-                            per_data += f"<td>{single_final_data.get('start_date')}</td>"
-                            per_data += f"<td>{single_final_data.get('end_date')}</td>"
-                            per_data += "</tr>"
-                        per_data += "</tbody>"
-                        per_data += "</table>"
+                            per_data += "<th>Mine Name</th>"
+                            per_data += "<th>DO_No</th>"
+                            per_data += "<th>Grade</th>"
+                            per_data += "<th>DO Qty</th>"
+                            per_data += "<th>Challan LR Qty</th>"
+                            per_data += "<th>C.C. LR Qty</th>"
+                            per_data += "<th>Balance Qty</th>"
+                            per_data += "<th>% of Supply</th>"
+                            per_data += "<th>Balance Days</th>"
+                            per_data += "<th>Asking Rate</th>"
+                            per_data += "<th>Do Start date</th>"
+                            per_data += "<th>Do End date</th></tr></thead><tbody>"
+                            total_do_qty = 0
+                            total_challan_lr_qty = 0
+                            total_cc_lr_qty = 0
+                            total_balance_qty = 0
 
-                        # console_logger.debug(per_data)
+                            for entry in entries:
+                                per_data += f"<tr>"
+                                per_data += f"<td> {entry.get('mine_name')}</span></td>"
+                                per_data += f"<td> {entry.get('DO_No')}</span></td>"
+                                per_data += f"<td> {entry.get('average_GCV_Grade')}</span></td>"
+                                per_data += f"<td> {round(entry.get('DO_Qty'), 2)}</span></td>"
+                                total_do_qty += round(entry.get('DO_Qty'), 2)
+                                per_data += f"<td> {round(entry.get('challan_lr_qty'), 2)}</span></td>"
+                                total_challan_lr_qty += round(entry.get('challan_lr_qty'), 2)
+                                per_data += f"<td> {round(entry.get('cumulative_challan_lr_qty'), 2)}</span></td>"
+                                total_cc_lr_qty += round(entry.get('cumulative_challan_lr_qty'), 2)
+                                per_data += f"<td> {round(entry.get('balance_qty'), 2)}</span></td>"
+                                total_balance_qty += round(entry.get('balance_qty'), 2)
+                                per_data += f"<td> {round(entry.get('percent_supply'), 2)}%</span></td>"
+                                per_data += f"<td> {entry.get('balance_days')}</span></td>"
+                                per_data += f"<td> {round(entry.get('asking_rate'))}</span></td>"
+                                if entry.get("start_date") != "0":
+                                    per_data += f"<td> {datetime.datetime.strptime(entry.get('start_date'),'%Y-%m-%d').strftime('%d %B %y')}</span></td>"
+                                else:
+                                    per_data += f"<td>0</span></td>"
+                                if entry.get("end_date") != "0":
+                                    per_data += f"<td> {datetime.datetime.strptime(entry.get('end_date'),'%Y-%m-%d').strftime('%d %B %y')}</span></td>"
+                                else:    
+                                    per_data += f"<td>0</span></td>"
+                                per_data += "</tr>"
+                            per_data += "<tr>"
+                            per_data += "<td colspan='3'><strong>Total</strong></td>"
+                            per_data += f"<td><strong>{round(total_do_qty, 2)}</strong></td>"
+                            per_data += f"<td><strong>{round(total_challan_lr_qty, 2)}</strong></td>"
+                            per_data += f"<td><strong>{round(total_cc_lr_qty, 2)}</strong></td>"
+                            per_data += f"<td><strong>{round(total_balance_qty, 2)}</strong></td>"
+                            if total_cc_lr_qty != 0 and total_do_qty != 0:
+                                per_data += f"<td><strong>{round(total_cc_lr_qty/total_do_qty, 2)}%</strong></td>"
+                            else:
+                                per_data += f"<td><strong>0%</strong></td>"
+                            per_data += f"<td colspan='4'><strong></strong></td>"
+                            per_data += "</tr>"
+                            final_total_do_qty += total_do_qty
+                            final_total_challan_lr_qty += total_challan_lr_qty
+                            final_total_cc_lr_qty += total_cc_lr_qty
+                            final_total_balance_qty += total_balance_qty
+                        per_data += "<tr>"
+                        per_data += "<td colspan='3'><strong>Grand Total</strong></td>"
+                        per_data += f"<td><strong>{round(final_total_do_qty, 2)}</strong></td>"
+                        per_data += f"<td><strong>{round(final_total_challan_lr_qty, 2)}</strong></td>"
+                        per_data += f"<td><strong>{round(final_total_cc_lr_qty, 2)}</strong></td>"
+                        per_data += f"<td><strong>{round(final_total_balance_qty, 2)}</strong></td>"
+                        per_data += f"<td><strong>{round(final_total_cc_lr_qty/final_total_do_qty, 2)}%</strong></td>"
+                        per_data += f"<td colspan='4'><strong></strong></td>"
+                        per_data += "</tr>"
+                        per_data += "</tbody></table>"
                         return per_data
                     else:
                         return 404
@@ -2242,64 +2315,163 @@ class DataExecutions:
 
     def update_coalbunker_analysis_data(self, payload):
         try:
-            console_logger.debug(payload)
             updateBunkerAnaylsisData = bunkerAnalysis.objects(
                 id=ObjectId(payload.get("id")),
             ).update(mgcv=payload.get("mgcv"), hgcv=payload.get("hgcv"), ratio=payload.get("ratio"))
             return {"detail": "success"}
         except Exception as e:
             console_logger.debug(e)
+    
+    def insertShiftScheduler(self, shift_scheduler):
+        try:
+            console_logger.debug(shift_scheduler)
+            try:
+                SchedulerShifts.objects.get(scheduler_name = shift_scheduler)
+            except DoesNotExist as e:
+                SchedulerShifts(scheduler_name = shift_scheduler).save()
+            return {"detail": "success"}
+        except Exception as e:
+            console_logger.debug(e)
+    
+    def fetchShiftScheduler(self):
+        try:
+            dataList = []
+            fetchSchedulerShifts = SchedulerShifts.objects()
+            if fetchSchedulerShifts:
+                for single_fetchSchdulerShifts in fetchSchedulerShifts:
+                    dataList.append(single_fetchSchdulerShifts.payload())
+            return dataList
+        except Exception as e:
+            console_logger.debug(e)
 
     
+    # def fetch_coal_quality_gcv(self):
+    #     try:
+    #         # Replace with your actual network share details
+    #         server_name = os.getenv('smb_server_name')
+    #         share_name = os.getenv('smb_share_name')
+    #         username = os.getenv('smb_username')
+    #         password = os.getenv('smb_password')
+    #         # date = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+    #         # local_directory = f"static_server/gmr_ai/{date}/coalqualitygcv"
+    #         os.umask(0)
+    #         # Specify the file to ignore
+    #         specific_file_to_ignore = "240731010458CalWinMeasurementExport.xlsx"
+
+    #         # # Ensure local directory exists
+    #         # os.makedirs(local_directory, exist_ok=True, mode=0o777)
+
+    #         # Register the server with credentials
+    #         smbclient.register_session(server_name, username=username, password=password)
+
+    #         # Path to the remote directory
+    #         remote_directory = f"//{server_name}/{share_name}"
+
+    #         # List and copy files in the directory
+    #         # try:
+    #         for file_name in smbclient.listdir(remote_directory):
+    #             if file_name not in ['.', '..']:  # Skip the current and parent directory entries
+    #                 if file_name.startswith("~$") or file_name == specific_file_to_ignore:
+    #                     print(f"Skipping {file_name}")
+    #                     continue  # Skip shortcut, temporary files, and the specific file
+                    
+    #                 remote_file_path = f"{remote_directory}/{file_name}"
+    #                 # local_file_path = os.path.join(local_directory, file_name)
+                    
+    #                 # try:
+    #                 # Read the file content
+    #                 with smbclient.open_file(remote_file_path, mode='rb') as remote_file:
+    #                     excel_data = pd.read_excel(BytesIO(remote_file.read()))
+
+    #                     # console_logger.debug(excel_data)
+    #                     data_excel_fetch = json.loads(excel_data.to_json(orient="records"))
+    #                     # for single_excel_data in data_excel_fetch:
+    #                     # console_logger.debug(data_excel_fetch)
+    #                     console_logger.debug(f"Sample name: {data_excel_fetch[1]['Unnamed: 4']}")
+    #                     console_logger.debug(f"Result (Ho): {data_excel_fetch[1]['Unnamed: 8']}")
+    #                     if "/" in str(data_excel_fetch[1]['Unnamed: 4']) and "," not in str(data_excel_fetch[1]['Unnamed: 4']):
+    #                         splitDataname = re.sub("\s\s+", " ", data_excel_fetch[1]['Unnamed: 4']).split("/")
+    #                         # console_logger.debug(f"Sample name: {splitDataname}")
+    #                         doNo = splitDataname[0]
+    #                         pattern = r'\b(LT|R|LOT-|LOT)\s?\d+\b'
+    #                         secondData = splitDataname[1].split(" ")
+    #                         # secondData = splitDataname[1].split(' ')[-2:]
+    #                         location = secondData[0]
+    #                         match = re.search(pattern, splitDataname[1])
+    #                         rakeNo = match.group()
+    #                         console_logger.debug(doNo)
+    #                         # console_logger.debug(location)
+    #                         console_logger.debug(rakeNo)
+    #                         if "LT" in rakeNo or "LOT" in rakeNo:
+    #                             console_logger.debug("inside road")
+    #                             # inside road
+    #                             # get last two alphabet from word
+    #                             splitData = rakeNo[-2:]
+    #                             # console_logger.debug(splitData.strip())
+    #                             # console_logger.debug(doNo)
+    #                             checkRoadTesting = CoalTesting.objects(rrNo=doNo, rake_no=f"LOT-{splitData.strip()}")
+    #                             if checkRoadTesting:
+    #                                 for single_road_data in checkRoadTesting:
+    #                                     # console_logger.debug(single_road_data.rrNo)
+    #                                     for oneData in single_road_data.parameters:
+    #                                         if oneData.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
+    #                                             oneData["val1"] = str(data_excel_fetch[1]['Unnamed: 8'])
+    #                                     single_road_data.save()
+    #                         elif "R" in rakeNo:
+    #                             console_logger.debug("inside rail")
+    #                             # inside railway
+    #                             # get last two alphabet from word
+    #                             splitData = rakeNo[-2:]
+    #                             console_logger.debug(int(splitData.strip()))
+    #                             checkRailTesting = CoalTestingTrain.objects(rrNo=doNo, rake_no=f"{splitData.strip()}")
+    #                             if checkRailTesting:
+    #                                 for single_rail_data in checkRailTesting:
+    #                                     # console_logger.debug(single_road_data.rrNo)
+    #                                     for oneData in single_rail_data.parameters:
+    #                                         if oneData.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
+    #                                             oneData["val1"] = str(data_excel_fetch[1]['Unnamed: 8'])
+    #                                     single_rail_data.save()
+
+    #                     # return {"details": "success"}
+    #                 # except smbclient.SMBException as e:
+    #                 #     print(f"Failed to copy {file_name}: {e}")
+    #                 # except smbclient.SMBException as e:
+    #                 #     console_logger.debug(e.error_code)
+    #                 #     if e.error_code == smbclient.errors.STATUS_ACCESS_DENIED:
+    #                 #         print("Access denied. Check your credentials.")
+    #                 #     elif e.error_code == smbclient.errors.STATUS_OBJECT_NAME_NOT_FOUND:
+    #                 #         print("File or directory not found.")
+    #                 #     else:
+    #                 #         print("SMB Error:", e)
+    #         # except smbclient.SMBException as e:
+    #         #     print(f"Failed to list directory: {e}")
+    #         return {"detail": "success"}
+    #     except Exception as e:
+    #         console_logger.debug(e)
+
     def fetch_coal_quality_gcv(self):
         try:
-            # Replace with your actual network share details
-            server_name = os.getenv('smb_server_name')
-            share_name = os.getenv('smb_share_name')
-            username = os.getenv('smb_username')
-            password = os.getenv('smb_password')
-            # date = str(datetime.datetime.now().strftime("%d-%m-%Y"))
-            # local_directory = f"static_server/gmr_ai/{date}/coalqualitygcv"
-            os.umask(0)
-            # Specify the file to ignore
-            specific_file_to_ignore = "240731010458CalWinMeasurementExport.xlsx"
+            console_logger.debug("coal_quality_gcv hitted")
+            headers = {
+                'accept': 'application/json',
+            }
 
-            # # Ensure local directory exists
-            # os.makedirs(local_directory, exist_ok=True, mode=0o777)
-
-            # Register the server with credentials
-            smbclient.register_session(server_name, username=username, password=password)
-
-            # Path to the remote directory
-            remote_directory = f"//{server_name}/{share_name}"
-
-            # List and copy files in the directory
-            # try:
-            for file_name in smbclient.listdir(remote_directory):
-                if file_name not in ['.', '..']:  # Skip the current and parent directory entries
-                    if file_name.startswith("~$") or file_name == specific_file_to_ignore:
-                        print(f"Skipping {file_name}")
-                        continue  # Skip shortcut, temporary files, and the specific file
-                    
-                    remote_file_path = f"{remote_directory}/{file_name}"
-                    # local_file_path = os.path.join(local_directory, file_name)
-                    
-                    # try:
-                    # Read the file content
-                    with smbclient.open_file(remote_file_path, mode='rb') as remote_file:
-                        excel_data = pd.read_excel(BytesIO(remote_file.read()))
-
-                        # console_logger.debug(excel_data)
-                        data_excel_fetch = json.loads(excel_data.to_json(orient="records"))
+            response = requests.get(f'http://{ip}/api/v1/host/fetch_coal_gcv_quality', headers=headers)
+            console_logger.debug(response.status_code)
+            if response.status_code == 200:
+                # console_logger.debug(response.json())
+                # console_logger.debug(type(response.json()))
+                fetchDetail = response.json()
+                for single_excel_data in fetchDetail:
                         # for single_excel_data in data_excel_fetch:
                         # console_logger.debug(data_excel_fetch)
-                        console_logger.debug(f"Sample name: {data_excel_fetch[1]['Unnamed: 4']}")
-                        console_logger.debug(f"Result (Ho): {data_excel_fetch[1]['Unnamed: 8']}")
-                        if "/" in str(data_excel_fetch[1]['Unnamed: 4']) and "," not in str(data_excel_fetch[1]['Unnamed: 4']):
-                            splitDataname = re.sub("\s\s+", " ", data_excel_fetch[1]['Unnamed: 4']).split("/")
+                        console_logger.debug(f"Sample name: {single_excel_data[1]['Unnamed: 4']}")
+                        console_logger.debug(f"Result (Ho): {single_excel_data[1]['Unnamed: 8']}")
+                        if "/" in str(single_excel_data[1]['Unnamed: 4']) and "," not in str(single_excel_data[1]['Unnamed: 4']):
+                            splitDataname = re.sub("\s\s+", " ", single_excel_data[1]['Unnamed: 4']).split("/")
                             # console_logger.debug(f"Sample name: {splitDataname}")
                             doNo = splitDataname[0]
-                            pattern = r'\b(LT|R|LOT-|LOT)\s?\d+\b'
+                            pattern = r'\b(LT|R|LOT-|LOT|LT-|R-)\s?\d+\b'
                             secondData = splitDataname[1].split(" ")
                             # secondData = splitDataname[1].split(' ')[-2:]
                             location = secondData[0]
@@ -2321,7 +2493,7 @@ class DataExecutions:
                                         # console_logger.debug(single_road_data.rrNo)
                                         for oneData in single_road_data.parameters:
                                             if oneData.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
-                                                oneData["val1"] = str(data_excel_fetch[1]['Unnamed: 8'])
+                                                oneData["val1"] = str(single_excel_data[1]['Unnamed: 8'])
                                         single_road_data.save()
                             elif "R" in rakeNo:
                                 console_logger.debug("inside rail")
@@ -2335,23 +2507,9 @@ class DataExecutions:
                                         # console_logger.debug(single_road_data.rrNo)
                                         for oneData in single_rail_data.parameters:
                                             if oneData.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
-                                                oneData["val1"] = str(data_excel_fetch[1]['Unnamed: 8'])
+                                                oneData["val1"] = str(single_excel_data[1]['Unnamed: 8'])
                                         single_rail_data.save()
-
-                        # return {"details": "success"}
-                    # except smbclient.SMBException as e:
-                    #     print(f"Failed to copy {file_name}: {e}")
-                    # except smbclient.SMBException as e:
-                    #     console_logger.debug(e.error_code)
-                    #     if e.error_code == smbclient.errors.STATUS_ACCESS_DENIED:
-                    #         print("Access denied. Check your credentials.")
-                    #     elif e.error_code == smbclient.errors.STATUS_OBJECT_NAME_NOT_FOUND:
-                    #         print("File or directory not found.")
-                    #     else:
-                    #         print("SMB Error:", e)
-            # except smbclient.SMBException as e:
-            #     print(f"Failed to list directory: {e}")
-            return {"detail": "success"}
+                return {"detail": "success"}
         except Exception as e:
             console_logger.debug(e)
 

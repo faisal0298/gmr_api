@@ -464,46 +464,170 @@ def header_data_value(template_data, month_date):
         console_logger.debug(e)
 
 
+# def logistic_report_table(data):
+#     try:
+#         console_logger.debug(data)
+#         per_data = "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
+#         per_data += (
+#             "<thead style='background-color: #3a62ff; color: #ffffff; height: 20px'>"
+#         )
+#         per_data += "<tr style='height: 30px;'>"
+#         per_data += "<th class='logic_table_th' style='font-size: 12px;'>Mine Name</th>"
+#         per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO_No</th>"
+#         per_data += "<th class='logic_table_th' style='font-size: 12px;'>Grade</th>"
+#         per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO Qty</th>"
+#         per_data += "<th class='logic_table_th' style='font-size: 12px;'>Challan LR Qty</th>"
+#         # per_data += "<th class='logic_table_th' style='font-size: 12px;'>Cumulative Challan LR Qty</th>"
+#         per_data += "<th class='logic_table_th' style='font-size: 12px;'>C.C. LR Qty</th>"
+#         per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Qty</th>"
+#         per_data += "<th class='logic_table_th' style='font-size: 12px;'>% of Supply</th>"
+#         per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Days</th>"
+#         per_data += "<th class='logic_table_th' style='font-size: 12px;'>Asking Rate</th>"
+#         per_data += "<th class='logic_table_th' style='font-size: 12px;'>Do Start date</th>"
+#         per_data += "<th class='logic_table_th' style='font-size: 12px;'>Do End date</th></tr></thead><tbody style='border: 1px solid gray;'>"
+#         for single_data in data:
+#             per_data += f"<tr style='height: 30px;'>"
+#             per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_data.get('mine_name')}</span></td>"
+#             per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_data.get('DO_No')}</span></td>"
+#             per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_data.get('average_GCV_Grade')}</span></td>"
+#             per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(single_data.get('DO_Qty'), 2)}</span></td>"
+#             per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(single_data.get('challan_lr_qty'), 2)}</span></td>"
+#             per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(single_data.get('cumulative_challan_lr_qty'), 2)}</span></td>"
+#             per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(single_data.get('balance_qty'), 2)}</span></td>"
+#             per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(single_data.get('percent_supply'), 2)}%</span></td>"
+#             per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_data.get('balance_days')}</span></td>"
+#             per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(single_data.get('asking_rate'))}</span></td>"
+#             if single_data.get("start_date") != "0":
+#                 per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {datetime.strptime(single_data.get('start_date'),'%Y-%m-%d').strftime('%d %B %y')}</span></td>"
+#             else:
+#                 per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'>0</span></td>"
+#             if single_data.get("end_date") != "0":
+#                 per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {datetime.strptime(single_data.get('end_date'),'%Y-%m-%d').strftime('%d %B %y')}</span></td>"
+#             else:    
+#                 per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'>0</span></td>"
+#             per_data += "</tr>"
+#         per_data += "</tbody></table>"
+#         return per_data
+#     except Exception as e:
+#         console_logger.debug(e)
+
+
 def logistic_report_table(data):
     try:
-        per_data = "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
-        per_data += (
-            "<thead style='background-color: #3a62ff; color: #ffffff; height: 20px'>"
-        )
-        per_data += "<tr style='height: 30px;'>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Mine Name</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO_No</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Grade</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO Qty</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Challan LR Qty</th>"
-        # per_data += "<th class='logic_table_th' style='font-size: 12px;'>Cumulative Challan LR Qty</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>C.C. LR Qty</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Qty</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>% of Supply</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Days</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Asking Rate</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Do Start date</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Do End date</th></tr></thead><tbody style='border: 1px solid gray;'>"
+        console_logger.debug(data)
+
+        grouped_data = defaultdict(list)
         for single_data in data:
-            per_data += f"<tr style='height: 30px;'>"
-            per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_data.get('mine_name')}</span></td>"
-            per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_data.get('DO_No')}</span></td>"
-            per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_data.get('average_GCV_Grade')}</span></td>"
-            per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(single_data.get('DO_Qty'), 2)}</span></td>"
-            per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(single_data.get('challan_lr_qty'), 2)}</span></td>"
-            per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(single_data.get('cumulative_challan_lr_qty'), 2)}</span></td>"
-            per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(single_data.get('balance_qty'), 2)}</span></td>"
-            per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(single_data.get('percent_supply'), 2)}%</span></td>"
-            per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_data.get('balance_days')}</span></td>"
-            per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(single_data.get('asking_rate'))}</span></td>"
-            per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {datetime.strptime(single_data.get('start_date'),'%Y-%m-%d').strftime('%d %B %y')}</span></td>"
-            per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {datetime.strftime(single_data.get('end_date'),'%d %B %y')}</span></td>"
+            source_type = single_data.get("source_type").strip()
+            grouped_data[source_type].append(single_data)
+
+        final_total_do_qty = 0
+        final_total_challan_lr_qty = 0
+        final_total_cc_lr_qty = 0
+        final_total_balance_qty = 0
+
+        per_data = ""
+        per_data += "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
+        for source_type, entries in grouped_data.items():
+            # per_data += f"<span style='font-size: 10px; font-weight: 600'>{source_type}</span>"
+            per_data += f"<tr><td class='logic_table_th' style='font-size: 15px;' colspan='12'><span style='font-size: 10px; font-weight: 600'>{source_type}</span></td></tr>"
+            # per_data += "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
+            per_data += (
+                "<thead style='background-color: #3a62ff; color: #ffffff; height: 20px'>"
+            )
+            per_data += "<tr style='height: 30px;'>"
+            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Mine Name</th>"
+            per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO_No</th>"
+            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Grade</th>"
+            per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO Qty</th>"
+            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Challan LR Qty</th>"
+            per_data += "<th class='logic_table_th' style='font-size: 12px;'>C.C. LR Qty</th>"
+            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Qty</th>"
+            per_data += "<th class='logic_table_th' style='font-size: 12px;'>% of Supply</th>"
+            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Days</th>"
+            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Asking Rate</th>"
+            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Do Start date</th>"
+            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Do End date</th></tr></thead><tbody style='border: 1px solid gray;'>"
+            total_do_qty = 0
+            total_challan_lr_qty = 0
+            total_cc_lr_qty = 0
+            total_balance_qty = 0
+
+            for entry in entries:
+                print(entry)
+                per_data += f"<tr style='height: 30px;'>"
+                per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {entry.get('mine_name')}</span></td>"
+                per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {entry.get('DO_No')}</span></td>"
+                per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {entry.get('average_GCV_Grade')}</span></td>"
+                per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(entry.get('DO_Qty'), 2)}</span></td>"
+                total_do_qty += round(entry.get('DO_Qty'), 2)
+                per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(entry.get('challan_lr_qty'), 2)}</span></td>"
+                total_challan_lr_qty += round(entry.get('challan_lr_qty'), 2)
+                per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(entry.get('cumulative_challan_lr_qty'), 2)}</span></td>"
+                total_cc_lr_qty += round(entry.get('cumulative_challan_lr_qty'), 2)
+                per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(entry.get('balance_qty'), 2)}</span></td>"
+                total_balance_qty += round(entry.get('balance_qty'), 2)
+                per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(entry.get('percent_supply'), 2)}%</span></td>"
+                per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {entry.get('balance_days')}</span></td>"
+                per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(entry.get('asking_rate'))}</span></td>"
+                if entry.get("start_date") != "0":
+                    per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {datetime.strptime(entry.get('start_date'),'%Y-%m-%d').strftime('%d %B %y')}</span></td>"
+                else:
+                    per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'>0</span></td>"
+                if entry.get("end_date") != "0":
+                    per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {datetime.strptime(entry.get('end_date'),'%Y-%m-%d').strftime('%d %B %y')}</span></td>"
+                else:    
+                    per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'>0</span></td>"
+                per_data += "</tr>"
+            per_data += "<tr style='background-color: #3a62ff; color: #ffffff;'>"
+            per_data += "<td class='logic_table_td' style='text-align: center; font-size: 14px;' colspan='3'><strong>Total</strong></td>"
+            per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(total_do_qty, 2)}</strong></td>"
+            per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(total_challan_lr_qty, 2)}</strong></td>"
+            per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(total_cc_lr_qty, 2)}</strong></td>"
+            per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(total_balance_qty, 2)}</strong></td>"
+            if total_cc_lr_qty != 0 and total_do_qty != 0:
+                per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(total_cc_lr_qty/total_do_qty, 2)}%</strong></td>"
+            else:
+                per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>0%</strong></td>"
+            per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;' colspan='4'><strong></strong></td>"
             per_data += "</tr>"
+            final_total_do_qty += total_do_qty
+            final_total_challan_lr_qty += total_challan_lr_qty
+            final_total_cc_lr_qty += total_cc_lr_qty
+            final_total_balance_qty += total_balance_qty
+        per_data += "<tr style='background-color: #3a62ff; color: #ffffff;'>"
+        per_data += "<td class='logic_table_td' style='text-align: center; font-size: 14px;' colspan='3'><strong>Grand Total</strong></td>"
+        per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(final_total_do_qty, 2)}</strong></td>"
+        per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 14px;'><strong>{round(final_total_challan_lr_qty, 2)}</strong></td>"
+        per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 14px;'><strong>{round(final_total_cc_lr_qty, 2)}</strong></td>"
+        per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 14px;'><strong>{round(final_total_balance_qty, 2)}</strong></td>"
+        per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 14px;'><strong>{round(final_total_cc_lr_qty/final_total_do_qty, 2)}%</strong></td>"
+        per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 14px;' colspan='4'><strong></strong></td>"
+        per_data += "</tr>"
         per_data += "</tbody></table>"
+
+        #     final_total_do_qty += total_do_qty
+        #     final_total_challan_lr_qty += total_challan_lr_qty
+        #     final_total_cc_lr_qty += total_cc_lr_qty
+        #     final_total_balance_qty += total_balance_qty
+        #     final_total_percent_supply += total_percent_supply
+        
+
+        # per_data += "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
+        # per_data += "<tr>"
+        # per_data += "<td class='logic_table_td' style='text-align: center; font-size: 8px;' colspan='3'><strong>Total</strong></td>"
+        # per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 8px;'><strong>{final_total_do_qty}</strong></td>"
+        # per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 8px;'><strong>{final_total_challan_lr_qty}</strong></td>"
+        # per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 8px;'><strong>{final_total_cc_lr_qty}</strong></td>"
+        # per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 8px;'><strong>{final_total_balance_qty}</strong></td>"
+        # per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 8px;'><strong>{final_total_percent_supply}</strong></td>"
+        # per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 8px;' colspan='4'><strong></strong></td>"
+        # per_data += "</tr>"
+        # per_data += "<tbody>"
+        # per_data += "</tbody></table>"
         return per_data
     except Exception as e:
         console_logger.debug(e)
-
 
 def logistic_report_table_rail(fetchRailData):
     try:
@@ -514,9 +638,9 @@ def logistic_report_table_rail(fetchRailData):
         )
         per_data += "<tr style='height: 30px;'>"
         per_data += "<th class='logic_table_th' style='font-size: 12px;'>Mine Name</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO No</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>RR No</th>"
         per_data += "<th class='logic_table_th' style='font-size: 12px;'>Grade</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO Qty</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>RR Qty</th>"
         per_data += "<th class='logic_table_th' style='font-size: 12px;'>Challan LR Qty</th>"
         # per_data += "<th class='logic_table_th' style='font-size: 12px;'>Cumulative Challan LR Qty</th>"
         per_data += "<th class='logic_table_th' style='font-size: 12px;'>C.C. LR Qty</th>"
@@ -524,8 +648,8 @@ def logistic_report_table_rail(fetchRailData):
         per_data += "<th class='logic_table_th' style='font-size: 12px;'>% of Supply</th>"
         per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Days</th>"
         per_data += "<th class='logic_table_th' style='font-size: 12px;'>Asking Rate</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Do Start date</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Do End date</th></tr></thead><tbody style='border: 1px solid gray;'>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>RR Start date</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>RR End date</th></tr></thead><tbody style='border: 1px solid gray;'>"
         for single_data in fetchRailData:
             per_data += f"<tr style='height: 30px;'>"
             per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_data.get('mine_name')}</span></td>"
@@ -875,8 +999,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
             per_data = logistic_report_table(data)
         else:
             per_data = f"<b>No data found for {month_date}</b>"
-
-        console_logger.debug(fetchRailData)
+            
         if fetchRailData:
             per_rail_data = logistic_report_table_rail(fetchRailData)
         else:

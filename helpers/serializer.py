@@ -117,6 +117,7 @@ class RequestData(BaseModel):
     Chassis_No: Optional[str] = None
     Certificate_will_expire_on: str = None
     Tare_Qty: Optional[str] = None
+    Actual_Tare_Qty: Optional[str] = None
 
 
 class RailwayDataDetails(BaseModel):
@@ -212,9 +213,13 @@ class geofenceEmailTrigger(BaseModel):
 
 
 class ShiftSchedule(BaseModel):
-    shift_name: str
-    start_shift_time: str
-    end_shift_time: str
+    shift_name: Optional[str]
+    start_shift_time: Optional[str]
+    end_shift_time: Optional[str]
+    schedule: Optional[str]
+    time: Optional[str]
+    filter: Optional[str]
+    duration: Optional[str]
 
 
 class ShiftMainData(BaseModel):
@@ -224,3 +229,14 @@ class ShiftMainData(BaseModel):
 class geoFence(BaseModel):
     name: str
     geofence: list
+
+
+class rakeQuotaManual(BaseModel):
+    month: Optional[str]
+    year: Optional[str]
+    valid_upto: Optional[str]
+    coal_field: Optional[str]
+    rake_alloted: Optional[str]
+    rake_received: Optional[str]
+    due: Optional[str]
+    grade: Optional[str]

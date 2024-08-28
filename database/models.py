@@ -589,6 +589,8 @@ class Gmrdata(Document):
     tare_weighbridge = StringField(null=True)
 
     dc_request = BooleanField(default=False)
+    dc_request_status = BooleanField(default=None, null=True)
+    
     tare_request = BooleanField(default=False)
     tare_request_status = BooleanField(default=None, null=True)
 
@@ -908,6 +910,53 @@ class PdfReportName(Document):
             "name": self.name,
             "created_at": self.created_at,
         }
+    
+class AveryRailData(EmbeddedDocument):
+    ser_no = StringField()
+    rake_no = StringField()
+    rake_id = StringField()
+    wagon_no = StringField()
+    wagon_id = StringField()
+    wagon_type = StringField()
+    wagon_cc = StringField()
+    mode = StringField()
+    tip_startdate = StringField()
+    tip_starttime = StringField()
+    tip_enddate = StringField()
+    tip_endtime = StringField()
+    tipple_time = StringField()
+    status = StringField()
+    wagon_gross_time = StringField()
+    wagon_tare_wt = StringField()
+    wagon_net_wt = StringField()
+    time_in_tipp = StringField()
+    po_number = StringField()
+    coal_grade = StringField()
+
+    def payload(self):
+        return {
+            "ser_no": self.ser_no,
+            "rake_no": self.rake_no,
+            "rake_id": self.rake_id,
+            "wagon_no": self.wagon_no,
+            "wagon_id": self.wagon_id,
+            "wagon_type": self.wagon_type,
+            "wagon_cc": self.wagon_cc,
+            "mode": self.mode,
+            "tip_startdate": self.tip_startdate,
+            "tip_starttime": self.tip_starttime,
+            "tip_enddate": self.tip_enddate,
+            "tip_endtime": self.tip_endtime,
+            "tipple_time": self.tipple_time,
+            "status": self.status,
+            "wagon_gross_time": self.wagon_gross_time,
+            "wagon_tare_wt": self.wagon_tare_wt,
+            "wagon_net_wt": self.wagon_net_wt,
+            "time_in_tipp": self.time_in_tipp,
+            "po_number": self.po_number,
+            "coal_grade": self.coal_grade,
+        }
+
 
 class SeclRailData(EmbeddedDocument):
     indexing = StringField()
@@ -986,7 +1035,15 @@ class RailData(Document):
     pola = StringField()
     total_freight = StringField()
     source_type = StringField()
+    month = StringField()
+    rr_date = StringField(null=True)
+    siding = StringField(null=True)
+    mine = StringField(null=True)
+    grade = StringField(null=True)
+    po_amount = StringField(null=True)
+    rake_no = StringField(null=True)
     secl_rly_data = EmbeddedDocumentListField(SeclRailData)
+    avery_rly_data = EmbeddedDocumentListField(AveryRailData)
     created_at = DateTimeField(default=datetime.datetime.utcnow)
 
     meta = {"db_alias": "gmrDB-alias", "collection": "raildata"}
@@ -1024,8 +1081,14 @@ class RailData(Document):
             "pola": self.pola,
             "total_freight": self.total_freight,
             "source_type": self.source_type,
+            "month": self.month,
+            "rr_date": self.rr_date,
+            "siding": self.siding,
+            "mine": self.mine,
+            "grade": self.grade,
+            "po_amount": self.po_amount,
+            "rake_no": self.rake_no,
             "secl_rly_data": seclrail,
-
             "created_at": datetime.datetime.fromisoformat(
                     self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
                     ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
@@ -1060,6 +1123,13 @@ class RailData(Document):
             "pola": self.pola,
             "total_freight": self.total_freight,
             "source_type": self.source_type,
+            "month": self.month,
+            "rr_date": self.rr_date,
+            "siding": self.siding,
+            "mine": self.mine,
+            "grade": self.grade,
+            "po_amount": self.po_amount,
+            "rake_no": self.rake_no,
             "created_at": datetime.datetime.fromisoformat(
                     self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
                     ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
@@ -1266,6 +1336,11 @@ class shiftScheduler(Document):
 
 class EmailDevelopmentCheck(Document):
     development = StringField(default=None)
+    avery_id = StringField(default=None)
+    avery_pass = StringField(defaut=None)
+    wagontrippler1 = StringField(default=None)
+    wagontrippler2 = StringField(default=None)
+    port = StringField(default=None)
 
     meta = {"db_alias": "gmrDB-alias", "collection": "EmailDevelopmentCheck"}
 
@@ -1297,6 +1372,7 @@ class rakeQuota(Document):
     rake_received = StringField(default=None)
     due = StringField(default=None)
     grade = StringField(default=None)
+    expected_rakes = DictField(null=True)
     created_at = DateTimeField(default=datetime.datetime.utcnow)
 
     meta = {"db_alias": "gmrDB-alias", "collection": "rakeQuota"}
@@ -1310,6 +1386,78 @@ class rakeQuota(Document):
             "rake_alloted": self.rake_alloted,
             "rake_received": self.rake_received,
             "due": self.due,
+            "expected_rakes": self.expected_rakes,
+            "created_at": datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+        }
+    
+class sapRecordsRCR(Document):
+    rr_no = StringField(null=True)
+    rr_date = StringField(null=True)
+    start_date = StringField(null=True)
+    end_date = StringField(null=True)
+    month = StringField(null=True)
+    consumer_type = StringField(null=True)
+    grade = StringField(null=True)
+    mine = StringField(null=True)
+    line_item = StringField(null=True)
+    rr_qty = StringField(null=True)
+    po_amount = StringField(null=True)
+    created_at = DateTimeField(default=datetime.datetime.utcnow)
+    # id = IntField(min_value=1)
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "sapRecordsRCR"}
+
+    def payload(self):
+        return {
+            # "srno": str(self.id),
+            "rr_no": self.rr_no,
+            "rr_date": self.rr_date,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "month": self.month,
+            "consumer_type": self.consumer_type,
+            "grade": self.grade,
+            "mine": self.mine,
+            "line_item": self.line_item,
+            "rr_qty": self.rr_qty,
+            "po_amount": self.po_amount,
+            "created_at": datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+        }
+    
+
+class sapRecordsRail(Document):
+    month = StringField(null=True)
+    rr_no = StringField(null=True)
+    rr_date = StringField(null=True)
+    siding = StringField(null=True)
+    mine = StringField(null=True)
+    grade = StringField(null=True)
+    rr_qty = StringField(null=True)
+    po_amount = StringField(null=True)
+    sap_po = StringField(null=True)
+    do_date = StringField(null=True) #sap po date
+    line_item = StringField(null=True)
+    created_at = DateTimeField(default=datetime.datetime.utcnow)
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "sapRecordsRail"}
+
+    def payload(self):
+        return {
+            "month": self.month,
+            "rr_no": self.rr_no,
+            "rr_date": self.rr_date,
+            "siding": self.siding,
+            "mine": self.mine,
+            "grade": self.grade,
+            "rr_qty": self.rr_qty,
+            "po_amount": self.po_amount,
+            "sap_po": self.sap_po,
+            "do_date": self.do_date,
+            "line_item": self.line_item,
             "created_at": datetime.datetime.fromisoformat(
                     self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
                     ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,

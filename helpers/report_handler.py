@@ -391,7 +391,7 @@ def header_data_value(template_data, month_date):
         header_data += "<div class='headerChild' style='display: flex; justify-content: space-between; margin-top:0px; font-size:16px;'>"
         header_data += "<div class='header_left' style='width:40%; font-size: 16px; line-height:20px;'>"
         if template_data.get("logo_path") != None:
-            console_logger.debug(f"{os.path.join(os.getcwd(), template_data['logo_path'])}")
+            # console_logger.debug(f"{os.path.join(os.getcwd(), template_data['logo_path'])}")
         #     # encoded_logo_image = encoded_data(f"{os.path.join(os.getcwd())}/static_server/receipt/report_logo.jpeg")
             encoded_logo_image = encoded_data(f"{os.path.join(os.getcwd(), template_data['logo_path'])}")
         #     header_data += f"<img src='data:image/png;base64,{encoded_logo_image}' alt='img not found' style='width:100px; '/>"
@@ -514,7 +514,6 @@ def header_data_value(template_data, month_date):
 
 def logistic_report_table(data):
     try:
-        console_logger.debug(data)
 
         grouped_data = defaultdict(list)
         for single_data in data:
@@ -536,12 +535,13 @@ def logistic_report_table(data):
                 "<thead style='background-color: #3a62ff; color: #ffffff; height: 20px'>"
             )
             per_data += "<tr style='height: 30px;'>"
+            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Month</th>"
             per_data += "<th class='logic_table_th' style='font-size: 12px;'>Mine Name</th>"
-            per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO_No</th>"
+            per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO No</th>"
             per_data += "<th class='logic_table_th' style='font-size: 12px;'>Grade</th>"
             per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO Qty</th>"
-            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Challan LR Qty</th>"
-            per_data += "<th class='logic_table_th' style='font-size: 12px;'>C.C. LR Qty</th>"
+            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Challan LR / Qty</th>"
+            per_data += "<th class='logic_table_th' style='font-size: 12px;'>C.C. LR / Qty</th>"
             per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Qty</th>"
             per_data += "<th class='logic_table_th' style='font-size: 12px;'>% of Supply</th>"
             per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Days</th>"
@@ -554,8 +554,8 @@ def logistic_report_table(data):
             total_balance_qty = 0
 
             for entry in entries:
-                print(entry)
                 per_data += f"<tr style='height: 30px;'>"
+                per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {entry.get('slno')}</span></td>"
                 per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {entry.get('mine_name')}</span></td>"
                 per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {entry.get('DO_No')}</span></td>"
                 per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {entry.get('average_GCV_Grade')}</span></td>"
@@ -580,7 +580,7 @@ def logistic_report_table(data):
                     per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'>0</span></td>"
                 per_data += "</tr>"
             per_data += "<tr style='background-color: #3a62ff; color: #ffffff;'>"
-            per_data += "<td class='logic_table_td' style='text-align: center; font-size: 14px;' colspan='3'><strong>Total</strong></td>"
+            per_data += "<td class='logic_table_td' style='text-align: center; font-size: 14px;' colspan='4'><strong>Total</strong></td>"
             per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(total_do_qty, 2)}</strong></td>"
             per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(total_challan_lr_qty, 2)}</strong></td>"
             per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(total_cc_lr_qty, 2)}</strong></td>"
@@ -596,7 +596,7 @@ def logistic_report_table(data):
             final_total_cc_lr_qty += total_cc_lr_qty
             final_total_balance_qty += total_balance_qty
         per_data += "<tr style='background-color: #3a62ff; color: #ffffff;'>"
-        per_data += "<td class='logic_table_td' style='text-align: center; font-size: 14px;' colspan='3'><strong>Grand Total</strong></td>"
+        per_data += "<td class='logic_table_td' style='text-align: center; font-size: 14px;' colspan='4'><strong>Grand Total</strong></td>"
         per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(final_total_do_qty, 2)}</strong></td>"
         per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 14px;'><strong>{round(final_total_challan_lr_qty, 2)}</strong></td>"
         per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 14px;'><strong>{round(final_total_cc_lr_qty, 2)}</strong></td>"
@@ -631,7 +631,7 @@ def logistic_report_table(data):
 
 def logistic_report_table_rail(fetchRailData):
     try:
-        console_logger.debug(fetchRailData)
+        # console_logger.debug(fetchRailData)
         per_data = "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
         per_data += (
             "<thead style='background-color: #3a62ff; color: #ffffff; height: 20px'>"
@@ -641,9 +641,9 @@ def logistic_report_table_rail(fetchRailData):
         per_data += "<th class='logic_table_th' style='font-size: 12px;'>RR No</th>"
         per_data += "<th class='logic_table_th' style='font-size: 12px;'>Grade</th>"
         per_data += "<th class='logic_table_th' style='font-size: 12px;'>RR Qty</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Challan LR Qty</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Challan/LR Qty</th>"
         # per_data += "<th class='logic_table_th' style='font-size: 12px;'>Cumulative Challan LR Qty</th>"
-        per_data += "<th class='logic_table_th' style='font-size: 12px;'>C.C. LR Qty</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>C.C/LR Qty</th>"
         per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Qty</th>"
         per_data += "<th class='logic_table_th' style='font-size: 12px;'>% of Supply</th>"
         per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Days</th>"
@@ -715,7 +715,7 @@ def bar_graph_gcv_wise(rrNo_values, aopList, month_date):
                 line_x = [rrNo.index(aop['source_name']) for aop in aopList if aop['source_name'] in rrNo]
                 line_y = [int(aop['aop_target']) for aop in aopList if aop['source_name'] in rrNo]
 
-                console_logger.debug(set(indexes)-set(line_x))
+                # console_logger.debug(set(indexes)-set(line_x))
                 for _not_present_index in list(set(indexes)-set(line_x)):
                     line_x.append(_not_present_index)
                     line_y.append(0)
@@ -872,8 +872,8 @@ def profit_loss_final_data(yearly_final_data, yearly_rail_final_data):
             net_qty_rail = list(yearly_rail_final_data.values())[0]
 
             # Compute net transit Gain/Loss
-            console_logger.debug(net_qty_road)
-            console_logger.debug(net_qty_rail)
+            # console_logger.debug(net_qty_road)
+            # console_logger.debug(net_qty_rail)
             net_transit_gain_loss = net_qty_road - net_qty_rail
 
             # Create gain-loss bar graph
@@ -965,7 +965,170 @@ def transit_loss_gain_road_mode_month(total_monthly_final_net_qty):
         console_logger.debug(e)
 
 
-def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_final, dayWiseVehicleInCount, dayWiseGrnReceive, dayWiseGwelReceive, dayWiseOutVehicelCount, total_monthly_final_net_qty, yearly_final_data, aopList, fetchRailData, yearly_rail_final_data):
+def rake_quota_data(fetchRakeQuota):
+    try:
+        console_logger.debug(fetchRakeQuota)
+        single_html = "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
+        single_html += "<thead style='background-color: #3a62ff; color: #ffffff; height: 20px'>"
+        single_html += "<tr style='height: 30px;'>"
+        # single_html += "<th class='logic_table_th' style='font-size: 12px;'>SrNo</th>"
+        single_html += "<th class='logic_table_th' style='font-size: 12px;'>Month</th>"
+        single_html += "<th class='logic_table_th' style='font-size: 12px;'>Source Type</th>"
+        single_html += "<th class='logic_table_th' style='font-size: 12px;'>Rakes previous month quota received</th>"
+        # single_html += "<th class='logic_table_th' style='font-size: 12px;'>Year</th>"
+        # single_html += "<th class='logic_table_th' style='font-size: 12px;'>Valid Upto</th>"
+        single_html += "<th class='logic_table_th' style='font-size: 12px;'>Rake planned for the month</th>"
+        # single_html += "<th class='logic_table_th' style='font-size: 12px;'>Rakes planned for month</th>"
+        single_html += "<th class='logic_table_th' style='font-size: 12px;'>Rakes loaded till date</th>"
+        single_html += "<th class='logic_table_th' style='font-size: 12px;'>Rakes loaded on date</th>"
+        single_html += "<th class='logic_table_th' style='font-size: 12px;'>Previous month rake</th>"
+        single_html += "<th class='logic_table_th' style='font-size: 12px;'>Rakes received on date</th>"
+        single_html += "<th class='logic_table_th' style='font-size: 12px;'>Total rakes received for month</th>"
+        single_html += "<th class='logic_table_th' style='font-size: 12px;'>Balance rakes to receive</th>"
+        single_html += "<th class='logic_table_th' style='font-size: 12px;'>No of rakes in transist</th>"
+        single_html += "</tr></thead><tbody style='border: 1px solid gray;'>"
+        single_html += "<tr style='height: 30px;'>"
+        for single_rake_quota in fetchRakeQuota:
+            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {fetchRakeQuota[0].get('SrNo')}</span></td>"
+            single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('month')}</span></td>"
+            single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('source_type')}</span></td>"
+            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('year')}</span></td>"
+            single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_previous_month_quota_received')}</span></td>"
+            single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rake_planned_for_the_month')}</span></td>"
+            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_planned_for_month')}</span></td>"
+            single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_loaded_till_date')}</span></td>"
+            single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_loaded_on_date')}</span></td>"
+            single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('previous_month_rake')}</span></td>"
+            single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_received_on_date')}</span></td>"
+            single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('total_rakes_received_for_month')}</span></td>"
+            single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('balance_rakes_to_receive')}</span></td>"
+            single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('no_of_rakes_in_transist')}</span></td>"
+        single_html += "</tr>"
+        single_html += "</tbody></table>"
+        return single_html
+    except Exception as e:
+        console_logger.debug(e)
+
+
+def seclGraphData(seclLinkagegraph):
+    try:
+        console_logger.debug(seclLinkagegraph)
+        labels = seclLinkagegraph.get("labels")
+
+        data = seclLinkagegraph["datasets"][0]["data"]
+
+        str_labels = [str(label) for label in labels]
+
+        # Optional: Sort data for better visualization
+        # combined = sorted(zip(data, str_labels), reverse=True)
+        # data, str_labels = zip(*combined)
+
+        # Set figure size
+        plt.figure(figsize=(12, 8))
+
+        # Create bar plot
+        bars = plt.bar(str_labels, data, color='blue', edgecolor='black')
+
+        # Add data labels on top of each bar
+        for bar in bars:
+            height = bar.get_height()
+            plt.annotate(f'{height:.2f}',
+                        xy=(bar.get_x() + bar.get_width() / 2, height),
+                        xytext=(0, 5),  # 5 points vertical offset
+                        textcoords="offset points",
+                        ha='center', va='bottom',
+                        fontsize=10, color='black')
+
+        # Labels and title
+        plt.xlabel('Labels', fontsize=14)
+        plt.ylabel('Percentage', fontsize=14)
+        plt.title('Percentage Bar Graph', fontsize=16)
+
+        # Rotate x-axis labels for better readability
+        plt.xticks(rotation=45)
+
+        # Add gridlines for better readability
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+        # Adjust layout
+        plt.tight_layout()
+
+        # Show the graph
+        # plt.show()
+        file = "reports_img"
+        # store_file = f"static_server/gmr_ai/{file}"
+        store_file = os.path.join(os.getcwd(),"static_server", "gmr_ai", file)
+        os.umask(0)
+        os.makedirs(store_file, exist_ok=True, mode=0o777)
+        image_total_file = f"profit_loss_bar_gmr_{random_string}.png"
+        plt.savefig(f"{store_file}/{image_total_file}")
+        image_total_file_name = f"{store_file}/{image_total_file}"
+        plt.close()
+        encoded_bar_chart_profit_loss = encoded_data(image_total_file_name)
+        return encoded_bar_chart_profit_loss
+    except Exception as e:
+        console_logger.debug(e)
+
+def wclGraphData(wclLinkagegraph):
+    try:
+        labels = wclLinkagegraph.get("labels")
+
+        data = wclLinkagegraph["datasets"][0]["data"]
+
+        str_labels = [str(label) for label in labels]
+
+        # Optional: Sort data for better visualization
+        # combined = sorted(zip(data, str_labels), reverse=True)
+        # data, str_labels = zip(*combined)
+
+        # Set figure size
+        plt.figure(figsize=(12, 8))
+
+        # Create bar plot
+        bars = plt.bar(str_labels, data, color='blue', edgecolor='black')
+
+        # Add data labels on top of each bar
+        for bar in bars:
+            height = bar.get_height()
+            plt.annotate(f'{height:.2f}',
+                        xy=(bar.get_x() + bar.get_width() / 2, height),
+                        xytext=(0, 5),  # 5 points vertical offset
+                        textcoords="offset points",
+                        ha='center', va='bottom',
+                        fontsize=10, color='black')
+
+        # Labels and title
+        plt.xlabel('Labels', fontsize=14)
+        plt.ylabel('Percentage', fontsize=14)
+        plt.title('Percentage Bar Graph', fontsize=16)
+
+        # Rotate x-axis labels for better readability
+        plt.xticks(rotation=45)
+
+        # Add gridlines for better readability
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+        # Adjust layout
+        plt.tight_layout()
+
+        # Show the graph
+        plt.show()
+        file = "reports_img"
+        # store_file = f"static_server/gmr_ai/{file}"
+        store_file = os.path.join(os.getcwd(),"static_server", "gmr_ai", file)
+        os.umask(0)
+        os.makedirs(store_file, exist_ok=True, mode=0o777)
+        image_total_file = f"profit_loss_bar_gmr_{random_string}.png"
+        plt.savefig(f"{store_file}/{image_total_file}")
+        image_total_file_name = f"{store_file}/{image_total_file}"
+        plt.close()
+        encoded_bar_chart_profit_loss = encoded_data(image_total_file_name)
+        return encoded_bar_chart_profit_loss
+    except Exception as e:
+        console_logger.debug(e)
+
+
+def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_final, dayWiseVehicleInCount, dayWiseGrnReceive, dayWiseGwelReceive, dayWiseOutVehicelCount, total_monthly_final_net_qty, yearly_final_data, aopList, fetchRailData, yearly_rail_final_data, fetchRakeQuota, seclLinkagegraph, wclLinkagegraph):
 
     try:
         # supplierResult = supplier_collection.find({}, {"_id": 0})
@@ -1014,6 +1177,23 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
         # profit_loss_final = profit_loss_final_data(clubbed_data_final)
         profit_loss_final = profit_loss_final_data(yearly_final_data, yearly_rail_final_data)
 
+        fetchseclGraphData = seclGraphData(seclLinkagegraph)
+        fetchwclGraphData = wclGraphData(wclLinkagegraph)
+
+        if fetchseclGraphData:
+            secl_linkage_bar_data = f'<img src="data:image/png;base64,{fetchseclGraphData}" alt="img not present" style="margin: 1px auto; width: 90%; height: 90%; object-fit: scale-down;"/>'
+        else:
+            secl_linkage_bar_data = f"<div style='color: #000; font-size: 16px; margin: 5px ;font-weight: 600;'><b>No data found for {datetime.strptime(month_date,'%Y-%m-%d').strftime('%d %B %Y')}</b></div>"
+
+        if fetchwclGraphData:
+            wecl_linkage_bar_data = f'<img src="data:image/png;base64,{fetchwclGraphData}" alt="img not present" style="margin: 1px auto; width: 90%; height: 90%; object-fit: scale-down;"/>'
+        else:
+            wecl_linkage_bar_data = f"<div style='color: #000; font-size: 16px; margin: 5px ;font-weight: 600;'><b>No data found for {datetime.strptime(month_date,'%Y-%m-%d').strftime('%d %B %Y')}</b></div>"
+
+        if fetchRakeQuota:
+            fetchquotaData = rake_quota_data(fetchRakeQuota)
+        else:
+            fetchquotaData = f"<b>No data found</b>"
 
         if bar_gcv_data:
             gcv_bar_data = f'<img src="data:image/png;base64,{bar_gcv_data}" alt="img not present" style="margin: 1px auto; width:90%; height:90%; object-fit: scale-down;"/>'
@@ -1043,7 +1223,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
             <title>{title}</title>
         </head>
         <div class="header">
-            <img src="data:image/png;base64,{encoded_logo_image}" alt="" class="header-sticky-top"/>
+            <img src="data:image/png;base64,{encoded_logo_image}" alt="" class="header-sticky-top" />
         </div>
         <body>
             {header_data}
@@ -1061,34 +1241,34 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
                             <tr style="height: 30px;">
                                 <td style=" display: flex; justify-content: space-between; padding: 5px;font-size: 14px;">
                                     <span style="font-weight: 500;">
-                                        Highest GWEL GCV ({max_key}):
-                                    </span>
+                                                Highest GWEL GCV ({max_key}):
+                                            </span>
                                     <b style="color: #3a62ff;"> {max_value} </b>
                                 </td>
                             </tr>
                             <tr style="height: 30px">
                                 <td style=" display: flex;justify-content:space-between;padding: 5px;font-size: 14px;">
                                     <span style="font-weight: 500;">
-                                        Lowest GWEL GCV ({min_key}):
-                                    </span>
+                                                Lowest GWEL GCV ({min_key}):
+                                            </span>
                                     <b style="color: #3a62ff;"> {min_value} </b>
                                 </td>
                             </tr>
                             <tr style="height: 30px">
                                 <td style=" display: flex;justify-content:space-between;padding: 5px;font-size: 14px;">
                                     <span style="font-weight: 500;">
-                                        Today's Transit loss:
-                                    </span>
+                                                Today's Transit loss:
+                                            </span>
                                     <b style="color: #3a62ff;"> {round(dayWiseGrnReceive.get("data") - dayWiseGwelReceive.get("data"), 2)} </b>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
-                <div style="width:49%;float:right;"> 
-                    <table style="border-spacing: 0px;border: 1px solid lightgray;width:100%" >
+                <div style="width:49%;float:right;">
+                    <table style="border-spacing: 0px;border: 1px solid lightgray;width:100%">
                         <thead style="background-color: #3a62ff; color: #ffffff; height: 20px;">
-                            <tr style="height: 30px;text-align:center"> 
+                            <tr style="height: 30px;text-align:center">
                                 <th>Counter</th>
                             </tr>
                         </thead>
@@ -1096,32 +1276,32 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
                             <tr style="height: 30px">
                                 <td style=" display: flex;justify-content:space-between;padding: 5px;font-size: 14px;">
                                     <span style="font-weight: 500;">
-                                        {dayWiseVehicleInCount.get("title")}: 
-                                    </span>
+                                                {dayWiseVehicleInCount.get("title")}: 
+                                            </span>
                                     <b style="color: #3a62ff;"> {dayWiseVehicleInCount.get("data")}</b>
                                 </td>
                             </tr>
                             <tr style="height: 30px">
                                 <td style=" display: flex;justify-content:space-between;padding: 5px;font-size: 14px;">
                                     <span style="font-weight: 500;">
-                                        {dayWiseOutVehicelCount.get("title")}:
-                                    </span>
+                                                {dayWiseOutVehicelCount.get("title")}:
+                                            </span>
                                     <b style="color: #3a62ff;"> {dayWiseOutVehicelCount.get("data")}</b>
                                 </td>
                             </tr>
                             <tr style="height: 30px">
                                 <td style=" display: flex;justify-content:space-between;padding: 5px;font-size: 14px;">
                                     <span style="font-weight: 500;">
-                                        {dayWiseGrnReceive.get("title")}:
-                                    </span>
+                                                {dayWiseGrnReceive.get("title")}:
+                                            </span>
                                     <b style="color: #3a62ff;"> {dayWiseGrnReceive.get("data")}</b>
                                 </td>
                             </tr>
                             <tr style="height: 30px">
                                 <td style=" display: flex;justify-content:space-between;padding: 5px;font-size: 14px;">
                                     <span style="font-weight: 500;">
-                                        {dayWiseGwelReceive.get("title")}:
-                                    </span>
+                                                {dayWiseGwelReceive.get("title")}:
+                                            </span>
                                     <b style="color: #3a62ff;"> {dayWiseGwelReceive.get("data")}</b>
                                 </td>
                             </tr>
@@ -1133,55 +1313,87 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
             <div class="footertable" style="width:100%;margin-top:20px;">
                 <div class="title" style="width: 100%; display: flex ; flex-direction:row; gap: 10px; height:50px ; align-items:center">
                     <p style="color: #3a62ff; font-size: 16px; margin: 5px; font-weight: 600;">
+                        Rake Quota Report for {datetime.strptime(month_date,'%Y-%m-%d').strftime('%B %Y')}
+                    </p>
+                </div>
+                {fetchquotaData}
+            </div>
+
+            <div class="footertable" style="width:100%;margin-top:20px;">
+                <div class="title" style="width: 100%; display: flex ; flex-direction:row; gap: 10px; height:50px ; align-items:center">
+                    <p style="color: #3a62ff; font-size: 16px; margin: 5px; font-weight: 600;">
                         Daily Road Coal Logistic Report for {datetime.strptime(month_date,'%Y-%m-%d').strftime('%d %B %Y')}
                     </p>
                 </div>
-                        {per_data}
+                {per_data}
             </div>
-            <br><br>
+            <br>
+            <br>
             <div class="footertable" style="width:100%;margin-top:20px;">
                 <div class="title" style="width: 100%; display: flex ; flex-direction:row; gap: 10px; height:50px ; align-items:center">
                     <p style="color: #3a62ff; font-size: 16px; margin: 5px; font-weight: 600;">
                         Daily Rail Coal Logistic Report for {datetime.strptime(month_date,'%Y-%m-%d').strftime('%d %B %Y')}
                     </p>
                 </div>
-                        {per_rail_data}
+                {per_rail_data}
             </div>
-            <br><br>
+            <br>
+            <br>
+
+            <div style="display:flex; flex-wrap:wrap;">
+                 <div class="body" style="margin-top:20px; width:50% ; height: 300px;">
+                    <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;display: flex; justify-content:center; flex-direction:column;  height: 300px;">
+                        <p style="margin:1px; margin-bottom:5px;">
+                            Secl Linkage Materialisation
+                        </p>
+                        {secl_linkage_bar_data}
+                    </div>
+                </div>
+                <div class="body" style="margin-top:20px; width:50% ; height: 300px;">
+                    <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;display: flex; justify-content:center; flex-direction:column;  height: 300px;">
+                        <p style="margin:1px; margin-bottom:5px;">
+                            Wcl Linkage Materialisation
+                        </p>
+                        {wecl_linkage_bar_data}
+                    </div>
+                </div>
+            </div>
+
             <div class="body" style="margin-top:20px;">
                 <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;">
-                        Monthly - Mine v/s Average GWEL GCV v/s AOP Target
-                        {gcv_bar_data}
-                </div>  
+                    Monthly - Mine v/s Average GWEL GCV v/s AOP Target 
+                    {gcv_bar_data}
+                </div>
             </div>
             <div style="display:flex; flex-wrap:wrap;">
                 <div class="body" style="margin-top:20px; width:50% ; height: 300px;">
                     <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;display: flex; justify-content:center; flex-direction:column;  height: 300px;">
-                    <p style="margin:1px; margin-bottom:5px;">
-                        Monthly - Mine v/s Transit Loss/Gain
-                    </p>
+                        <p style="margin:1px; margin-bottom:5px;">
+                            Monthly - Mine v/s Transit Loss/Gain
+                        </p>
                         {profit_loss_gmr}
-                </div>  
-            </div> 
-            <div class="body" style="margin-top:20px; width:50% ; height: 300px;">
-                <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;display: flex; justify-content:center; flex-direction:column;  height: 300px;">
-                    <p style="margin:1px; margin-bottom:5px;">
-                        Monthly - Month v/s Transit Loss/Gain
-                    </p>
+                    </div>
+                </div>
+                <div class="body" style="margin-top:20px; width:50% ; height: 300px;">
+                    <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;display: flex; justify-content:center; flex-direction:column;  height: 300px;">
+                        <p style="margin:1px; margin-bottom:5px;">
+                            Monthly - Month v/s Transit Loss/Gain
+                        </p>
                         {transist_data_month}
+                    </div>
                 </div>
-            </div>
-            <div class="body" style="margin-top:20px; width:50%  ; height: 300px;">
-                <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;display: flex; justify-content:center; flex-direction:column;  height: 300px;">
-                    <p style="margin:1px; margin-bottom:5px;">
-                        Annually - Road & Rail Mode v/s Transit Loss/Gain
-                    </p>
+                <div class="body" style="margin-top:20px; width:50%  ; height: 300px;">
+                    <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;display: flex; justify-content:center; flex-direction:column;  height: 300px;">
+                        <p style="margin:1px; margin-bottom:5px;">
+                            Annually - Road & Rail Mode v/s Transit Loss/Gain
+                        </p>
                         {profit_loss_final}
+                    </div>
                 </div>
-            </div>
             </div>
         </body>
         <footer style="font-family: arial, sans-serif; font-size: 8px;">This is an autogenerated report | GMR</footer>
+
         </html>
         """
 

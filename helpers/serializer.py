@@ -240,3 +240,9 @@ class rakeQuotaManual(BaseModel):
     rake_received: Optional[str]
     due: Optional[str]
     grade: Optional[str]
+
+
+class rakeQuotaUpdate(BaseModel):
+    month: str
+    rakes_planned_for_month: Optional[str]
+    expected_rakes: Optional[dict]

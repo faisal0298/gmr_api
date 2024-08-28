@@ -77,8 +77,7 @@ class DataExecutions:
             console_logger.debug(ip)
             url = f"http://{ip}/api/v1/host/bunker_data?start_date={startd_date}&end_date={endd_date}"
             # url = f"http://{testing_ip}/limsapi/api/SampleDetails/GetSampleRecord/GetSampleRecord?Fromdate={startd_date}&todate={endd_date}"
-            
-            console_logger.debug(url)
+     
             try:
                 payload = {}
                 headers = {}
@@ -1395,6 +1394,10 @@ class DataExecutions:
                         #     start_dates[do_no] = date
                         # elif date < start_dates[do_no]:
                         #     start_dates[do_no] = date
+                        if payload.get("slno"):
+                            aggregated_data[date][do_no]["slno"] = datetime.datetime.strptime(payload.get("slno"), '%Y%m').strftime('%B %Y')
+                        else:
+                            aggregated_data[date][do_no]["slno"] = "-"
                         if payload.get("start_date"):
                             aggregated_data[date][do_no]["start_date"] = payload.get("start_date")
                         else:
@@ -1435,6 +1438,10 @@ class DataExecutions:
                         aggregated_data[specified_date][do_no]["start_date"] = record.start_date if record.start_date else "0"
                         aggregated_data[specified_date][do_no]["end_date"] = record.end_date if record.end_date else "0"
                         aggregated_data[specified_date][do_no]["source_type"] = record.consumer_type if record.consumer_type else "Unknown"
+                        try:
+                            aggregated_data[specified_date][do_no]["slno"] = datetime.datetime.strptime(record.slno, "%Y%m").strftime("%B %Y") if record.slno else "-"
+                        except ValueError as e:
+                            aggregated_data[specified_date][do_no]["slno"] = record.slno if record.slno else "-"
                         aggregated_data[specified_date][do_no]["count"] = 1
 
                 dataList = [
@@ -1449,7 +1456,8 @@ class DataExecutions:
                                 "date": date,
                                 "start_date": data["start_date"],
                                 "end_date": data["end_date"],
-                                "source_type": data["source_type"]
+                                "source_type": data["source_type"],
+                                "slno": data["slno"],
                             }
                             for do_no, data in aggregated_data[date].items()
                         },
@@ -1469,6 +1477,7 @@ class DataExecutions:
                         dictData["start_date"] = values["start_date"]
                         dictData["end_date"] = values["end_date"]
                         dictData["source_type"] = values["source_type"]
+                        dictData["slno"] = values["slno"]
                         dictData["cumulative_challan_lr_qty"] = 0
                         dictData["balance_qty"] = 0
                         dictData["percent_supply"] = 0
@@ -1593,12 +1602,13 @@ class DataExecutions:
                                 "<thead>"
                             )
                             per_data += "<tr>"
+                            per_data += "<th>Month</th>"
                             per_data += "<th>Mine Name</th>"
-                            per_data += "<th>DO_No</th>"
+                            per_data += "<th>DO No</th>"
                             per_data += "<th>Grade</th>"
                             per_data += "<th>DO Qty</th>"
-                            per_data += "<th>Challan LR Qty</th>"
-                            per_data += "<th>C.C. LR Qty</th>"
+                            per_data += "<th>Challan LR / Qty</th>"
+                            per_data += "<th>C.C. LR / Qty</th>"
                             per_data += "<th>Balance Qty</th>"
                             per_data += "<th>% of Supply</th>"
                             per_data += "<th>Balance Days</th>"
@@ -1612,6 +1622,7 @@ class DataExecutions:
 
                             for entry in entries:
                                 per_data += f"<tr>"
+                                per_data += f"<td> {entry.get('slno')}</span></td>"
                                 per_data += f"<td> {entry.get('mine_name')}</span></td>"
                                 per_data += f"<td> {entry.get('DO_No')}</span></td>"
                                 per_data += f"<td> {entry.get('average_GCV_Grade')}</span></td>"
@@ -1903,8 +1914,8 @@ class DataExecutions:
                         per_data += "<th>RR No</th>"
                         per_data += "<th>Grade</th>"
                         per_data += "<th>RR Qty</th>"
-                        per_data += "<th>Challan LR Qty</th>"
-                        per_data += "<th>C.C. LR Qty</th>"
+                        per_data += "<th>Challan LR / Qty</th>"
+                        per_data += "<th>C.C. LR / Qty</th>"
                         per_data += "<th>Balance Qty</th>"
                         per_data += "<th>% of Supply</th>"
                         per_data += "<th>Balance Days</th>"
@@ -2038,7 +2049,6 @@ class DataExecutions:
                     inputData["date"] = str(specified_date)
                     inputData["bunkering"] = str(int(float(value)) / 1000)
                     
-                    console_logger.debug(inputData)
                     bunkerAnalysis(**inputData).save()
                 else:
                     console_logger.warning(f"Unexpected tagid: {tagid}")
@@ -2324,7 +2334,6 @@ class DataExecutions:
     
     def insertShiftScheduler(self, shift_scheduler):
         try:
-            console_logger.debug(shift_scheduler)
             try:
                 SchedulerShifts.objects.get(scheduler_name = shift_scheduler)
             except DoesNotExist as e:
@@ -2344,171 +2353,50 @@ class DataExecutions:
         except Exception as e:
             console_logger.debug(e)
 
-    
-    # def fetch_coal_quality_gcv(self):
-    #     try:
-    #         # Replace with your actual network share details
-    #         server_name = os.getenv('smb_server_name')
-    #         share_name = os.getenv('smb_share_name')
-    #         username = os.getenv('smb_username')
-    #         password = os.getenv('smb_password')
-    #         # date = str(datetime.datetime.now().strftime("%d-%m-%Y"))
-    #         # local_directory = f"static_server/gmr_ai/{date}/coalqualitygcv"
-    #         os.umask(0)
-    #         # Specify the file to ignore
-    #         specific_file_to_ignore = "240731010458CalWinMeasurementExport.xlsx"
-
-    #         # # Ensure local directory exists
-    #         # os.makedirs(local_directory, exist_ok=True, mode=0o777)
-
-    #         # Register the server with credentials
-    #         smbclient.register_session(server_name, username=username, password=password)
-
-    #         # Path to the remote directory
-    #         remote_directory = f"//{server_name}/{share_name}"
-
-    #         # List and copy files in the directory
-    #         # try:
-    #         for file_name in smbclient.listdir(remote_directory):
-    #             if file_name not in ['.', '..']:  # Skip the current and parent directory entries
-    #                 if file_name.startswith("~$") or file_name == specific_file_to_ignore:
-    #                     print(f"Skipping {file_name}")
-    #                     continue  # Skip shortcut, temporary files, and the specific file
-                    
-    #                 remote_file_path = f"{remote_directory}/{file_name}"
-    #                 # local_file_path = os.path.join(local_directory, file_name)
-                    
-    #                 # try:
-    #                 # Read the file content
-    #                 with smbclient.open_file(remote_file_path, mode='rb') as remote_file:
-    #                     excel_data = pd.read_excel(BytesIO(remote_file.read()))
-
-    #                     # console_logger.debug(excel_data)
-    #                     data_excel_fetch = json.loads(excel_data.to_json(orient="records"))
-    #                     # for single_excel_data in data_excel_fetch:
-    #                     # console_logger.debug(data_excel_fetch)
-    #                     console_logger.debug(f"Sample name: {data_excel_fetch[1]['Unnamed: 4']}")
-    #                     console_logger.debug(f"Result (Ho): {data_excel_fetch[1]['Unnamed: 8']}")
-    #                     if "/" in str(data_excel_fetch[1]['Unnamed: 4']) and "," not in str(data_excel_fetch[1]['Unnamed: 4']):
-    #                         splitDataname = re.sub("\s\s+", " ", data_excel_fetch[1]['Unnamed: 4']).split("/")
-    #                         # console_logger.debug(f"Sample name: {splitDataname}")
-    #                         doNo = splitDataname[0]
-    #                         pattern = r'\b(LT|R|LOT-|LOT)\s?\d+\b'
-    #                         secondData = splitDataname[1].split(" ")
-    #                         # secondData = splitDataname[1].split(' ')[-2:]
-    #                         location = secondData[0]
-    #                         match = re.search(pattern, splitDataname[1])
-    #                         rakeNo = match.group()
-    #                         console_logger.debug(doNo)
-    #                         # console_logger.debug(location)
-    #                         console_logger.debug(rakeNo)
-    #                         if "LT" in rakeNo or "LOT" in rakeNo:
-    #                             console_logger.debug("inside road")
-    #                             # inside road
-    #                             # get last two alphabet from word
-    #                             splitData = rakeNo[-2:]
-    #                             # console_logger.debug(splitData.strip())
-    #                             # console_logger.debug(doNo)
-    #                             checkRoadTesting = CoalTesting.objects(rrNo=doNo, rake_no=f"LOT-{splitData.strip()}")
-    #                             if checkRoadTesting:
-    #                                 for single_road_data in checkRoadTesting:
-    #                                     # console_logger.debug(single_road_data.rrNo)
-    #                                     for oneData in single_road_data.parameters:
-    #                                         if oneData.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
-    #                                             oneData["val1"] = str(data_excel_fetch[1]['Unnamed: 8'])
-    #                                     single_road_data.save()
-    #                         elif "R" in rakeNo:
-    #                             console_logger.debug("inside rail")
-    #                             # inside railway
-    #                             # get last two alphabet from word
-    #                             splitData = rakeNo[-2:]
-    #                             console_logger.debug(int(splitData.strip()))
-    #                             checkRailTesting = CoalTestingTrain.objects(rrNo=doNo, rake_no=f"{splitData.strip()}")
-    #                             if checkRailTesting:
-    #                                 for single_rail_data in checkRailTesting:
-    #                                     # console_logger.debug(single_road_data.rrNo)
-    #                                     for oneData in single_rail_data.parameters:
-    #                                         if oneData.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
-    #                                             oneData["val1"] = str(data_excel_fetch[1]['Unnamed: 8'])
-    #                                     single_rail_data.save()
-
-    #                     # return {"details": "success"}
-    #                 # except smbclient.SMBException as e:
-    #                 #     print(f"Failed to copy {file_name}: {e}")
-    #                 # except smbclient.SMBException as e:
-    #                 #     console_logger.debug(e.error_code)
-    #                 #     if e.error_code == smbclient.errors.STATUS_ACCESS_DENIED:
-    #                 #         print("Access denied. Check your credentials.")
-    #                 #     elif e.error_code == smbclient.errors.STATUS_OBJECT_NAME_NOT_FOUND:
-    #                 #         print("File or directory not found.")
-    #                 #     else:
-    #                 #         print("SMB Error:", e)
-    #         # except smbclient.SMBException as e:
-    #         #     print(f"Failed to list directory: {e}")
-    #         return {"detail": "success"}
-    #     except Exception as e:
-    #         console_logger.debug(e)
-
     def fetch_coal_quality_gcv(self):
         try:
             console_logger.debug("coal_quality_gcv hitted")
             headers = {
                 'accept': 'application/json',
             }
-
             response = requests.get(f'http://{ip}/api/v1/host/fetch_coal_gcv_quality', headers=headers)
             console_logger.debug(response.status_code)
             if response.status_code == 200:
-                # console_logger.debug(response.json())
-                # console_logger.debug(type(response.json()))
                 fetchDetail = response.json()
                 for single_excel_data in fetchDetail:
-                        # for single_excel_data in data_excel_fetch:
-                        # console_logger.debug(data_excel_fetch)
-                        console_logger.debug(f"Sample name: {single_excel_data[1]['Unnamed: 4']}")
-                        console_logger.debug(f"Result (Ho): {single_excel_data[1]['Unnamed: 8']}")
-                        if "/" in str(single_excel_data[1]['Unnamed: 4']) and "," not in str(single_excel_data[1]['Unnamed: 4']):
-                            splitDataname = re.sub("\s\s+", " ", single_excel_data[1]['Unnamed: 4']).split("/")
-                            # console_logger.debug(f"Sample name: {splitDataname}")
-                            doNo = splitDataname[0]
-                            pattern = r'\b(LT|R|LOT-|LOT|LT-|R-)\s?\d+\b'
-                            secondData = splitDataname[1].split(" ")
-                            # secondData = splitDataname[1].split(' ')[-2:]
-                            location = secondData[0]
-                            match = re.search(pattern, splitDataname[1])
-                            rakeNo = match.group()
-                            console_logger.debug(doNo)
-                            # console_logger.debug(location)
-                            console_logger.debug(rakeNo)
-                            if "LT" in rakeNo or "LOT" in rakeNo:
-                                console_logger.debug("inside road")
-                                # inside road
-                                # get last two alphabet from word
-                                splitData = rakeNo[-2:]
-                                # console_logger.debug(splitData.strip())
-                                # console_logger.debug(doNo)
-                                checkRoadTesting = CoalTesting.objects(rrNo=doNo, rake_no=f"LOT-{splitData.strip()}")
-                                if checkRoadTesting:
-                                    for single_road_data in checkRoadTesting:
-                                        # console_logger.debug(single_road_data.rrNo)
-                                        for oneData in single_road_data.parameters:
-                                            if oneData.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
-                                                oneData["val1"] = str(single_excel_data[1]['Unnamed: 8'])
-                                        single_road_data.save()
-                            elif "R" in rakeNo:
-                                console_logger.debug("inside rail")
-                                # inside railway
-                                # get last two alphabet from word
-                                splitData = rakeNo[-2:]
-                                console_logger.debug(int(splitData.strip()))
-                                checkRailTesting = CoalTestingTrain.objects(rrNo=doNo, rake_no=f"{splitData.strip()}")
-                                if checkRailTesting:
-                                    for single_rail_data in checkRailTesting:
-                                        # console_logger.debug(single_road_data.rrNo)
-                                        for oneData in single_rail_data.parameters:
-                                            if oneData.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
-                                                oneData["val1"] = str(single_excel_data[1]['Unnamed: 8'])
-                                        single_rail_data.save()
+                    console_logger.debug(f"Sample name: {single_excel_data[1]['Unnamed: 4']}")
+                    console_logger.debug(f"Result (Ho): {single_excel_data[1]['Unnamed: 8']}")
+                    if "/" in str(single_excel_data[1]['Unnamed: 4']) and "," not in str(single_excel_data[1]['Unnamed: 4']):
+                        splitDataname = re.sub("\s\s+", " ", single_excel_data[1]['Unnamed: 4']).split("/")
+                        doNo = splitDataname[0]
+                        pattern = r'\b(LT|R|LOT-|LOT|LT-|R-)\s?\d+\b'
+                        secondData = splitDataname[1].split(" ")
+                        location = secondData[0]
+                        match = re.search(pattern, splitDataname[1])
+                        rakeNo = match.group()
+                        console_logger.debug(doNo)
+                        console_logger.debug(rakeNo)
+                        if "LT" in rakeNo or "LOT" in rakeNo:
+                            console_logger.debug("inside road")
+                            splitData = rakeNo[-2:]
+                            checkRoadTesting = CoalTesting.objects(rrNo=doNo, rake_no=f"LOT-{splitData.strip()}")
+                            if checkRoadTesting:
+                                for single_road_data in checkRoadTesting:
+                                    for oneData in single_road_data.parameters:
+                                        if oneData.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
+                                            oneData["val1"] = str(single_excel_data[1]['Unnamed: 8'])
+                                    single_road_data.save()
+                        elif "R" in rakeNo:
+                            console_logger.debug("inside rail")
+                            splitData = rakeNo[-2:]
+                            console_logger.debug(int(splitData.strip()))
+                            checkRailTesting = CoalTestingTrain.objects(rrNo=doNo, rake_no=f"{splitData.strip()}")
+                            if checkRailTesting:
+                                for single_rail_data in checkRailTesting:
+                                    for oneData in single_rail_data.parameters:
+                                        if oneData.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
+                                            oneData["val1"] = str(single_excel_data[1]['Unnamed: 8'])
+                                    single_rail_data.save()
                 return {"detail": "success"}
         except Exception as e:
             console_logger.debug(e)

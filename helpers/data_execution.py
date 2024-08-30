@@ -86,7 +86,6 @@ class DataExecutions:
                 console_logger.debug(response.status_code)
                 data = response.json()
                 if response.status_code == 200:
-                    console_logger.debug("inside here")
                     sample_list_data = []
                     for single_data in data["responseData"]:
                         try:

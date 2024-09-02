@@ -4072,7 +4072,7 @@ def gmr_table(response:Response, filter_data: Optional[List[str]] = Query([]),
             
             logs = (
                 Gmrdata.objects(data)
-                .order_by("-created_at")
+                .order_by("-vehicle_in_time")
                 .skip(offset)
                 .limit(page_len)
             )        
@@ -4619,32 +4619,25 @@ def fitness_dc_record(
         return e
 
 
-def add_days_to_date(date_str, days):
-    date_format = "%d-%m-%Y"
-    date_obj = datetime.datetime.strptime(date_str, date_format)
-    new_date_obj = date_obj + timedelta(days=days)
-    return new_date_obj.strftime(date_format)
-
-
 @router.put("/road/update_expiry_date", tags=["Road Map Request"])
 async def update_fc_expiry_date(vehicle_number: str, remark: Optional[str] = None):
     try:
-        record = Gmrdata.objects(vehicle_number = vehicle_number).order_by("-created_at").first()
-        request_record = Gmrrequest.objects(vehicle_number = vehicle_number, expiry_validation=True).order_by("-created_at").first()
+        record = Gmrdata.objects(vehicle_number=vehicle_number).order_by("-created_at").first()
+        request_record = Gmrrequest.objects(vehicle_number=vehicle_number, expiry_validation=True).order_by("-created_at").first()
 
-        if remark == None:
+        if remark is None:
             remark = "Fitness Extended For 7 days"
 
         if request_record:
             request_record.expiry_validation = False
-            request_record.approved_at =  datetime.datetime.utcnow()
+            request_record.approved_at = datetime.utcnow()
             request_record.remark = remark
             request_record.save()
 
         if not record:
             raise HTTPException(status_code=404, detail="Record not found")
-        
-        record.certificate_expiry = add_days_to_date(record.certificate_expiry, 7)
+        else:
+            record.certificate_expiry = (datetime.datetime.now().date() + timedelta(days=7)).strftime("%d-%m-%Y")
         # record.fitness_verify = False
         record.save()
 
@@ -5333,8 +5326,8 @@ def daywise_vehicle_scanned_count(response:Response):
         # from_ts = datetime.datetime.strptime(startdate,"%Y-%m-%d %H:%M:%S")
         from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
 
-        # vehicle_count = Gmrdata.objects(created_at__gte=from_ts, created_at__ne=None).count()
-        vehicle_count = Gmrdata.objects(GWEL_Tare_Time__gte=from_ts, GWEL_Tare_Time__ne=None).count()
+        vehicle_count = Gmrdata.objects(created_at__gte=from_ts, created_at__ne=None).count()
+        # vehicle_count = Gmrdata.objects(GWEL_Tare_Time__gte=from_ts, GWEL_Tare_Time__ne=None).count()
 
         return {"title": "Today's Mine Vehicle Scanned",
                 "icon" : "vehicle",
@@ -11543,6 +11536,7 @@ def endpoint_to_insert_rail_data(response: Response, payload: RailwayData, rr_no
         # Extract data from payload
         final_data = payload.dict()
         console_logger.debug(rr_no)
+        # console_logger.debug(final_data)
         try:
             fetchRailData = RailData.objects.get(rr_no=rr_no)
             try:
@@ -11571,6 +11565,7 @@ def endpoint_to_insert_rail_data(response: Response, payload: RailwayData, rr_no
             #     # Set rake_no based on month and placement_date
             #     fetchRailData.rake_no = calculate_rake_no(datetime.datetime.strptime(fetchSaprecordsRail.month, '%b %d, %Y').strftime('%Y-%m-%d'), fetchRailData.placement_date.strftime('%Y-%m-%d'))
 
+            console_logger.debug(final_data)
             # Update secl_rly_data  
             for new_data in final_data.get('secl_rly_data', []):
                 updated = False
@@ -11582,7 +11577,17 @@ def endpoint_to_insert_rail_data(response: Response, payload: RailwayData, rr_no
                         break
                 if not updated:
                     fetchRailData.secl_rly_data.append(SeclRailData(**new_data))
-
+            listAveryData = []
+            for new_data in final_data.get('secl_rly_data', []):
+                dictAveryData = {}
+                console_logger.debug(new_data)
+                dictAveryData["indexing"] = new_data.get("indexing")
+                dictAveryData["wagon_owner"] = new_data.get("wagon_owner")
+                dictAveryData["wagon_type"] = new_data.get("wagon_type")
+                dictAveryData["wagon_no"] = new_data.get("wagon_no")
+                listAveryData.append(AveryRailData(**dictAveryData))
+        
+            fetchRailData.avery_rly_data = listAveryData
             fetchRailData.save()
 
             
@@ -11616,6 +11621,17 @@ def endpoint_to_insert_rail_data(response: Response, payload: RailwayData, rr_no
                     "rly_sliding_adjustment": single_data.get("rly_sliding_adjustment"),
                 }
                 secl_list_data.append(secl_rly_dict_data)
+
+            avery_list_data = []
+            for single_data in final_data.get("secl_rly_data"):
+                avery_rly_dict_data = {
+                    "indexing": single_data.get("indexing"),
+                    "wagon_owner": single_data.get("wagon_owner"),
+                    "wagon_type": single_data.get("wagon_type"),
+                    "wagon_no": single_data.get("wagon_no"),
+                }
+                avery_list_data.append(avery_rly_dict_data)
+
             try:
                 fetchSaprecordsRail = sapRecordsRail.objects.get(rr_no=final_data.get("rr_no"))
             except DoesNotExist as e:
@@ -11652,6 +11668,7 @@ def endpoint_to_insert_rail_data(response: Response, payload: RailwayData, rr_no
                 total_freight=final_data.get("total_freight"),
                 source_type=final_data.get("source_type"),
                 secl_rly_data=secl_list_data,
+                avery_rly_data=avery_list_data,
                 month=datetime.datetime.strptime(fetchSaprecordsRail.month, '%b %d, %Y').strftime('%Y-%m-%d') if fetchSaprecordsRail and fetchSaprecordsRail.month else "",
                 rr_date=fetchSaprecordsRail.rr_date if fetchSaprecordsRail and fetchSaprecordsRail.rr_date else "",
                 siding=fetchSaprecordsRail.siding if fetchSaprecordsRail and fetchSaprecordsRail.siding else "",
@@ -11663,7 +11680,7 @@ def endpoint_to_insert_rail_data(response: Response, payload: RailwayData, rr_no
             existing_rake_nos = [data.rake_no for data in RailData.objects()]
             console_logger.debug(existing_rake_nos)
             console_logger.debug(final_data.get("placement_date"))
-            if final_data.get("placement_date"):
+            if final_data.get("placement_date") and fetchSaprecordsRail and fetchSaprecordsRail.month:
                 console_logger.debug(final_data.get("placement_date"))
                 console_logger.debug(datetime.datetime.strptime(fetchSaprecordsRail.month, '%b %d, %Y').strftime('%Y-%m-%d'))
                 placement_date_obj = datetime.datetime.strptime(final_data.get("placement_date"), '%Y-%m-%dT%H:%M')
@@ -15236,41 +15253,174 @@ def endpoint_to_update_averydata(response:Response, start_date: str, end_date: s
                     console_logger.debug(fetchRailData.rr_no)
                     if fetchRailData:
                         # console_logger.debug(fetchRailData.avery_rly_data)
-                        for single_rail_data in fetchRailData.secl_rly_data:
-                            # console_logger.debug(singleAveryData.get("wagonId")[-5:])
-                            # console_logger.debug(single_rail_data.wagon_no)
+                        for single_rail_data in fetchRailData.avery_rly_data:
                             if singleAveryData.get("wagonId")[-5:] == single_rail_data.wagon_no[-5:]:
-                                dictData = {
-                                    "ser_no" : singleAveryData.get("serNo"),
-                                    "rake_no" : singleAveryData.get("rakeNo"),
-                                    "rake_id" : singleAveryData.get("rakeId"),
-                                    # "rake_no": single_rail_data.wagon_no,
-                                    "wagon_no" : singleAveryData.get("wagonNo"),
-                                    "wagon_id" : single_rail_data.wagon_no,
-                                    "wagon_type" : singleAveryData.get("wagonType"),
-                                    "wagon_cc" : singleAveryData.get("wagonCC"),
-                                    "mode" : singleAveryData.get("mode"),
-                                    "tip_startdate" : singleAveryData.get("tipStartDate"),
-                                    "tip_starttime" : singleAveryData.get("tipStartTime"),
-                                    "tip_enddate" : singleAveryData.get("tipEndDate"),
-                                    "tip_endtime" : singleAveryData.get("tipEndTime"),
-                                    "tipple_time" : singleAveryData.get("tippleTime"),
-                                    "status" : singleAveryData.get("status"),
-                                    "wagon_gross_time" : str(singleAveryData.get("wagonGrossWt")),
-                                    "wagon_tare_wt" : str(singleAveryData.get("wagonTareWt")),
-                                    "wagon_net_wt" : str(singleAveryData.get("wagonNetWt")),
-                                    "time_in_tipp" : singleAveryData.get("timeIn_tipp"),
-                                    "po_number" : singleAveryData.get("ponumber"),
-                                    "coal_grade" : singleAveryData.get("coalgrade"),
-                                }
-                                listData.append(AveryRailData(**dictData))
-                    fetchRailData.avery_rly_data = listData
-                    fetchRailData.save()
+                                console_logger.debug("matched")
+                                # Update fields
+                                single_rail_data.ser_no = singleAveryData.get("serNo")
+                                single_rail_data.rake_no = singleAveryData.get("rakeNo")
+                                single_rail_data.rake_id = singleAveryData.get("rakeId")
+                                single_rail_data.wagon_no_avery = singleAveryData.get("wagonNo")
+                                single_rail_data.wagon_id = singleAveryData.get("wagonId")
+                                single_rail_data.wagon_type = singleAveryData.get("wagonType")
+                                single_rail_data.wagon_cc = singleAveryData.get("wagonCC")
+                                single_rail_data.mode = singleAveryData.get("mode")
+                                single_rail_data.tip_startdate = singleAveryData.get("tipStartDate")
+                                single_rail_data.tip_starttime = singleAveryData.get("tipStartTime")
+                                single_rail_data.tip_enddate = singleAveryData.get("tipEndDate")
+                                single_rail_data.tip_endtime = singleAveryData.get("tipEndTime")
+                                single_rail_data.tipple_time = singleAveryData.get("tippleTime")
+                                single_rail_data.status = singleAveryData.get("status")
+                                single_rail_data.wagon_gross_time = str(singleAveryData.get("wagonGrossWt"))
+                                single_rail_data.wagon_tare_wt = str(singleAveryData.get("wagonTareWt"))
+                                single_rail_data.wagon_net_wt = str(singleAveryData.get("wagonNetWt"))
+                                single_rail_data.time_in_tipp = singleAveryData.get("timeIn_tipp")
+                                single_rail_data.po_number = singleAveryData.get("ponumber")
+                                single_rail_data.coal_grade = singleAveryData.get("coalgrade")
+                                
+                                # # Save the changes
+                                fetchRailData.save()
+
+                    # old code        
+                    # if fetchRailData:
+                    #     # console_logger.debug(fetchRailData.avery_rly_data)
+                    #     for single_rail_data in fetchRailData.secl_rly_data:
+                    #         # console_logger.debug(singleAveryData.get("wagonId")[-5:])
+                    #         # console_logger.debug(single_rail_data.wagon_no)
+                    #         if singleAveryData.get("wagonId")[-5:] == single_rail_data.wagon_no[-5:]:
+                    #             dictData = {
+                    #                 "ser_no" : singleAveryData.get("serNo"),
+                    #                 "rake_no" : singleAveryData.get("rakeNo"),
+                    #                 "rake_id" : singleAveryData.get("rakeId"),
+                    #                 # "rake_no": single_rail_data.wagon_no,
+                    #                 "wagon_no" : singleAveryData.get("wagonNo"),
+                    #                 "wagon_id" : single_rail_data.wagon_no,
+                    #                 "wagon_type" : singleAveryData.get("wagonType"),
+                    #                 "wagon_cc" : singleAveryData.get("wagonCC"),
+                    #                 "mode" : singleAveryData.get("mode"),
+                    #                 "tip_startdate" : singleAveryData.get("tipStartDate"),
+                    #                 "tip_starttime" : singleAveryData.get("tipStartTime"),
+                    #                 "tip_enddate" : singleAveryData.get("tipEndDate"),
+                    #                 "tip_endtime" : singleAveryData.get("tipEndTime"),
+                    #                 "tipple_time" : singleAveryData.get("tippleTime"),
+                    #                 "status" : singleAveryData.get("status"),
+                    #                 "wagon_gross_time" : str(singleAveryData.get("wagonGrossWt")),
+                    #                 "wagon_tare_wt" : str(singleAveryData.get("wagonTareWt")),
+                    #                 "wagon_net_wt" : str(singleAveryData.get("wagonNetWt")),
+                    #                 "time_in_tipp" : singleAveryData.get("timeIn_tipp"),
+                    #                 "po_number" : singleAveryData.get("ponumber"),
+                    #                 "coal_grade" : singleAveryData.get("coalgrade"),
+                    #             }
+                    #             listData.append(AveryRailData(**dictData))
+                    # fetchRailData.avery_rly_data = listData
+                    # fetchRailData.save()
 
         return {"detail": "success"}
     except Exception as e:
         console_logger.debug("----- Road Sap Upload Error -----",e)
         response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+
+@router.get("/update/averydata/test", tags=["Rail Map"])
+def endpoint_to_update_averydata(response:Response):
+    try:
+        fetchAveryData = [{'serNo': '3', 'rakeNo': '2', 'rakeId': 'B162014638', 'wagonNo': '3', 'wagonId': 'SECR    12254', 'wagonType': 'Single', 'wagonCC': '80', 'mode': 'MD MD', 'tipStartDate': '08/25/2024 00:00:00', 'tipStartTime': '00:21:55', 'tipEndDate': '08/25/2024 00:00:00', 'tipEndTime': '00:37:54', 'tippleTime': '16', 'status': None, 'wagonGrossWt': 88.55, 'wagonTareWt': 20.7, 'wagonNetWt': 67.85, 'timeIn_tipp': None, 'ponumber': '4500099650', 'coalgrade': 'G-11'}, {'serNo': '3', 'rakeNo': '2', 'rakeId': 'B162014638', 'wagonNo': '4', 'wagonId': 'WC      10219', 'wagonType': 'Single', 'wagonCC': '80', 'mode': 'MD MD', 'tipStartDate': '08/25/2024 00:00:00', 'tipStartTime': '00:40:53', 'tipEndDate': '08/25/2024 00:00:00', 'tipEndTime': '02:16:50', 'tippleTime': '96', 'status': None, 'wagonGrossWt': 89.5, 'wagonTareWt': 20.95, 'wagonNetWt': 68.55, 'timeIn_tipp': None, 'ponumber': '4500099650', 'coalgrade': 'G-11'}, {'serNo': '3', 'rakeNo': '2', 'rakeId': 'B162014638', 'wagonNo': '5', 'wagonId': 'NR       81575', 'wagonType': 'Single', 'wagonCC': '80', 'mode': 'MD MD', 'tipStartDate': '08/25/2024 00:00:00', 'tipStartTime': '02:19:39', 'tipEndDate': '08/25/2024 00:00:00', 'tipEndTime': '02:23:07', 'tippleTime': '4', 'status': None, 'wagonGrossWt': 87.1, 'wagonTareWt': 22.55, 'wagonNetWt': 64.55, 'timeIn_tipp': None, 'ponumber': '4500099650', 'coalgrade': 'G-11'}, {'serNo': '3', 'rakeNo': '2', 'rakeId': 'B162014638', 'wagonNo': '6', 'wagonId': 'SECR   812070', 'wagonType': 'Single', 'wagonCC': '80', 'mode': 'MD MD', 'tipStartDate': '08/25/2024 00:00:00', 'tipStartTime': '02:25:23', 'tipEndDate': '08/25/2024 00:00:00', 'tipEndTime': '02:46:04', 'tippleTime': '21', 'status': None, 'wagonGrossWt': 86.4, 'wagonTareWt': 24.0, 'wagonNetWt': 62.4, 'timeIn_tipp': None, 'ponumber': '4500099650', 'coalgrade': 'G-11'}, {'serNo': '3', 'rakeNo': '2', 'rakeId': 'B162014638', 'wagonNo': '7', 'wagonId': 'SECR   21836', 'wagonType': 'Single', 'wagonCC': '80', 'mode': 'MD MD', 'tipStartDate': '08/25/2024 00:00:00', 'tipStartTime': '02:48:25', 'tipEndDate': '08/25/2024 00:00:00', 'tipEndTime': '02:59:44', 'tippleTime': '11', 'status': None, 'wagonGrossWt': 85.15, 'wagonTareWt': 21.4, 'wagonNetWt': 63.75, 'timeIn_tipp': None, 'ponumber': '4500099650', 'coalgrade': 'G-11'}, {'serNo': '3', 'rakeNo': '2', 'rakeId': 'B162014638', 'wagonNo': '8', 'wagonId': 'SECR   10714', 'wagonType': 'Single', 'wagonCC': '80', 'mode': 'MD MD', 'tipStartDate': '08/25/2024 00:00:00', 'tipStartTime': '03:01:47', 'tipEndDate': '08/25/2024 00:00:00', 'tipEndTime': '03:58:32', 'tippleTime': '57', 'status': None, 'wagonGrossWt': 93.8, 'wagonTareWt': 21.95, 'wagonNetWt': 71.85, 'timeIn_tipp': None, 'ponumber': '4500099650', 'coalgrade': 'G-11'}, {'serNo': '3', 'rakeNo': '2', 'rakeId': 'B162014638', 'wagonNo': '9', 'wagonId': 'SECR   10752', 'wagonType': 'Single', 'wagonCC': '80', 'mode': 'MD MD', 'tipStartDate': '08/25/2024 00:00:00', 'tipStartTime': '04:00:49', 'tipEndDate': '08/25/2024 00:00:00', 'tipEndTime': '04:05:42', 'tippleTime': '5', 'status': None, 'wagonGrossWt': 83.05, 'wagonTareWt': 22.0, 'wagonNetWt': 61.05, 'timeIn_tipp': None, 'ponumber': '4500099650', 'coalgrade': 'G-11'}]
+        listData = []
+        if fetchAveryData:
+            for singleAveryData in fetchAveryData:
+                if "A" in singleAveryData.get("rakeId"):
+                    # console_logger.debug(singleAveryData.get("rakeId").split("A")[1])
+                    rr_number = singleAveryData.get("rakeId").split("A")[1]
+                elif "B" in singleAveryData.get("rakeId"):
+                    # console_logger.debug(singleAveryData.get("rakeId").split("B")[1])
+                    rr_number = singleAveryData.get("rakeId").split("B")[1]
+                fetchRailData = RailData.objects.get(rr_no=rr_number)
+
+                console_logger.debug(fetchRailData.rr_no)
+                if fetchRailData:
+                    # console_logger.debug(fetchRailData.avery_rly_data)
+                    for single_rail_data in fetchRailData.avery_rly_data:
+                        console_logger.debug(singleAveryData.get("wagonId")[-5:])
+                        console_logger.debug(single_rail_data.wagon_no[-5:])
+                        if singleAveryData.get("wagonId")[-5:] == single_rail_data.wagon_no[-5:]:
+                            console_logger.debug("matched")
+                            # Update fields
+                            single_rail_data.ser_no = singleAveryData.get("serNo")
+                            single_rail_data.rake_no = singleAveryData.get("rakeNo")
+                            single_rail_data.rake_id = singleAveryData.get("rakeId")
+                            single_rail_data.wagon_no_avery = singleAveryData.get("wagonNo")
+                            single_rail_data.wagon_id = singleAveryData.get("wagonId")
+                            single_rail_data.wagon_type = singleAveryData.get("wagonType")
+                            single_rail_data.wagon_cc = singleAveryData.get("wagonCC")
+                            single_rail_data.mode = singleAveryData.get("mode")
+                            single_rail_data.tip_startdate = singleAveryData.get("tipStartDate")
+                            single_rail_data.tip_starttime = singleAveryData.get("tipStartTime")
+                            single_rail_data.tip_enddate = singleAveryData.get("tipEndDate")
+                            single_rail_data.tip_endtime = singleAveryData.get("tipEndTime")
+                            single_rail_data.tipple_time = singleAveryData.get("tippleTime")
+                            single_rail_data.status = singleAveryData.get("status")
+                            single_rail_data.wagon_gross_time = str(singleAveryData.get("wagonGrossWt"))
+                            single_rail_data.wagon_tare_wt = str(singleAveryData.get("wagonTareWt"))
+                            single_rail_data.wagon_net_wt = str(singleAveryData.get("wagonNetWt"))
+                            single_rail_data.time_in_tipp = singleAveryData.get("timeIn_tipp")
+                            single_rail_data.po_number = singleAveryData.get("ponumber")
+                            single_rail_data.coal_grade = singleAveryData.get("coalgrade")
+                            
+                            # # Save the changes
+                            fetchRailData.save()
+
+        return {"detail": "success"}
+    except Exception as e:
+        console_logger.debug("----- Road Sap Upload Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e       
+
+
+@router.post("/update/useraverydata", tags=["Rail Map"])
+def endpoint_to_update_avery_user_data(response: Response, data: mainAveryData, rr_no: str):
+    try:
+        payload = data.dict()
+        fetchRailData = RailData.objects.get(rr_no=rr_no)
+        if payload.get("data"):
+            avery_user_data_instances = [AveryRailData(**item) for item in payload.get("data")]
+            fetchRailData.avery_rly_data = avery_user_data_instances
+        else:
+            fetchRailData.avery_rly_data.clear()
+
+        try:
+            fetchRailData.save()
+        except ValidationError as e:
+            console_logger.error(f"Validation error while saving RailData: {e}")
+            return {"details": "error", "message": str(e)}
+        return {"details": "success"}
+    except Exception as e:
+        console_logger.debug("----- Road Sap Upload Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e       
+
+@router.get("/fetch/avery/singlerail", tags=["Rail Map"])
+def endpoint_to_fetch_avery_railway_data(response: Response, rrno: str):
+    try:
+        fetchRailData = RailData.objects.get(rr_no=rrno)
+        return fetchRailData.averyPayload()
+    except DoesNotExist as e:
+        raise HTTPException(status_code=404, detail="No data found")
+    except Exception as e:
+        console_logger.debug("----- Fetch Railway Data Error -----",e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)

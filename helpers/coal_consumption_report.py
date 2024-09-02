@@ -469,10 +469,23 @@ def annotate_values(x, y):
 
 def specific_coal_consumption_graph_unit1(fetchtableData):
     try:
+        x_data = fetchtableData["Unit 1"]["label"]
+        y_data = fetchtableData["Unit 1"]["specific_coal"]
+        min_length = min(len(x_data), len(y_data))
+        x_data = x_data[:min_length]
+        y_data = y_data[:min_length]
         plt.figure(figsize=(10, 6))
+        # plt.plot(
+        #     fetchtableData["Unit 1"]["label"],
+        #     fetchtableData["Unit 1"]["specific_coal"],
+        #     marker="o",
+        #     linestyle="-",
+        #     color="blue",
+        #     label="Unit 1",
+        # )
         plt.plot(
-            fetchtableData["Unit 1"]["label"],
-            fetchtableData["Unit 1"]["specific_coal"],
+            x_data,
+            y_data,
             marker="o",
             linestyle="-",
             color="blue",
@@ -484,7 +497,8 @@ def specific_coal_consumption_graph_unit1(fetchtableData):
         plt.xticks(ticks=range(0, 24), labels=[f"{i}" for i in range(0, 24)])
         # plt.legend()
         plt.grid(True)
-        annotate_values(fetchtableData["Unit 1"]["label"], fetchtableData["Unit 1"]["specific_coal"])
+        # annotate_values(fetchtableData["Unit 1"]["label"], fetchtableData["Unit 1"]["specific_coal"])
+        annotate_values(x_data, y_data)
         # plt.savefig("specific_coal_consumption_unit_1.png")
         file = "reports_img"
         # store_file = f"static_server/gmr_ai/{file}"
@@ -495,10 +509,7 @@ def specific_coal_consumption_graph_unit1(fetchtableData):
         plt.savefig(f"{store_file}/{unit1_image_total_file}")
         unit_1_image_total_file_name = f"{store_file}/{unit1_image_total_file}"
         plt.close()
-
         unit_1_encoded_bar_chart_profit_loss = encoded_data(unit_1_image_total_file_name)
-
-        
         return unit_1_encoded_bar_chart_profit_loss
     except Exception as e:
         console_logger.debug(e)

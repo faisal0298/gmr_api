@@ -912,10 +912,14 @@ class PdfReportName(Document):
         }
     
 class AveryRailData(EmbeddedDocument):
+    indexing = StringField()
+    wagon_owner = StringField()
+    wagon_type = StringField()
+    wagon_no = StringField()
     ser_no = StringField()
     rake_no = StringField()
     rake_id = StringField()
-    wagon_no = StringField()
+    wagon_no_avery = StringField()
     wagon_id = StringField()
     wagon_type = StringField()
     wagon_cc = StringField()
@@ -935,10 +939,14 @@ class AveryRailData(EmbeddedDocument):
 
     def payload(self):
         return {
+            "indexing": self.indexing,
+            "wagon_owner": self.wagon_owner,
+            "wagon_type": self.wagon_type,
+            "wagon_no": self.wagon_no,
             "ser_no": self.ser_no,
             "rake_no": self.rake_no,
             "rake_id": self.rake_id,
-            "wagon_no": self.wagon_no,
+            "wagon_no_avery": self.wagon_no_avery,
             "wagon_id": self.wagon_id,
             "wagon_type": self.wagon_type,
             "wagon_cc": self.wagon_cc,
@@ -1094,6 +1102,52 @@ class RailData(Document):
                     ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
         }
     
+    def averyPayload(self):
+        averyrail = []
+        for avery_data in self.avery_rly_data:
+            averyrail.append(avery_data.payload())
+
+        return {
+            "rr_no": self.rr_no,
+            "rr_qty": self.rr_qty,
+            "po_no": self.po_no,
+            "po_date": self.po_date,
+            "line_item": self.line_item,
+            "source": self.source,
+            "placement_date": self.placement_date.replace("T"," "),
+            "completion_date": self.completion_date.replace("T"," "),
+            "drawn_date": self.drawn_date.replace("T"," "),
+            "total_ul_wt": self.total_ul_wt,
+            "boxes_supplied": self.boxes_supplied,
+            "total_secl_gross_wt": self.total_secl_gross_wt,
+            "total_secl_tare_wt": self.total_secl_tare_wt,
+            "total_secl_net_wt": self.total_secl_net_wt,
+            "total_secl_ol_wt": self.total_secl_ol_wt,
+            "boxes_loaded": self.boxes_loaded,
+            "total_rly_gross_wt": self.total_rly_gross_wt,
+            "total_rly_tare_wt": self.total_rly_tare_wt,
+            "total_rly_net_wt": self.total_rly_net_wt,
+            "total_rly_ol_wt": self.total_rly_ol_wt,
+            "total_secl_chargable_wt": self.total_secl_chargable_wt,
+            "total_rly_chargable_wt": self.total_rly_chargable_wt,
+            "freight": self.freight,
+            "gst": self.gst,
+            "pola": self.pola,
+            "total_freight": self.total_freight,
+            "source_type": self.source_type,
+            "month": self.month,
+            "rr_date": self.rr_date,
+            "siding": self.siding,
+            "mine": self.mine,
+            "grade": self.grade,
+            "po_amount": self.po_amount,
+            "rake_no": self.rake_no,
+            "avery_rly_data": averyrail,
+            "created_at": datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+        }
+
     def simplepayload(self):
         return {
             "rr_no": self.rr_no,

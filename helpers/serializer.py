@@ -246,3 +246,34 @@ class rakeQuotaUpdate(BaseModel):
     month: str
     rakes_planned_for_month: Optional[str]
     expected_rakes: Optional[dict]
+
+
+class averyUserData(BaseModel):
+    indexing : Optional[str]
+    wagon_owner : Optional[str]
+    wagon_type : Optional[str]
+    wagon_no : Optional[str]
+    ser_no : Optional[str]
+    rake_no : Optional[str]
+    rake_id : Optional[str]
+    wagon_no_avery : Optional[str]
+    wagon_id : Optional[str]
+    wagon_type : Optional[str]
+    wagon_cc : Optional[str]
+    mode : Optional[str]
+    tip_startdate : Optional[str]
+    tip_starttime : Optional[str]
+    tip_enddate : Optional[str]
+    tip_endtime : Optional[str]
+    tipple_time : Optional[str]
+    status : Optional[str]
+    wagon_gross_time : Optional[str]
+    wagon_tare_wt : Optional[str]
+    wagon_net_wt : Optional[str]
+    time_in_tipp : Optional[str]
+    po_number : Optional[str]
+    coal_grade : Optional[str]
+
+
+class mainAveryData(BaseModel):
+    data : List[averyUserData]

@@ -629,123 +629,123 @@ def tableData(fetchtableData):
 
 
 def generate_report_consumption(specified_date, fetchtableData):
-    # try:
-    payload={}
-    header={}
-    template_url = f"http://{host}/api/v1/base/report/template"
+    try:
+        payload={}
+        header={}
+        template_url = f"http://{host}/api/v1/base/report/template"
 
-    response = requests.request("GET", url=template_url, headers=header, data=payload)
+        response = requests.request("GET", url=template_url, headers=header, data=payload)
 
-    template_data = json.loads(response.text)
+        template_data = json.loads(response.text)
 
-    header_data, encoded_logo_image, text_watermark_pdf = header_data_value(template_data, specified_date)
+        header_data, encoded_logo_image, text_watermark_pdf = header_data_value(template_data, specified_date)
 
-    unit1fetchTabledata, unit2fetchTabledata = tableData(fetchtableData)
+        unit1fetchTabledata, unit2fetchTabledata = tableData(fetchtableData)
 
-    unit1_graph = specific_coal_consumption_graph_unit1(fetchtableData)
+        unit1_graph = specific_coal_consumption_graph_unit1(fetchtableData)
 
-    unit2_graph = specific_coal_consumption_graph_unit2(fetchtableData)
-
-
-    if unit1_graph:
-        unit1_data_graph = f'<img src="data:image/png;base64,{unit1_graph}" alt="img not present" style="margin: 1px auto; width:90%; height:90%; display:block; object-fit: scale-down;"/>'
-    else:
-        unit1_data_graph = f"<div style='color: #000; font-size: 12px; margin: 5px ;font-weight: 600;'><b>No data found for {datetime.strptime(specified_date,'%Y-%m-%d').strftime('%d %B %Y')}</b></div>"
+        unit2_graph = specific_coal_consumption_graph_unit2(fetchtableData)
 
 
-    if unit2_graph:
-        unit2_data_graph = f'<img src="data:image/png;base64,{unit2_graph}" alt="img not present" style="margin: 1px auto; width:90%; height:90%; display:block; object-fit: scale-down;"/>'
-    else:
-        unit2_data_graph = f"<div style='color: #000; font-size: 12px; margin: 5px ;font-weight: 600;'><b>No data found for {datetime.strptime(specified_date,'%Y-%m-%d').strftime('%d %B %Y')}</b></div>"
-    
-    title = f"GMR performance report"
-    html_template = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>{title}</title>
-    </head>
-    <div class="header">
-        <img src="data:image/png;base64,{encoded_logo_image}" alt="" class="header-sticky-top"/>
-    </div>
-    <body>
-        {header_data}
-        <hr style="margin: 5px 0px;" />
+        if unit1_graph:
+            unit1_data_graph = f'<img src="data:image/png;base64,{unit1_graph}" alt="img not present" style="margin: 1px auto; width:90%; height:90%; display:block; object-fit: scale-down;"/>'
+        else:
+            unit1_data_graph = f"<div style='color: #000; font-size: 12px; margin: 5px ;font-weight: 600;'><b>No data found for {datetime.strptime(specified_date,'%Y-%m-%d').strftime('%d %B %Y')}</b></div>"
 
-        <div class="footertable" style="width:100%;margin-top:0px;">
-            <div class="title" style="width: 100%; display: flex ; flex-direction:row; gap: 10px; height:20px; align-items:center">
-                <p style="color: #3a62ff; font-size: 12px; margin: 0px; font-weight: 600;">
-                    Daily Specific Coal Consumption Report for {datetime.strptime(specified_date,'%Y-%m-%d').strftime('%d %B %Y')}
-                </p>
-            </div>
-                    {unit1fetchTabledata}
-        </div>
-        <div class="body" style="margin-top:80px;">
-                <div style="color: #3a62ff; font-size: 12px; margin: 5px auto; font-weight: 600;">
-                        {unit1_data_graph}
-                </div>  
-            </div>  
 
+        if unit2_graph:
+            unit2_data_graph = f'<img src="data:image/png;base64,{unit2_graph}" alt="img not present" style="margin: 1px auto; width:90%; height:90%; display:block; object-fit: scale-down;"/>'
+        else:
+            unit2_data_graph = f"<div style='color: #000; font-size: 12px; margin: 5px ;font-weight: 600;'><b>No data found for {datetime.strptime(specified_date,'%Y-%m-%d').strftime('%d %B %Y')}</b></div>"
         
-        <div class="footertable" style="width:100%;margin-top:0px;">
-            <div class="title" style="width: 100%; display: flex ; flex-direction:row; gap: 10px; height:20px; align-items:center">
-            </div>
-                    {unit2fetchTabledata}
+        title = f"GMR performance report"
+        html_template = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>{title}</title>
+        </head>
+        <div class="header">
+            <img src="data:image/png;base64,{encoded_logo_image}" alt="" class="header-sticky-top"/>
         </div>
-        <div class="body" style="margin-top:80px;">
-                <div style="color: #3a62ff; font-size: 12px; margin: 5px auto; font-weight: 600;">
-                        {unit2_data_graph}
+        <body>
+            {header_data}
+            <hr style="margin: 5px 0px;" />
+
+            <div class="footertable" style="width:100%;margin-top:0px;">
+                <div class="title" style="width: 100%; display: flex ; flex-direction:row; gap: 10px; height:20px; align-items:center">
+                    <p style="color: #3a62ff; font-size: 12px; margin: 0px; font-weight: 600;">
+                        Daily Specific Coal Consumption Report for {datetime.strptime(specified_date,'%Y-%m-%d').strftime('%d %B %Y')}
+                    </p>
+                </div>
+                        {unit1fetchTabledata}
+            </div>
+            <div class="body" style="margin-top:80px;">
+                    <div style="color: #3a62ff; font-size: 12px; margin: 5px auto; font-weight: 600;">
+                            {unit1_data_graph}
+                    </div>  
                 </div>  
-            </div> 
+
+            
+            <div class="footertable" style="width:100%;margin-top:0px;">
+                <div class="title" style="width: 100%; display: flex ; flex-direction:row; gap: 10px; height:20px; align-items:center">
+                </div>
+                        {unit2fetchTabledata}
+            </div>
+            <div class="body" style="margin-top:80px;">
+                    <div style="color: #3a62ff; font-size: 12px; margin: 5px auto; font-weight: 600;">
+                            {unit2_data_graph}
+                    </div>  
+                </div> 
+            
+        </body>
+        <footer style="font-family: arial, sans-serif; font-size: 8px;">This is an autogenerated report | GMR</footer>
+        </html>
+        """
+
+        file = str(datetime.now().strftime("%d-%m-%Y"))
+        store_data = os.path.join(os.getcwd(),"static_server", "gmr_ai", file)
+        os.umask(0)
+        os.makedirs(store_data, exist_ok=True, mode=0o777)
+
+        image_name = datetime.now().strftime("%d-%m-%Y%H%M%S")
+
+        # generating pdf based on above HTML
+        HTML(string=html_template).write_pdf(
+            f"{store_data}/daily_specific_coal_consumption_report_{image_name}.pdf",
+            stylesheets=[CSS(os.path.join(os.getcwd(), "helpers", "consumptionstyle.css"))],
+        )
+        # normal pdf name 
+        pdf_file = f"{store_data}/daily_specific_coal_consumption_report_{image_name}.pdf"
+        # watermark pdf name
+        output_file = f"{store_data}/daily_specific_coal_consumption_report__{image_name}.pdf"
+        data = {}
+        if template_data.get("logo_as_watermark") == "title":
+            data["wm_angle"] = "vertical"
+            apply_pdf_watermark(pdf_file, output_file, text_watermark=text_watermark_pdf, data=data)
+            data_file = f"static_server/gmr_ai/{file}/daily_specific_coal_consumption_report__{image_name}.pdf"
+            # deleting original generated pdf as we are getting here two pdf first without watermark and second with watermark
+            os.remove(f"{store_data}/daily_specific_coal_consumption_report_{image_name}.pdf")
         
-    </body>
-    <footer style="font-family: arial, sans-serif; font-size: 8px;">This is an autogenerated report | GMR</footer>
-    </html>
-    """
+        elif template_data.get("logo_as_watermark") == "logo":
+            data["wm_angle"] = "vertical"
+            apply_pdf_watermark(pdf_file, output_file, picture_path=f'{os.path.join(os.getcwd())}/{template_data["logo_path"]}', data=data)
+            data_file = f"static_server/gmr_ai/{file}/daily_specific_coal_consumption_report__{image_name}.pdf"  
+            # deleting original generated pdf as we are getting here two pdf first without watermark and second with watermark
+            os.remove(f"{store_data}/daily_specific_coal_consumption_report_{image_name}.pdf")
+        
+        elif template_data.get("logo_as_watermark") == "None":
+            data_file = f"static_server/gmr_ai/{file}/daily_specific_coal_consumption_report_{image_name}.pdf"
 
-    file = str(datetime.now().strftime("%d-%m-%Y"))
-    store_data = os.path.join(os.getcwd(),"static_server", "gmr_ai", file)
-    os.umask(0)
-    os.makedirs(store_data, exist_ok=True, mode=0o777)
+        # deleting a temp watermark pdf which was getting generated during watermark
+        for filename in Path(f"{os.path.join(os.getcwd())}/static_server/gmr_ai/{file}").glob("watermark_empty*.pdf"):
+            filename.unlink()
+        
+        # deleting reports_img folder on static_server
+        shutil.rmtree(os.path.join(os.getcwd(),"static_server", "gmr_ai", "reports_img")) 
+        # recreating folder with reports_img name
+        os.mkdir(os.path.join(os.getcwd(),"static_server", "gmr_ai", "reports_img"))
 
-    image_name = datetime.now().strftime("%d-%m-%Y%H%M%S")
-
-    # generating pdf based on above HTML
-    HTML(string=html_template).write_pdf(
-        f"{store_data}/daily_specific_coal_consumption_report_{image_name}.pdf",
-        stylesheets=[CSS(os.path.join(os.getcwd(), "helpers", "consumptionstyle.css"))],
-    )
-    # normal pdf name 
-    pdf_file = f"{store_data}/daily_specific_coal_consumption_report_{image_name}.pdf"
-    # watermark pdf name
-    output_file = f"{store_data}/daily_specific_coal_consumption_report__{image_name}.pdf"
-    data = {}
-    if template_data.get("logo_as_watermark") == "title":
-        data["wm_angle"] = "vertical"
-        apply_pdf_watermark(pdf_file, output_file, text_watermark=text_watermark_pdf, data=data)
-        data_file = f"static_server/gmr_ai/{file}/daily_specific_coal_consumption_report__{image_name}.pdf"
-        # deleting original generated pdf as we are getting here two pdf first without watermark and second with watermark
-        os.remove(f"{store_data}/daily_specific_coal_consumption_report_{image_name}.pdf")
-    
-    elif template_data.get("logo_as_watermark") == "logo":
-        data["wm_angle"] = "vertical"
-        apply_pdf_watermark(pdf_file, output_file, picture_path=f'{os.path.join(os.getcwd())}/{template_data["logo_path"]}', data=data)
-        data_file = f"static_server/gmr_ai/{file}/daily_specific_coal_consumption_report__{image_name}.pdf"  
-        # deleting original generated pdf as we are getting here two pdf first without watermark and second with watermark
-        os.remove(f"{store_data}/daily_specific_coal_consumption_report_{image_name}.pdf")
-    
-    elif template_data.get("logo_as_watermark") == "None":
-        data_file = f"static_server/gmr_ai/{file}/daily_specific_coal_consumption_report_{image_name}.pdf"
-
-    # deleting a temp watermark pdf which was getting generated during watermark
-    for filename in Path(f"{os.path.join(os.getcwd())}/static_server/gmr_ai/{file}").glob("watermark_empty*.pdf"):
-        filename.unlink()
-    
-    # deleting reports_img folder on static_server
-    shutil.rmtree(os.path.join(os.getcwd(),"static_server", "gmr_ai", "reports_img")) 
-    # recreating folder with reports_img name
-    os.mkdir(os.path.join(os.getcwd(),"static_server", "gmr_ai", "reports_img"))
-
-    return data_file
-    # except Exception as e:
-    #     console_logger.debug(e)
+        return data_file
+    except Exception as e:
+        console_logger.debug(e)

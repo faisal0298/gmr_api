@@ -86,6 +86,7 @@ class DataExecutions:
                 console_logger.debug(response.status_code)
                 data = response.json()
                 if response.status_code == 200:
+                    console_logger.debug("inside")
                     sample_list_data = []
                     for single_data in data["responseData"]:
                         try:
@@ -1340,18 +1341,19 @@ class DataExecutions:
             if mine and mine != "All":
                 data["mine__icontains"] = mine.upper()
 
-            if specified_date:
-                to_ts = self.convert_to_utc_format(f'{specified_date} 23:59:59', "%Y-%m-%d %H:%M:%S")
+            # if specified_date:
+            from_ts = self.convert_to_utc_format(f'{specified_date} 00:00:00', "%Y-%m-%d %H:%M:%S")
+            to_ts = self.convert_to_utc_format(f'{specified_date} 23:59:59', "%Y-%m-%d %H:%M:%S")
 
             logs = (
-                Gmrdata.objects(GWEL_Tare_Time__lte=to_ts, actual_tare_qty__ne=None, gate_approved=True, GWEL_Tare_Time__ne=None)
-                # Gmrdata.objects()
+                Gmrdata.objects(GWEL_Tare_Time__ne=None,GWEL_Tare_Time__gte=from_ts,
+                            GWEL_Tare_Time__lte=to_ts)                                   # modified by Faisal
                 .order_by("-GWEL_Tare_Time")
             )
 
             sap_records = SapRecords.objects.all()
         
-            if any(logs):
+            if any(logs) or any(sap_records):
                 aggregated_data = defaultdict(
                     lambda: defaultdict(
                         lambda: {
@@ -1595,7 +1597,7 @@ class DataExecutions:
                         per_data += "<table border='1'>"
                         for source_type, entries in grouped_data.items():
                             # per_data += f"<span style='font-size: 10px; font-weight: 600'>{source_type}</span>"
-                            per_data += f"<tr><td colspan='12' style='text-align: center'><b>{source_type}</b></span></td></tr>"
+                            per_data += f"<tr><td colspan='13' style='text-align: center'><b>{source_type}</b></span></td></tr>"
                             # per_data += "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
                             per_data += (
                                 "<thead>"
@@ -1646,7 +1648,7 @@ class DataExecutions:
                                     per_data += f"<td>0</span></td>"
                                 per_data += "</tr>"
                             per_data += "<tr>"
-                            per_data += "<td colspan='3'><strong>Total</strong></td>"
+                            per_data += "<td colspan='4'><strong>Total</strong></td>"
                             per_data += f"<td><strong>{round(total_do_qty, 2)}</strong></td>"
                             per_data += f"<td><strong>{round(total_challan_lr_qty, 2)}</strong></td>"
                             per_data += f"<td><strong>{round(total_cc_lr_qty, 2)}</strong></td>"
@@ -1662,7 +1664,7 @@ class DataExecutions:
                             final_total_cc_lr_qty += total_cc_lr_qty
                             final_total_balance_qty += total_balance_qty
                         per_data += "<tr>"
-                        per_data += "<td colspan='3'><strong>Grand Total</strong></td>"
+                        per_data += "<td colspan='4'><strong>Grand Total</strong></td>"
                         per_data += f"<td><strong>{round(final_total_do_qty, 2)}</strong></td>"
                         per_data += f"<td><strong>{round(final_total_challan_lr_qty, 2)}</strong></td>"
                         per_data += f"<td><strong>{round(final_total_cc_lr_qty, 2)}</strong></td>"
@@ -2359,44 +2361,47 @@ class DataExecutions:
                 'accept': 'application/json',
             }
             response = requests.get(f'http://{ip}/api/v1/host/fetch_coal_gcv_quality', headers=headers)
-            console_logger.debug(response.status_code)
+            # console_logger.debug(response.status_code)
             if response.status_code == 200:
                 fetchDetail = response.json()
-                for single_excel_data in fetchDetail:
-                    console_logger.debug(f"Sample name: {single_excel_data[1]['Unnamed: 4']}")
-                    console_logger.debug(f"Result (Ho): {single_excel_data[1]['Unnamed: 8']}")
-                    if "/" in str(single_excel_data[1]['Unnamed: 4']) and "," not in str(single_excel_data[1]['Unnamed: 4']):
-                        splitDataname = re.sub("\s\s+", " ", single_excel_data[1]['Unnamed: 4']).split("/")
-                        doNo = splitDataname[0]
-                        pattern = r'\b(LT|R|LOT-|LOT|LT-|R-)\s?\d+\b'
-                        secondData = splitDataname[1].split(" ")
-                        location = secondData[0]
-                        match = re.search(pattern, splitDataname[1])
-                        rakeNo = match.group()
-                        console_logger.debug(doNo)
-                        console_logger.debug(rakeNo)
-                        if "LT" in rakeNo or "LOT" in rakeNo:
-                            console_logger.debug("inside road")
-                            splitData = rakeNo[-2:]
-                            checkRoadTesting = CoalTesting.objects(rrNo=doNo, rake_no=f"LOT-{splitData.strip()}")
-                            if checkRoadTesting:
-                                for single_road_data in checkRoadTesting:
-                                    for oneData in single_road_data.parameters:
-                                        if oneData.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
-                                            oneData["val1"] = str(single_excel_data[1]['Unnamed: 8'])
-                                    single_road_data.save()
-                        elif "R" in rakeNo:
-                            console_logger.debug("inside rail")
-                            splitData = rakeNo[-2:]
-                            console_logger.debug(int(splitData.strip()))
-                            checkRailTesting = CoalTestingTrain.objects(rrNo=doNo, rake_no=f"{splitData.strip()}")
-                            if checkRailTesting:
-                                for single_rail_data in checkRailTesting:
-                                    for oneData in single_rail_data.parameters:
-                                        if oneData.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
-                                            oneData["val1"] = str(single_excel_data[1]['Unnamed: 8'])
-                                    single_rail_data.save()
-                return {"detail": "success"}
+                if fetchDetail:
+                    for single_excel_data in fetchDetail:
+                        console_logger.debug(f"Sample name: {single_excel_data[1]['Unnamed: 4']}")
+                        console_logger.debug(f"Result (Ho): {single_excel_data[1]['Unnamed: 8']}")
+                        if "/" in str(single_excel_data[1]['Unnamed: 4']) and "," not in str(single_excel_data[1]['Unnamed: 4']):
+                            splitDataname = re.sub("\s\s+", " ", single_excel_data[1]['Unnamed: 4']).split("/")
+                            doNo = splitDataname[0]
+                            pattern = r'\b(LT|R|LOT-|LOT|LT-|R-)\s?\d+\b'
+                            secondData = splitDataname[1].split(" ")
+                            location = secondData[0]
+                            match = re.search(pattern, splitDataname[1])
+                            rakeNo = match.group()
+                            console_logger.debug(doNo)
+                            console_logger.debug(rakeNo)
+                            if "LT" in rakeNo or "LOT" in rakeNo:
+                                console_logger.debug("inside road")
+                                splitData = rakeNo[-2:]
+                                checkRoadTesting = CoalTesting.objects(rrNo=doNo, rake_no=f"LOT-{splitData.strip()}")
+                                if checkRoadTesting:
+                                    for single_road_data in checkRoadTesting:
+                                        for oneData in single_road_data.parameters:
+                                            if oneData.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
+                                                oneData["val1"] = str(single_excel_data[1]['Unnamed: 8'])
+                                        single_road_data.save()
+                            elif "R" in rakeNo:
+                                console_logger.debug("inside rail")
+                                splitData = rakeNo[-2:]
+                                console_logger.debug(int(splitData.strip()))
+                                checkRailTesting = CoalTestingTrain.objects(rrNo=doNo, rake_no=f"{splitData.strip()}")
+                                if checkRailTesting:
+                                    for single_rail_data in checkRailTesting:
+                                        for oneData in single_rail_data.parameters:
+                                            if oneData.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
+                                                oneData["val1"] = str(single_excel_data[1]['Unnamed: 8'])
+                                        single_rail_data.save()
+                    return {"detail": "success"}
+                else:
+                    return {"detail":"no data found"}
         except Exception as e:
             console_logger.debug(e)
 

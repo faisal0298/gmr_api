@@ -751,7 +751,7 @@ def bar_graph_gcv_wise(rrNo_values, aopList, month_date):
             for bar, value in zip(bars, values):
                 height = bar.get_height()
                 # plt.text(bar.get_x() + bar.get_width() / 2, height, f'{value:.2f}', ha='center', va='bottom')
-                plt.text(bar.get_x() + bar.get_width() / 2, 2, f'{value:.2f}', horizontalalignment='center', **title_font)
+                plt.text(bar.get_x() + bar.get_width() / 2, 2 + value * 0.09, f'{value:.2f}', horizontalalignment='center', rotation=90, **title_font)
 
             file = "reports_img"
             # store_file = f"static_server/gmr_ai/{file}"
@@ -1012,7 +1012,7 @@ def rake_quota_data(fetchRakeQuota):
 
 def seclGraphData(seclLinkagegraph):
     try:
-        console_logger.debug(seclLinkagegraph)
+        # console_logger.debug(seclLinkagegraph)
         labels = seclLinkagegraph.get("labels")
 
         data = seclLinkagegraph["datasets"][0]["data"]
@@ -1163,10 +1163,13 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
         else:
             per_data = f"<b>No data found for {month_date}</b>"
             
-        if fetchRailData:
-            per_rail_data = logistic_report_table_rail(fetchRailData)
-        else:
-            per_rail_data = f"<b>No data found for {month_date}</b>"
+        #uncomment once if we wan't to show rail table
+        # if fetchRailData:
+        #     per_rail_data = logistic_report_table_rail(fetchRailData)
+        # else:
+        #     per_rail_data = f"<b>No data found for {month_date}</b>"
+
+        per_rail_data = ""
 
         bar_gcv_data = bar_graph_gcv_wise(rrNo_values, aopList, month_date)
 

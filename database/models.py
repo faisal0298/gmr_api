@@ -162,6 +162,7 @@ class CoalTesting(Document):
     receive_date = DateTimeField()
     ID = IntField(min_value=1)
     third_party_report_no = StringField(null=True)
+    third_party_upload_date = DateTimeField()
     created_at = DateTimeField(default=datetime.datetime.utcnow())
 
     meta = {"db_alias" : "gmrDB-alias" , "collection" : "coaltesting"}
@@ -176,6 +177,7 @@ class CoalTesting(Document):
             "DO_Qty": self.rR_Qty,
             "Supplier": self.supplier,
             "Third_Party_Report_No": self.third_party_report_no,
+            "Third_Party_Upload_Date": self.third_party_upload_date,
             "Date": datetime.datetime.fromisoformat(
                     self.receive_date.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
                     ).astimezone(tz=to_zone).strftime("%Y-%m-%d") if self.receive_date else None,
@@ -188,7 +190,11 @@ class CoalTesting(Document):
         for param in self.parameters:
             # console_logger.debug(param)
             param_name = f"{param['parameter_Name']}_{param['unit_Val'].replace(' ','')}"
-            payload_dict[f"GWEL_{param_name}"] = param["val1"]
+            if "Third" in param_name:
+                payload_dict[f"{param_name}"] = param["val1"]
+            else:
+                payload_dict[f"GWEL_{param_name}"] = param["val1"]
+
 
         return payload_dict
     
@@ -270,6 +276,7 @@ class CoalTestingTrain(Document):
     receive_date = DateTimeField()
     ID = IntField(min_value=1)
     third_party_report_no = StringField(null=True)
+    third_party_upload_date = DateTimeField()
     created_at = DateTimeField(default=datetime.datetime.utcnow())
 
     meta = {"db_alias" : "gmrDB-alias" , "collection" : "coaltestingtrain"}
@@ -284,6 +291,7 @@ class CoalTestingTrain(Document):
             "RR_Qty": self.rR_Qty,
             "Supplier": self.supplier,
             "Third_Party_Report_No": self.third_party_report_no,
+            "Third_Party_Upload_Date": self.third_party_upload_date,
             "Date": datetime.datetime.fromisoformat(
                     self.receive_date.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
                     ).astimezone(tz=to_zone).strftime("%Y-%m-%d") if self.receive_date else None,
@@ -921,7 +929,7 @@ class AveryRailData(EmbeddedDocument):
     rake_id = StringField()
     wagon_no_avery = StringField()
     wagon_id = StringField()
-    wagon_type = StringField()
+    wagon_type_avery = StringField()
     wagon_cc = StringField()
     mode = StringField()
     tip_startdate = StringField()
@@ -930,7 +938,7 @@ class AveryRailData(EmbeddedDocument):
     tip_endtime = StringField()
     tipple_time = StringField()
     status = StringField()
-    wagon_gross_time = StringField()
+    wagon_gross_wt = StringField()
     wagon_tare_wt = StringField()
     wagon_net_wt = StringField()
     time_in_tipp = StringField()
@@ -957,7 +965,8 @@ class AveryRailData(EmbeddedDocument):
             "tip_endtime": self.tip_endtime,
             "tipple_time": self.tipple_time,
             "status": self.status,
-            "wagon_gross_time": self.wagon_gross_time,
+            "wagon_type_avery": self.wagon_type_avery,
+            "wagon_gross_wt": self.wagon_gross_wt,
             "wagon_tare_wt": self.wagon_tare_wt,
             "wagon_net_wt": self.wagon_net_wt,
             "time_in_tipp": self.time_in_tipp,
@@ -1017,39 +1026,41 @@ class SeclRailData(EmbeddedDocument):
 
 class RailData(Document):
     rr_no = StringField()
-    rr_qty = StringField()
-    po_no = StringField()
-    po_date = StringField()
-    line_item = StringField()
-    source = StringField()
-    placement_date = StringField()
-    completion_date = StringField()
-    drawn_date = StringField()
-    total_ul_wt = StringField()
-    boxes_supplied = StringField()
-    total_secl_gross_wt = StringField()
-    total_secl_tare_wt = StringField()
-    total_secl_net_wt = StringField()
-    total_secl_ol_wt = StringField()
-    boxes_loaded = StringField()
-    total_rly_gross_wt = StringField()
-    total_rly_tare_wt = StringField()
-    total_rly_net_wt = StringField()
-    total_rly_ol_wt = StringField()
-    total_secl_chargable_wt = StringField()
-    total_rly_chargable_wt = StringField()
-    freight = StringField()
-    gst = StringField()
-    pola = StringField()
-    total_freight = StringField()
-    source_type = StringField()
-    month = StringField()
-    rr_date = StringField(null=True)
-    siding = StringField(null=True)
-    mine = StringField(null=True)
-    grade = StringField(null=True)
-    po_amount = StringField(null=True)
-    rake_no = StringField(null=True)
+    rr_qty = StringField(default="")
+    po_no = StringField(default="")
+    po_date = StringField(default="")
+    line_item = StringField(default="")
+    source = StringField(default="")
+    placement_date = StringField(default="")
+    completion_date = StringField(default="")
+    avery_placement_date = StringField(default="")
+    avery_completion_date = StringField(default="")
+    drawn_date = StringField(default="")
+    total_ul_wt = StringField(default="")
+    boxes_supplied = StringField(default="")
+    total_secl_gross_wt = StringField(default="")
+    total_secl_tare_wt = StringField(default="")
+    total_secl_net_wt = StringField(default="")
+    total_secl_ol_wt = StringField(default="")
+    boxes_loaded = StringField(default="")
+    total_rly_gross_wt = StringField(default="")
+    total_rly_tare_wt = StringField(default="")
+    total_rly_net_wt = StringField(default="")
+    total_rly_ol_wt = StringField(default="")
+    total_secl_chargable_wt = StringField(default="")
+    total_rly_chargable_wt = StringField(default="")
+    freight = StringField(default="")
+    gst = StringField(default="")
+    pola = StringField(default="")
+    total_freight = StringField(default="")
+    source_type = StringField(default="")
+    month = StringField(null=True)
+    rr_date = StringField(default="")
+    siding = StringField(default="")
+    mine = StringField(default="")
+    grade = StringField(default="")
+    po_amount = StringField(default="")
+    rake_no = StringField(default="")
     secl_rly_data = EmbeddedDocumentListField(SeclRailData)
     avery_rly_data = EmbeddedDocumentListField(AveryRailData)
     created_at = DateTimeField(default=datetime.datetime.utcnow)
@@ -1070,6 +1081,8 @@ class RailData(Document):
             "source": self.source,
             "placement_date": self.placement_date.replace("T"," "),
             "completion_date": self.completion_date.replace("T"," "),
+            "avery_placement_date": self.avery_placement_date,
+            "avery_completion_date": self.avery_completion_date,
             "drawn_date": self.drawn_date.replace("T"," "),
             "total_ul_wt": self.total_ul_wt,
             "boxes_supplied": self.boxes_supplied,
@@ -1143,6 +1156,39 @@ class RailData(Document):
             "po_amount": self.po_amount,
             "rake_no": self.rake_no,
             "avery_rly_data": averyrail,
+            "created_at": datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+        }
+
+    def averyPayloadMain(self):
+        return {
+            "rr_no": self.rr_no,
+            "rr_qty": self.rr_qty,
+            "po_no": self.po_no,
+            "po_date": self.po_date,
+            "line_item": self.line_item,
+            "source": self.source,
+            "GWEL_placement_date": self.avery_placement_date,
+            "GWEL_completion_date": self.avery_completion_date,
+            "boxes_loaded": self.boxes_loaded,
+            # "GWEL_received_wagons"
+            # "GWEL_pending_wagons"
+            # "total_gwel_gross_wt"
+            # "total_gwel_tare_wt"
+            # "total_gwel_net_wt"
+            "total_secl_gross_wt": self.total_secl_gross_wt,
+            "total_secl_tare_wt": self.total_secl_tare_wt,
+            "total_secl_net_wt": self.total_secl_net_wt,
+            "total_rly_gross_wt": self.total_rly_gross_wt,
+            "total_rly_tare_wt": self.total_rly_tare_wt,
+            "total_rly_net_wt": self.total_rly_net_wt,
+            "source_type": self.source_type,
+            "month": self.month,
+            "rr_date": self.rr_date,
+            "siding": self.siding,
+            "mine": self.mine,
+            "grade": self.grade,
             "created_at": datetime.datetime.fromisoformat(
                     self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
                     ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
@@ -1515,4 +1561,91 @@ class sapRecordsRail(Document):
             "created_at": datetime.datetime.fromisoformat(
                     self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
                     ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+        }
+    
+
+
+class BunkerDataExtra(Document):
+    sample_details_id = IntField()
+    work_order_id = IntField()
+    test_report_no = StringField(null=True)
+    ulr_no = StringField(null=True)
+    test_report_date = StringField(null=True)
+    sample_id_no = StringField(null=True)
+    sample_desc = StringField(null=True)
+    # rake_no = StringField(null=True)
+    # rrNo = StringField(null=True)
+    rR_Qty = StringField(null=True)
+    supplier = StringField(null=True)
+    received_condition = StringField(null=True)
+    from_sample_condition_date = StringField(null=True)
+    to_sample_condition_date = StringField(null=True)
+    sample_received_date = StringField(null=True)
+    sample_date = StringField(null=True)
+    analysis_date = StringField(null=True)
+    sample_qty = StringField(null=True)
+    # method_reference = StringField(null=True)
+    humidity = StringField(null=True)
+    test_temp = StringField(null=True)
+    sample_parameters = EmbeddedDocumentListField(sampleParametersData)
+    created_at = DateTimeField(default=datetime.datetime.utcnow)
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "BunkerDataExtra"}
+
+    def payload(self):
+        sampleDetails = []
+        for sample_data in self.sample_parameters:
+            sampleDetails.append(sample_data.payload())
+        return {
+            "id": str(self.id),
+            "sample_details_id": self.sample_details_id,
+            "work_order_id": self.work_order_id,
+            "test_report_no": self.test_report_no,
+            "ulr_no": self.ulr_no,
+            "test_report_date": self.test_report_date,
+            "sample_id_no": self.sample_id_no,
+            "sample_desc": self.sample_desc,
+            # "rake_no": self.rake_no,
+            # "rrNo": self.rrNo,
+            "rR_Qty": self.rR_Qty,
+            "supplier": self.supplier,
+            "received_condition": self.received_condition,
+            "from_sample_condition_date": self.from_sample_condition_date,
+            "to_sample_condition_date": self.to_sample_condition_date,
+            "sample_received_date": self.sample_received_date,
+            "sample_date": self.sample_date,
+            "analysis_date": self.analysis_date,
+            "sample_qty": self.sample_qty,
+            # "method_reference": self.method_reference,
+            "humidity": self.humidity,
+            "test_temp": self.test_temp,
+            "sample_parameters": sampleDetails,
+            "created_at": self.created_at,
+        }
+
+    def simplepayload(self):
+        return {
+            # "id": str(self.id),
+            "sample_details_id": self.sample_details_id,
+            "work_order_id": self.work_order_id,
+            "test_report_no": self.test_report_no,
+            "ulr_no": self.ulr_no,
+            "test_report_date": self.test_report_date,
+            "sample_id_no": self.sample_id_no,
+            "sample_desc": self.sample_desc,
+            # "rake_no": self.rake_no,
+            # "rrNo": self.rrNo,
+            "rR_Qty": self.rR_Qty,
+            "supplier": self.supplier,
+            "received_condition": self.received_condition,
+            "from_sample_condition_date": self.from_sample_condition_date,
+            "to_sample_condition_date": self.to_sample_condition_date,
+            "sample_received_date": self.sample_received_date,
+            "sample_date": self.sample_date,
+            "analysis_date": self.analysis_date,
+            "sample_qty": self.sample_qty,
+            # "method_reference": self.method_reference,
+            "humidity": self.humidity,
+            "test_temp": self.test_temp,
+            "created_at": self.created_at,
         }

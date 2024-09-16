@@ -150,6 +150,16 @@ def send_email(sender_email, subject, password, smtp_host, smtp_port, receiver_e
                     f"attachment; filename={file_path.rsplit('/', 1)[-1]}",
                 )
                 message.attach(part)
+        
+        # if embedded_image:    
+        #     # Attach embedded image
+        #     with open('path/to/image.png', 'rb') as img:
+        #         img_part = MIMEBase('image', 'png', filename='image.png')
+        #         img_part.set_payload(img.read())
+        #         encoders.encode_base64(img_part)
+        #         img_part.add_header('Content-ID', '<image1>')
+        #         img_part.add_header('Content-Disposition', 'inline', filename='image.png')
+        #         message.attach(img_part)
 
 
         # Combine all recipients for the sendmail method

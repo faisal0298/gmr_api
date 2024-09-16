@@ -172,6 +172,7 @@ class RailwayData(BaseModel):
     total_freight: Optional[str] = None
     source_type: Optional[str] = None
     secl_rly_data: List[dict]
+    month: Optional[str] = None
 
 
 class EmailRequest(BaseModel):
@@ -267,7 +268,7 @@ class averyUserData(BaseModel):
     tip_endtime : Optional[str]
     tipple_time : Optional[str]
     status : Optional[str]
-    wagon_gross_time : Optional[str]
+    wagon_gross_wt : Optional[str]
     wagon_tare_wt : Optional[str]
     wagon_net_wt : Optional[str]
     time_in_tipp : Optional[str]

@@ -468,13 +468,13 @@ class DataExecutions:
             
             if start_date:
                 start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M")
-                data &= Q(created_at__gte = start_date)
+                data &= Q(third_party_upload_date__gte = start_date)
 
             if end_date:
                 end_date = datetime.datetime.strptime(end_date, "%Y-%m-%dT%H:%M")
-                data &= Q(created_at__lte = end_date)
+                data &= Q(third_party_upload_date__lte = end_date)
 
-            usecase_data = CoalTesting.objects(data).order_by("-created_at")
+            usecase_data = CoalTesting.objects(data).order_by("-third_party_upload_date")
             count = len(usecase_data)
             path = None
             if usecase_data:
@@ -591,7 +591,6 @@ class DataExecutions:
 
                     for row, query in enumerate(usecase_data,start=1):
                         result = query.payload()
-                        console_logger.debug(result)
                         worksheet.write(row, 0, count, cell_format)
                         if filter_type == "gwel":
                             worksheet.write(row, 1, str(result["Mine"]), cell_format)

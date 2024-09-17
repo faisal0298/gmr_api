@@ -49,6 +49,7 @@ import pytz
 import shutil
 from helpers.report_handler import generate_report
 from helpers.coal_consumption_report import generate_report_consumption
+from helpers.coal_gcv_comparision import generate_report_comparision
 from helpers.bunker_report_handler import bunker_generate_report, bunker_single_generate_report
 from helpers.data_execution import DataExecutions
 from service import host, db_port, username, password, ip
@@ -1221,7 +1222,7 @@ def extract_historian_data(start_date: Optional[str] = None, end_date: Optional[
 #     return Response(response.text)
 
 
-@router.get("/load_historian", tags=["Historian"])
+@router.get("/load_historian", tags=["Coal Consumption"])
 def sync_historian_data(start_date: Optional[str] = None, end_date: Optional[str] = None):
     success = False
     try:
@@ -1305,6 +1306,36 @@ def sync_historian_data(start_date: Optional[str] = None, end_date: Optional[str
         SchedulerResponse("save consumption data", f"{success}")
         return {"message": "Successful"}
 
+
+@router.delete("/delete_historian_duplicates", tags=["Coal Consumption"])
+def delete_historian_duplicates():
+    try:
+        historian_records = Historian.objects.order_by("-created_date").limit(10000)
+
+        if historian_records:
+            duplicates = {}
+
+            for record in historian_records:
+                key = (record.tagid, record.created_date)
+                if key not in duplicates:
+                    duplicates[key] = []
+                duplicates[key].append(record)
+
+            delete_count = 0
+
+            for records in duplicates.values():
+                if len(records) > 1:
+                    records.sort(key=lambda r: r.created_at, reverse=True)
+                    for record in records[1:]:  # Delete all except the latest
+                        record.delete()
+                        delete_count += 1
+
+    except Exception as e:
+        console_logger.debug("----- Historian Deletion Error -----", e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
 
 
 @router.get("/coal_generation_graph", tags=["Coal Consumption"])
@@ -1406,10 +1437,10 @@ def coal_generation_analysis(response:Response, type: Optional[str] = "Daily",
 
             result = {
                 "data": {
-                    "labels": [str(i) for i in range(1, 25)],
+                    "labels": [str(i) for i in range(0, 24)],
                     "datasets": [
-                        {"label": "Unit 1", "data": [0 for i in range(1, 25)]},             # unit 1 = tagid_2
-                        {"label": "Unit 2", "data": [0 for i in range(1, 25)]},             # unit 2 = tagid_3536
+                        {"label": "Unit 1", "data": [0 for i in range(0, 24)]},             # unit 1 = tagid_2
+                        {"label": "Unit 2", "data": [0 for i in range(0, 24)]},             # unit 2 = tagid_3536
                     ],
                 }
             }
@@ -1539,7 +1570,7 @@ def coal_generation_analysis(response:Response, type: Optional[str] = "Daily",
                     else:
                         outputDict[ts][tag_id] = sum_list
 
-        modified_labels = [i for i in range(1, 25)]
+        modified_labels = [i for i in range(0, 24)]
 
         for index, label in enumerate(result["data"]["labels"]):
         #     if type == "Week":
@@ -1689,10 +1720,10 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
 
             result = {
                 "data": {
-                    "labels": [str(i) for i in range(1, 25)],
+                    "labels": [str(i) for i in range(0, 24)],
                     "datasets": [
-                        {"label": "Unit 1", "data": [0 for i in range(1, 25)]},             # unit 1 = tagid_16
-                        {"label": "Unit 2", "data": [0 for i in range(1, 25)]},             # unit 2 = tagid_3538
+                        {"label": "Unit 1", "data": [0 for i in range(0, 24)]},             # unit 1 = tagid_16
+                        {"label": "Unit 2", "data": [0 for i in range(0, 24)]},             # unit 2 = tagid_3538
                     ],
                 }
             }
@@ -1823,7 +1854,7 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
                         outputDict[ts][tag_id] = sum_list
 
 
-        modified_labels = [i for i in range(1, 25)]
+        modified_labels = [i for i in range(0, 24)]
 
         for index, label in enumerate(result["data"]["labels"]):
             # if type == "Week":
@@ -2154,80 +2185,81 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
             testing_data = response.json()
             wcl_extracted_data = []
             secl_extracted_data = []
-            console_logger.debug(testing_data)
-            for entry in testing_data["responseData"]:
-                if entry.get("supplier") == "WCL" and entry.get("rrNo") != "" and entry.get("rrNo") != "NA":
-                    data = {
-                        "sample_Desc": entry.get("sample_Desc"),
-                        "rrNo": entry.get("rrNo"),
-                        "rR_Qty": entry.get("rR_Qty"),
-                        "rake_No": entry.get("rake_No"),
-                        "supplier": entry.get("supplier"),
-                        "receive_date": entry.get("sample_Received_Date"),
-                        "parameters": [],
-                    }
+            # console_logger.debug(testing_data)
+            if testing_data.get("statusCode") == 200:
+                for entry in testing_data["responseData"]:
+                    if entry.get("supplier") == "WCL" and entry.get("rrNo") != "" and entry.get("rrNo") != "NA":
+                        data = {
+                            "sample_Desc": entry.get("sample_Desc"),
+                            "rrNo": entry.get("rrNo"),
+                            "rR_Qty": entry.get("rR_Qty"),
+                            "rake_No": entry.get("rake_No"),
+                            "supplier": entry.get("supplier"),
+                            "receive_date": entry.get("sample_Received_Date"),
+                            "parameters": [],
+                        }
 
-                    for param in entry.get("sample_Parameters"):
-                        # param_info = {
-                        #     "parameter_Name": param.get("parameter_Name")
-                        #     .title()
-                        #     .replace(" ", "_"),
-                        #     "unit_Val": param.get("unit_Val").title().replace(" ",""),
-                        #     "test_Method": param.get("test_Method"),
-                        #     "val1": param.get("val1"),
-                        # }
+                        for param in entry.get("sample_Parameters"):
+                            # param_info = {
+                            #     "parameter_Name": param.get("parameter_Name")
+                            #     .title()
+                            #     .replace(" ", "_"),
+                            #     "unit_Val": param.get("unit_Val").title().replace(" ",""),
+                            #     "test_Method": param.get("test_Method"),
+                            #     "val1": param.get("val1"),
+                            # }
 
-                        # if param.get("parameter_Name").title() == "Gross Calorific Value (Adb)":
-                        #     if param.get("val1"):
-                        #         fetchCoalGrades = CoalGrades.objects()
-                        #         for single_coal_grades in fetchCoalGrades:
-                        #             if (
-                        #                 single_coal_grades["start_value"]
-                        #                 <= param.get("val1")
-                        #                 <= single_coal_grades["end_value"]
-                        #                 and single_coal_grades["start_value"] != ""
-                        #                 and single_coal_grades["end_value"] != ""
-                        #             ):
-                        #                 param_info["grade"] = single_coal_grades["grade"]
-                        #             elif param.get("val1") > "7001":
-                        #                 param_info["grade"] = "G-1"
-                        #                 break
+                            # if param.get("parameter_Name").title() == "Gross Calorific Value (Adb)":
+                            #     if param.get("val1"):
+                            #         fetchCoalGrades = CoalGrades.objects()
+                            #         for single_coal_grades in fetchCoalGrades:
+                            #             if (
+                            #                 single_coal_grades["start_value"]
+                            #                 <= param.get("val1")
+                            #                 <= single_coal_grades["end_value"]
+                            #                 and single_coal_grades["start_value"] != ""
+                            #                 and single_coal_grades["end_value"] != ""
+                            #             ):
+                            #                 param_info["grade"] = single_coal_grades["grade"]
+                            #             elif param.get("val1") > "7001":
+                            #                 param_info["grade"] = "G-1"
+                            #                 break
 
-                        if param.get("parameter_Name").title() == "Gross Calorific Value (Adb)":
-                            param_info = {
-                                "parameter_Name": param.get("parameter_Name")
-                                .title()
-                                .replace(" ", "_"),
-                                "unit_Val": param.get("unit_Val").title().replace(" ",""),
-                                "test_Method": param.get("test_Method"),
-                                "val1": "0",
-                            }
-                            if param.get("val1"):
-                                fetchCoalGrades = CoalGrades.objects()
-                                for single_coal_grades in fetchCoalGrades:
-                                    if (
-                                        single_coal_grades["start_value"]
-                                        <= param.get("val1")
-                                        <= single_coal_grades["end_value"]
-                                        and single_coal_grades["start_value"] != ""
-                                        and single_coal_grades["end_value"] != ""
-                                    ):
-                                        param_info["grade"] = single_coal_grades["grade"]
-                                    elif param.get("val1") > "7001":
-                                        param_info["grade"] = "G-1"
-                                        break
-                        else:
-                            param_info = {
-                                "parameter_Name": param.get("parameter_Name")
-                                .title()
-                                .replace(" ", "_"),
-                                "unit_Val": param.get("unit_Val").title().replace(" ",""),
-                                "test_Method": param.get("test_Method"),
-                                "val1": param.get("val1"),
-                            }
+                            if param.get("parameter_Name").title() == "Gross Calorific Value (Adb)":
+                                param_info = {
+                                    "parameter_Name": param.get("parameter_Name")
+                                    .title()
+                                    .replace(" ", "_"),
+                                    "unit_Val": param.get("unit_Val").title().replace(" ",""),
+                                    "test_Method": param.get("test_Method"),
+                                    "val1": "0",
+                                }
+                                if param.get("val1"):
+                                    fetchCoalGrades = CoalGrades.objects()
+                                    for single_coal_grades in fetchCoalGrades:
+                                        if (
+                                            single_coal_grades["start_value"]
+                                            <= param.get("val1")
+                                            <= single_coal_grades["end_value"]
+                                            and single_coal_grades["start_value"] != ""
+                                            and single_coal_grades["end_value"] != ""
+                                        ):
+                                            param_info["grade"] = single_coal_grades["grade"]
+                                        elif param.get("val1") > "7001":
+                                            param_info["grade"] = "G-1"
+                                            break
+                            else:
+                                param_info = {
+                                    "parameter_Name": param.get("parameter_Name")
+                                    .title()
+                                    .replace(" ", "_"),
+                                    "unit_Val": param.get("unit_Val").title().replace(" ",""),
+                                    "test_Method": param.get("test_Method"),
+                                    "val1": param.get("val1"),
+                                }
 
-                        data["parameters"].append(param_info)
-                    wcl_extracted_data.append(data)
+                            data["parameters"].append(param_info)
+                        wcl_extracted_data.append(data)
 
                 if (
                     entry["supplier"] == "SECL"
@@ -15366,130 +15398,6 @@ def endpoint_to_fetch_saprcr_data(response: Response, currentPage: Optional[int]
 @router.get("/fetch/secllinkage", tags=["Rail Map"])
 def endpoint_to_fetch_secl_linkage_matrialization(response: Response, year_data: str):
     try:
-        # railData_pipeline = [
-        #     {
-        #         "$match": {
-        #             "placement_date": {"$regex": f"^{month}"}
-        #         }
-        #     },
-        #     {
-        #         "$group": {
-        #             "_id": month,
-        #             # "total_rr_qty": {"$sum": {"$toDouble": "$rr_qty"}},
-        #             "total_rly_tare_wt": {"$sum": {"$toDouble": "$total_rly_tare_wt"}}
-        #         }
-        #     }
-        # ]
-        # # Convert the month to the format used in sapRecordsRail
-        # # month_name = datetime.datetime.strptime(month, "%Y-%m").strftime("%b")  # Converts "2024-08" to "Aug"
-        # # month_regex = f"^{month_name} "
-
-        # month_name = datetime.datetime.strptime(month, "%Y-%m").strftime("%b")  # Converts "2024-08" to "Aug"
-        # year = datetime.datetime.strptime(month, "%Y-%m").strftime("%Y")  # Extracts the year as "2024"
-
-        # # Construct the regular expression for the month and year
-        # month_regex = f"^{month_name} \\d+, {year}$"  # Matches format like "Aug 1, 2024"
-
-        # # Aggregation for sapRecordsRail
-        # sapRecordsRail_pipeline = [
-        #     {
-        #         "$match": {
-        #             "month": {"$regex": f"^{month_regex}"}
-        #         }
-        #     },
-        #     {
-        #         "$group": {
-        #             "_id": None,
-        #             "total_rr_qty": {"$sum": {"$toDouble": "$rr_qty"}}
-        #         }
-        #     }
-        # ]
-        # # Run aggregations
-        # # railData_result = list(db.railData.aggregate(railData_pipeline))
-        # # sapRecordsRail_result = list(db.sapRecordsRail.aggregate(sapRecordsRail_pipeline))
-
-        # railData_result_cursor = RailData.objects().aggregate(railData_pipeline)
-        # sapRecordsRail_result_cursor = sapRecordsRail.objects().aggregate(sapRecordsRail_pipeline)
-        
-        # railData_result = list(railData_result_cursor)
-        # sapRecordsRail_result = list(sapRecordsRail_result_cursor)
-
-        # console_logger.debug(railData_result)
-        # console_logger.debug(sapRecordsRail_result)
-
-        # # for singledata in railData_result:
-        # #     console_logger.debug(singledata)
-
-        # # Combine the results
-        # total_rr_qty = sapRecordsRail_result[0]["total_rr_qty"] if sapRecordsRail_result else 0
-        # total_rly_tare_wt = railData_result[0]["total_rly_tare_wt"] if railData_result else 0
-
-        # # # Calculate percentage
-        # percentage = (total_rly_tare_wt / total_rr_qty) * 100 if total_rr_qty != 0 else 0
-        # chart_data = {
-        #     "labels": [month],
-        #     "datasets": [
-        #         {
-        #             "label": "Total RR Qty",
-        #             "data": [total_rr_qty],
-        #             "backgroundColor": "rgba(54, 162, 235, 0.2)",
-        #             "borderColor": "rgba(54, 162, 235, 1)",
-        #             "borderWidth": 1,
-        #             "yAxisID": "y"
-        #         },
-        #         # {
-        #         #     "label": "Total Rly Tare Wt",
-        #         #     "data": [total_rly_tare_wt],
-        #         #     "backgroundColor": "rgba(75, 192, 192, 0.2)",
-        #         #     "borderColor": "rgba(75, 192, 192, 1)",
-        #         #     "borderWidth": 1,
-        #         #     "yAxisID": "y"
-        #         # },
-        #         {
-        #             "label": "Percentage",
-        #             "data": [percentage],
-        #             "backgroundColor": "rgba(255, 206, 86, 0.2)",
-        #             "borderColor": "rgba(255, 206, 86, 1)",
-        #             "borderWidth": 1,
-        #             "type": "line",
-        #             "yAxisID": "y1"
-        #         }
-        #     ]
-        # }
-        # return chart_data
-
-        # railData_pipeline = [
-        #     {
-        #         '$project': {
-        #             'month': {
-        #                 '$dateToString': {
-        #                     'format': '%Y-%m', 
-        #                     'date': {
-        #                         '$dateFromString': {
-        #                             'dateString': '$placement_date', 
-        #                             'format': '%Y-%m-%dT%H:%M'
-        #                         }
-        #                     }
-        #                 }
-        #             }, 
-        #             'total_rly_tare_wt': {
-        #                 '$toDouble': '$total_rly_tare_wt'
-        #             }
-        #         }
-        #     }, {
-        #         '$group': {
-        #             '_id': '$month', 
-        #             'total_rly_tare_wt': {
-        #                 '$sum': '$total_rly_tare_wt'
-        #             }
-        #         }
-        #     }, {
-        #         '$sort': {
-        #             '_id': 1
-        #         }
-        #     }
-        # ]
-
         railData_pipeline = [
             {
                 '$match': {
@@ -15550,26 +15458,6 @@ def endpoint_to_fetch_secl_linkage_matrialization(response: Response, year_data:
                 }
             }
         ]
-
-        # sapRecordsRail_pipeline = [
-        #     {
-        #         "$project": {
-        #             "month": {
-        #                 "$dateToString": {"format": "%Y-%m", "date": {"$dateFromString": {"dateString": "$month"}}}
-        #             },
-        #             "total_rr_qty": {"$toDouble": "$rr_qty"}
-        #         }
-        #     },
-        #     {
-        #         "$group": {
-        #             "_id": "$month",
-        #             "total_rr_qty": {"$sum": "$total_rr_qty"}
-        #         }
-        #     },
-        #     {
-        #         "$sort": {"_id": 1}
-        #     }
-        # ]
 
         sapRecordsRail_pipeline = [
             {
@@ -16293,8 +16181,9 @@ async def extract_secl_annexure(response: Response, file: UploadFile = File(...)
         return e
 
 
-@router.get("/coal_gcv_comparison_analysis", tags=["Coal Consumption"])                                   
-def coal_gdv_comparision_analysis(response: Response):
+@router.get("/coal_gcv_comparison_analysis", tags=["Road Map"])                                   
+# def coal_gcv_comparision_analysis(response: Response):
+def coal_gcv_comparision_analysis(response: Response, currentPage: Optional[int] = None, perPage: Optional[int] = None):
     try:
         coalTestingPipeline = [
             {
@@ -16349,6 +16238,9 @@ def coal_gdv_comparision_analysis(response: Response):
                             }
                         }
                     }, 
+                    'count': {
+                        '$sum': 1
+                    }, 
                     'year': {
                         '$first': '$year'
                     }, 
@@ -16367,7 +16259,12 @@ def coal_gdv_comparision_analysis(response: Response):
                     'year': 1, 
                     'month': 1, 
                     'total_rR_Qty': 1, 
-                    'total_arb_GCV': 1
+                    'total_arb_GCV': 1, 
+                    'average_arb_GCV': {
+                        '$divide': [
+                            '$total_arb_GCV', '$count'
+                        ]
+                    }
                 }
             }
         ]
@@ -16413,6 +16310,9 @@ def coal_gdv_comparision_analysis(response: Response):
                             '$toDouble': '$sample_parameters.val1'
                         }
                     }, 
+                    'count': {
+                        '$sum': 1
+                    },
                     'year': {
                         '$first': '$year'
                     }, 
@@ -16431,31 +16331,15 @@ def coal_gdv_comparision_analysis(response: Response):
                     'year': 1, 
                     'month': 1, 
                     'total_rR_Qty': 1, 
-                    'total_ReceivedBasis_GCV': 1
+                    'total_ReceivedBasis_GCV': 1,
+                    'average_ReceivedBasis_GCV': {
+                        '$divide': [
+                            '$total_ReceivedBasis_GCV', '$count'
+                        ]
+                    }
                 }
             }
         ]
-
-        # coalTestingobjects = CoalTesting.objects().aggregate(coalTestingPipeline)    
-        # bunkerDataobjects = BunkerDataExtra.objects().aggregate(bunkerDataPipeline)    
-        # # bunkerlistData = []
-        # # bunkercoal = {}
-        # # coalreceipt = {}
-        # grouped_data = defaultdict(list)
-        # for coal_single_data in coalTestingobjects:
-        #     console_logger.debug(coal_single_data)
-        #     coal_single_data["imported_qty"] = 0
-        #     # coal_single_data.get("total_rR_Qty")
-        #     # coal_single_data.get("total_arb_GCV")
-        #     # coal_single_data.get("year")
-        #     # coal_single_data.get("yearMonth")
-        #     # bunkerlistData.append()
-        #     # bunkercoal[coal_single_data.get("year")] = coal_single_data
-        #     year = coal_single_data.get("year")
-        #     grouped_data[year].append(coal_single_data)
-        
-        # console_logger.debug(grouped_data)
-        # console_logger.debug(dict(grouped_data))
 
 
         # Execute the aggregation pipeline
@@ -16470,14 +16354,18 @@ def coal_gdv_comparision_analysis(response: Response):
 
         # Process the aggregated data
         for coal_single_data in coalTestingobjects:
+            coal_single_data["total_rR_Qty"] = round(coal_single_data.get("total_rR_Qty"), 2)
+            coal_single_data["average_arb_GCV"] = round(coal_single_data.get("average_arb_GCV"), 2)
             coal_single_data["imported_qty"] = 0
+            coal_single_data["imported_gcv"] = 0
             year = coal_single_data.get("year")
             grouped_data[year].append(coal_single_data)
 
         
         for bunker_single_data in bunkerDataobjects:
+            bunker_single_data["total_rR_Qty"] = round(bunker_single_data.get("total_rR_Qty"), 2)
+            bunker_single_data["average_ReceivedBasis_GCV"] = round(bunker_single_data.get("average_ReceivedBasis_GCV"), 2)
             bunker_single_data["imported_qty"] = 0
-            bunker_single_data["imported_gcv"] = 0
             console_logger.debug(bunker_single_data)
             bunker_year = bunker_single_data.get("year")
             bunker_grouped_data[bunker_year].append(bunker_single_data)
@@ -16489,8 +16377,8 @@ def coal_gdv_comparision_analysis(response: Response):
             sorted_data = sorted(data_list, key=lambda x: x['yearMonth'])
             cumulative_gcv = 0
             for entry in sorted_data:
-                cumulative_gcv += entry['total_arb_GCV']
-                entry['annually_gcv'] = cumulative_gcv
+                cumulative_gcv += entry['average_arb_GCV']
+                entry['annually_gcv'] = round(cumulative_gcv, 2)
                 annually_data[year].append(entry)
 
         # Log the final result
@@ -16504,8 +16392,8 @@ def coal_gdv_comparision_analysis(response: Response):
             bunker_sorted_data = sorted(bunker_data_list, key=lambda x: x['yearMonth'])
             bunker_cumulative_gcv = 0
             for bunker_entry in bunker_sorted_data:
-                bunker_cumulative_gcv += bunker_entry['total_ReceivedBasis_GCV']
-                bunker_entry['annually_gcv'] = bunker_cumulative_gcv
+                bunker_cumulative_gcv += bunker_entry['average_ReceivedBasis_GCV']
+                bunker_entry['annually_gcv'] = round(bunker_cumulative_gcv, 2)
                 bunker_annually_data[bunker_year].append(bunker_entry)
 
         
@@ -16543,11 +16431,11 @@ def coal_gdv_comparision_analysis(response: Response):
 
                     # Calculate month-wise difference
                     difference = total_arb_GCV - total_ReceivedBasis_GCV
-                    month_wise_result[entry['yearMonth']] = difference
+                    month_wise_result[entry['yearMonth']] = round(difference, 2)
 
                     # Calculate year-to-date (YTD) difference
                     ytd_difference = annually_gcv_coal - annually_gcv_bunker
-                    ytd_result[entry['yearMonth']] = ytd_difference
+                    ytd_result[entry['yearMonth']] = round(ytd_difference, 2)
 
             # Add the results for the current year to the final result dictionary
             mtd_ytd_result['mtd'][year] = month_wise_result
@@ -16557,7 +16445,7 @@ def coal_gdv_comparision_analysis(response: Response):
         finalDict["gcv_difference"] = mtd_ytd_result
         return finalDict
     except Exception as e:
-        console_logger.debug("----- Road Saprecords Upload Error -----",e)
+        console_logger.debug("----- Coal Gcv Comparison Analysis Error -----",e)
         response.status_code = 400
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -16565,6 +16453,461 @@ def coal_gdv_comparision_analysis(response: Response):
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
 
+
+@router.get("/pdf_coal_comparison_analysis", tags=["Road Map"])
+def pdf_coal_gcv_comparison_analysis(response:Response):
+    try:
+        finalDict = coal_gcv_comparision_analysis(response)
+        date = str(datetime.datetime.now().strftime("%Y-%m-%d"))
+        fetchFinalData = generate_report_comparision(date, finalDict)
+        return fetchFinalData
+    except Exception as e:
+        console_logger.debug("----- Coal Gcv Comparison Analysis Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+@router.get("/coal_consumption_graph_month", tags=["Coal Consumption"])
+def coal_consumption_analysis_month(response: Response):
+    try:
+        data = {}
+        UTC_OFFSET_TIMEDELTA = datetime.datetime.utcnow() - datetime.datetime.now()
+
+        basePipeline = [
+            {
+                '$match': {
+                    'tagid': {
+                        '$in': [
+                            16, 3536
+                        ]
+                    }
+                }
+            }, {
+                '$addFields': {
+                    'sum': {
+                        '$toDouble': '$sum'
+                    }
+                }
+            }, {
+                '$group': {
+                    '_id': {
+                        'year': {
+                            '$year': '$created_date'
+                        }, 
+                        'month': {
+                            '$month': '$created_date'
+                        }, 
+                        'tagid': '$tagid'
+                    }, 
+                    'total_value': {
+                        '$sum': '$sum'
+                    }
+                }
+            }, {
+                '$project': {
+                    '_id': 0, 
+                    'year': '$_id.year', 
+                    'month': '$_id.month', 
+                    'tagid': '$_id.tagid', 
+                    'total_value': 1
+                }
+            }, {
+                '$sort': {
+                    'year': 1, 
+                    'month': 1, 
+                    'tagid': 1
+                }
+            }
+        ]
+
+        output = Historian.objects().aggregate(basePipeline)
+        outputDict = {}
+
+        grouped_data = defaultdict(list)
+
+        for data in output:
+            console_logger.debug(data)
+            year = data.get("year")
+            grouped_data[year].append(data)
+
+        # console_logger.debug(dict(grouped_data))
+
+        year_month_wise_sum = {}
+
+        # Loop through the data for each year dynamically
+        for year, entries in dict(grouped_data).items():
+            # Initialize a dictionary for the current year
+            if year not in year_month_wise_sum:
+                year_month_wise_sum[year] = {}
+            
+            # Loop through the entries for each year
+            for entry in entries:
+                month = entry['month']
+                total_value = entry['total_value']
+                
+                # Sum the total_value for each month of the current year
+                if month in year_month_wise_sum[year]:
+                    year_month_wise_sum[year][month] += total_value
+                else:
+                    year_month_wise_sum[year][month] = total_value
+
+        console_logger.debug(year_month_wise_sum)
+
+        # # Assuming you already have grouped_data populated from your aggregation query
+        # year_month_wise_sum = {}
+        # year_month_wise_count = {}
+
+        # # Loop through the data for each year dynamically
+        # for year, entries in dict(grouped_data).items():
+        #     # Initialize dictionaries for the current year if not already present
+        #     if year not in year_month_wise_sum:
+        #         year_month_wise_sum[year] = {}
+        #         year_month_wise_count[year] = {}
+            
+        #     # Loop through the entries for each year
+        #     for entry in entries:
+        #         month = entry['month']
+        #         total_value = entry['total_value']
+                
+        #         # Sum the total_value for each month of the current year
+        #         if month in year_month_wise_sum[year]:
+        #             year_month_wise_sum[year][month] += total_value
+        #             year_month_wise_count[year][month] += 1  # Increment count for averaging
+        #         else:
+        #             year_month_wise_sum[year][month] = total_value
+        #             year_month_wise_count[year][month] = 1  # Initialize count
+
+        # # Calculate the average total_value for each year and month
+        # year_month_wise_avg = {}
+
+        # for year in year_month_wise_sum:
+        #     year_month_wise_avg[year] = {}
+        #     for month in year_month_wise_sum[year]:
+        #         # Calculate the average by dividing sum by count
+        #         avg_value = year_month_wise_sum[year][month] / year_month_wise_count[year][month]
+        #         year_month_wise_avg[year][month] = avg_value
+
+        # # Output the result (Average of total_value for each month and year)
+        # console_logger.debug(year_month_wise_avg)
+
+        # Base pipeline for both CoalTesting and coaltestingtrain collections
+        basePipelineCoal = [
+            {
+               "$match": {
+                    "parameters.parameter_Name": "Gross_Calorific_Value_(Adb)"
+                }
+            },
+            {
+                "$unwind": "$parameters"
+            },
+            {
+                "$match": {
+                    "parameters.parameter_Name": "Gross_Calorific_Value_(Adb)"
+                }
+            },
+            {
+                "$project": {
+                    "year": { "$year": "$receive_date" },
+                    "month": { "$month": "$receive_date" },
+                    "value": { "$toDouble": "$parameters.val1" }
+                }
+            },
+            {
+                "$group": {
+                    "_id": { "year": "$year", "month": "$month" },
+                    "avg_gross_calorific_value_adb": { "$avg": "$value" }
+                }
+            },
+            {
+                "$sort": {
+                    "_id.year": 1,
+                    "_id.month": 1
+                }
+            }
+        ]
+
+        # Apply the basePipeline to both collections (CoalTesting and coaltestingtrain)
+        # Aggregate the results from both collections
+        # output_coaltesting = db.CoalTesting.aggregate(basePipelineCoal)
+        output_coaltesting = CoalTesting.objects().aggregate(basePipelineCoal)
+        output_coaltestingtrain = CoalTestingTrain.objects().aggregate(basePipelineCoal)
+        # output_coaltestingtrain = db.coaltestingtrain.aggregate(basePipelineCoal)
+
+        # Merge the results from both collections (if needed)
+        combined_output = list(output_coaltesting) + list(output_coaltestingtrain)
+
+        # You can further process combined_output as needed (e.g., summing across both collections if they overlap)
+
+        # console_logger.debug(combined_output)
+
+        # Initialize the result dictionary
+        result = {}
+
+        # Loop through the data
+        for entry in combined_output:
+            year = entry['_id']['year']
+            month = entry['_id']['month']
+            avg_value = entry['avg_gross_calorific_value_adb']
+
+            # Prepare the month data
+            month_data = {'month': month, 'avg_gross_calorific_value_adb': avg_value}
+
+            # Check if the year exists in the result
+            if year in result:
+                # Check if the month is already present in the list for the year
+                existing_months = [m['month'] for m in result[year]]
+                if month not in existing_months:
+                    result[year].append(month_data)
+            else:
+                # Create a new key for the year if it doesn't exist
+                result[year] = [month_data]
+
+        # Output the result
+        console_logger.debug(result)
+
+        # Combine the dictionaries
+        resultData = {}
+
+        # Loop through each year in data2
+        for year, months in result.items():
+            # Initialize result for the year
+            resultData[year] = []
+            
+            # Get domestic_qty for the year from data1, defaulting to empty dict if year not present
+            domestic_qty = year_month_wise_sum.get(year, {})
+            
+            # Loop through each month in data2 for the current year
+            for month_data in months:
+                month = month_data['month']
+                
+                # Get the domestic_qty for the current month
+                domestic_qty_value = domestic_qty.get(month, 0)
+                
+                # Combine the data
+                combined_data = {
+                    'coal_receipt_month': month,
+                    'coal_receipt_domestic_qty': domestic_qty_value,
+                    'coal_receipt_domestic_gcv': round(month_data['avg_gross_calorific_value_adb'],2 ),
+                    'coal_receipt_imported_qty': 0,
+                    'coal_receipt_imported_gcv': 0
+                }
+                
+                # Append to the result for the year
+                resultData[year].append(combined_data)
+
+        # Add the coal_receipt_weighted_gcv field
+        for year, entries in resultData.items():
+            for entry in entries:
+                if entry['coal_receipt_imported_gcv']:
+                    entry['coal_receipt_weighted_gcv'] = (
+                        (entry['coal_receipt_domestic_gcv'] + entry['coal_receipt_imported_gcv']) / 2
+                    )
+                else:
+                    entry['coal_receipt_weighted_gcv'] = entry['coal_receipt_domestic_gcv']
+
+        # average for coal_receipt_ytd_weighted_gcv
+        for year, entries in resultData.items():
+            # Sort entries by month
+            entries.sort(key=lambda x: x['coal_receipt_month'])
+            
+            # Initialize a list to store cumulative weighted GCV
+            cumulative_weighted_gcv = []
+            total_weighted_gcv = 0
+            
+            for entrydata in entries:
+                total_weighted_gcv += entrydata['coal_receipt_weighted_gcv']
+                ytd_weighted_gcv = total_weighted_gcv / len(cumulative_weighted_gcv + [entrydata['coal_receipt_weighted_gcv']])
+                cumulative_weighted_gcv.append(entrydata['coal_receipt_weighted_gcv'])
+                entrydata['coal_receipt_ytd_weighted_gcv'] = round(ytd_weighted_gcv, 2)
+
+        return resultData
+
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+
+# @router.get("/coal_consumption_graph_month", tags=["Coal Consumption"])
+# def coal_consumption_analysis_month(response:Response, Year: str):
+#     try:
+#         data={}
+#         UTC_OFFSET_TIMEDELTA = datetime.datetime.utcnow() - datetime.datetime.now()
+
+#         basePipeline = [
+#             {
+#                 '$match': {
+#                     'created_date': {
+#                         '$gte': None, 
+#                         '$lte': None
+#                     }
+#                 }
+#             }, {
+#                 '$sort': {
+#                     'created_date': -1
+#                 }
+#             }, {
+#                 '$group': {
+#                     '_id': {
+#                         'ts': {
+#                             '$month': '$created_date'
+#                         },
+#                         'tagid': '$tagid', 
+#                         'created_date': '$created_date'
+#                     }, 
+#                     'latest_sum': {
+#                         '$first': '$sum'
+#                     }
+#                 }
+#             }, {
+#                 '$project': {
+#                     'ts': '$_id.ts', 
+#                     'tagid': '$_id.tagid', 
+#                     'sum': '$latest_sum', 
+#                     '_id': 0
+#                 }
+#             }, {
+#                 '$group': {
+#                     '_id': {
+#                         'ts': '$ts', 
+#                         'tagid': '$tagid'
+#                     }, 
+#                     'data': {
+#                         '$push': '$sum'
+#                     }
+#                 }
+#             }
+#         ]
+
+#         # basePipeline = [
+#         #     {
+#         #         '$sort': {
+#         #             'created_date': -1
+#         #         }
+#         #     }, {
+#         #         '$group': {
+#         #             '_id': {
+#         #                 'year': {
+#         #                     '$year': '$created_date'
+#         #                 }, 
+#         #                 'month': {
+#         #                     '$month': '$created_date'
+#         #                 }, 
+#         #                 'tagid': '$tagid', 
+#         #                 'created_date': '$created_date'
+#         #             }, 
+#         #             'latest_sum': {
+#         #                 '$first': '$sum'
+#         #             }
+#         #         }
+#         #     }, {
+#         #         '$project': {
+#         #             'year': '$_id.year', 
+#         #             'month': '$_id.month', 
+#         #             'tagid': '$_id.tagid', 
+#         #             'sum': '$latest_sum', 
+#         #             '_id': 0
+#         #         }
+#         #     }, {
+#         #         '$group': {
+#         #             '_id': {
+#         #                 'year': '$year', 
+#         #                 'month': '$month', 
+#         #                 'tagid': '$tagid'
+#         #             }, 
+#         #             'data': {
+#         #                 '$push': '$sum'
+#         #             }
+#         #         }
+#         #     }
+#         # ]
+
+#         date=Year
+#         end_date =f'{date}-12-31 23:59:59'
+#         start_date = f'{date}-01-01 00:00:00'
+#         format_data = "%Y-%m-%d %H:%M:%S"
+#         endd_date=datetime.datetime.strptime(end_date,format_data)
+#         startd_date=datetime.datetime.strptime(start_date,format_data)
+
+#         basePipeline[0]["$match"]["created_date"]["$lte"] = (
+#             endd_date
+#         )
+#         basePipeline[0]["$match"]["created_date"]["$gte"] = (
+#             startd_date          
+#         )
+#         # basePipeline[1]["$project"]["ts"] = {"$month": {"date": "$created_date"}}
+#         result = {
+#             "data": {
+#                 "labels": [
+#                     (
+#                         basePipeline[0]["$match"]["created_date"]["$gte"]
+#                         + relativedelta(months=i)
+#                     ).strftime("%m")
+#                     for i in range(0, 12)
+#                 ],
+#                 "datasets": [
+#                     {"label": "Unit 1", "data": [0 for i in range(0, 12)]},                     # unit 1 = tagid_16
+#                     {"label": "Unit 2", "data": [0 for i in range(0, 12)]},                     # unit 2 = tagid_3538
+#                 ],
+#             }
+#         }
+
+#         # console_logger.debug(basePipeline)
+
+#         output = Historian.objects().aggregate(basePipeline)
+#         outputDict = {}
+
+#         for data in output:
+#             if "_id" in data:
+#                 ts = data["_id"]["ts"]
+#                 tag_id = data["_id"]["tagid"]
+#                 sum_list = [float(item) for item in data.get('data', []) if item]
+
+#                 if ts not in outputDict:
+#                     outputDict[ts] = {tag_id: sum_list}
+#                 else:
+#                     if tag_id not in outputDict[ts]:
+#                         outputDict[ts][tag_id] = sum_list
+#                     else:
+#                         outputDict[ts][tag_id] = sum_list
+
+#         for index, label in enumerate(result["data"]["labels"]):
+#             modified_labels = [
+#                 (
+#                     basePipeline[0]["$match"]["created_date"]["$gte"]
+#                     + relativedelta(months=i)
+#                 ).strftime("%b %y")
+#                 for i in range(0, 12)
+#             ]
+
+#             if int(label) in outputDict:
+#                 for key, val in outputDict[int(label)].items():
+#                     total_sum = sum(val)
+#                     if key == 16:
+#                         result["data"]["datasets"][0]["data"][index] = total_sum
+#                     if key == 3538:
+#                         result["data"]["datasets"][1]["data"][index] = total_sum
+
+#         result["data"]["labels"] = copy.deepcopy(modified_labels)
+#         console_logger.debug(f"-------- Coal Consumption Graph Response -------- {result}")
+#         return result
+
+#     except Exception as e:
+#         response.status_code = 400
+#         console_logger.debug(e)
+#         exc_type, exc_obj, exc_tb = sys.exc_info()
+#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#         return e
 
 
 #  x------------------------------    Scheduler To Tigger Coal API's    ------------------------------------x

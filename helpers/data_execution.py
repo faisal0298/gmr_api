@@ -86,13 +86,12 @@ class DataExecutions:
                 console_logger.debug(response.status_code)
                 data = response.json()
                 if response.status_code == 200:
-                    console_logger.debug("inside")
                     sample_list_data = []
                     for single_data in data["responseData"]:
                         try:
                             fetchBunkerData = BunkerData.objects.get(sample_details_id=single_data.get("sample_Details_Id"))
                         except DoesNotExist as e:
-                            if single_data.get("sample_Desc") == "Bunker U#02":
+                            if single_data.get("sample_Desc") == "Bunker U#01" or single_data.get("sample_Desc") == "Bunker U#02":
                                 # console_logger.debug(single_data["sample_Desc"])
                                 sample_list_data = []
                                 for final_single_data in single_data.get("sample_Parameters", []):
@@ -465,16 +464,26 @@ class DataExecutions:
             os.makedirs(target_directory, exist_ok=True, mode=0o777)
             
             data = Q()
-            
-            if start_date:
-                start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M")
-                data &= Q(third_party_upload_date__gte = start_date)
+            if filter_type == "gwel":
+                if start_date:
+                    start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M")
+                    data &= Q(created_at__gte = start_date)
 
-            if end_date:
-                end_date = datetime.datetime.strptime(end_date, "%Y-%m-%dT%H:%M")
-                data &= Q(third_party_upload_date__lte = end_date)
+                if end_date:
+                    end_date = datetime.datetime.strptime(end_date, "%Y-%m-%dT%H:%M")
+                    data &= Q(receive_date__lte = end_date)
+                
+                usecase_data = CoalTesting.objects(data).order_by("-created_at")
+            else:
+                if start_date:
+                    start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M")
+                    data &= Q(third_party_upload_date__gte = start_date)
 
-            usecase_data = CoalTesting.objects(data).order_by("-third_party_upload_date")
+                if end_date:
+                    end_date = datetime.datetime.strptime(end_date, "%Y-%m-%dT%H:%M")
+                    data &= Q(third_party_upload_date__lte = end_date)
+                
+                usecase_data = CoalTesting.objects(data).order_by("-third_party_upload_date")
             count = len(usecase_data)
             path = None
             if usecase_data:
@@ -600,26 +609,26 @@ class DataExecutions:
                             worksheet.write(row, 5, str(result["Supplier"]), cell_format)
                             worksheet.write(row, 6, str(result["Date"]), cell_format)
                             worksheet.write(row, 7, str(result["Time"]), cell_format)
-                            worksheet.write(row, 8, str(result["Total_Moisture_%"]), cell_format)
-                            worksheet.write(row, 9, str(result["Inherent_Moisture_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 10, str(result["Ash_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 11, str(result["Volatile_Matter_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 12, str(result["Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            worksheet.write(row, 13, str(result["Ash_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 14, str(result["Volatile_Matter_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 15, str(result["Fixed_Carbon_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 16, str(result["Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                            worksheet.write(row, 8, str(result["GWEL_Total_Moisture_%"]), cell_format)
+                            worksheet.write(row, 9, str(result["GWEL_Inherent_Moisture_(Adb)_%"]), cell_format)
+                            worksheet.write(row, 10, str(result["GWEL_Ash_(Adb)_%"]), cell_format)
+                            worksheet.write(row, 11, str(result["GWEL_Volatile_Matter_(Adb)_%"]), cell_format)
+                            worksheet.write(row, 12, str(result["GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
+                            worksheet.write(row, 13, str(result["GWEL_Ash_(Arb)_%"]), cell_format)
+                            worksheet.write(row, 14, str(result["GWEL_Volatile_Matter_(Arb)_%"]), cell_format)
+                            worksheet.write(row, 15, str(result["GWEL_Fixed_Carbon_(Arb)_%"]), cell_format)
+                            worksheet.write(row, 16, str(result["GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
+                            if result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= int(result.get("Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
                                         worksheet.write(row, 17, str(single_coal_grades["grade"]), cell_format)
-                                    elif int(result.get("Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
+                                    elif int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
                                         worksheet.write(row, 17, "G-1", cell_format)
 
                         elif filter_type == "third_party":
@@ -663,6 +672,7 @@ class DataExecutions:
                                     elif int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
                                         worksheet.write(row, 18, "G-1", cell_format)
                         elif filter_type == "all":
+                            console_logger.debug(result)
                             worksheet.write(row, 1, str(result["Mine"]), cell_format)
                             worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
                             worksheet.write(row, 3, str(result["DO_No"]), cell_format)
@@ -670,26 +680,26 @@ class DataExecutions:
                             worksheet.write(row, 5, str(result["Supplier"]), cell_format)
                             worksheet.write(row, 6, str(result["Date"]), cell_format)
                             worksheet.write(row, 7, str(result["Time"]), cell_format)
-                            worksheet.write(row, 8, str(result["Total_Moisture_%"]), cell_format)
-                            worksheet.write(row, 9, str(result["Inherent_Moisture_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 10, str(result["Ash_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 11, str(result["Volatile_Matter_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 12, str(result["Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            worksheet.write(row, 13, str(result["Ash_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 14, str(result["Volatile_Matter_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 15, str(result["Fixed_Carbon_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 16, str(result["Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                            worksheet.write(row, 8, str(result["GWEL_Total_Moisture_%"]), cell_format)
+                            worksheet.write(row, 9, str(result["GWEL_Inherent_Moisture_(Adb)_%"]), cell_format)
+                            worksheet.write(row, 10, str(result["GWEL_Ash_(Adb)_%"]), cell_format)
+                            worksheet.write(row, 11, str(result["GWEL_Volatile_Matter_(Adb)_%"]), cell_format)
+                            worksheet.write(row, 12, str(result["GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
+                            worksheet.write(row, 13, str(result["GWEL_Ash_(Arb)_%"]), cell_format)
+                            worksheet.write(row, 14, str(result["GWEL_Volatile_Matter_(Arb)_%"]), cell_format)
+                            worksheet.write(row, 15, str(result["GWEL_Fixed_Carbon_(Arb)_%"]), cell_format)
+                            worksheet.write(row, 16, str(result["GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
+                            if result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= int(result.get("Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
                                         worksheet.write(row, 17, str(single_coal_grades["grade"]), cell_format)
-                                    elif int(result.get("Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
+                                    elif int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
                                         worksheet.write(row, 17, "G-1", cell_format)
                             if result.get("Third_Party_Report_No"):
                                 worksheet.write(row, 17, str(result["Third_Party_Report_No"]), cell_format)
@@ -907,26 +917,26 @@ class DataExecutions:
                             worksheet.write(row, 5, str(result["Supplier"]), cell_format)
                             worksheet.write(row, 6, str(result["Date"]), cell_format)
                             worksheet.write(row, 7, str(result["Time"]), cell_format)
-                            worksheet.write(row, 8, str(result["Total_Moisture_%"]), cell_format)
-                            worksheet.write(row, 9, str(result["Inherent_Moisture_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 10, str(result["Ash_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 11, str(result["Volatile_Matter_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 12, str(result["Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            worksheet.write(row, 13, str(result["Ash_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 14, str(result["Volatile_Matter_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 15, str(result["Fixed_Carbon_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 16, str(result["Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                            worksheet.write(row, 8, str(result["GWEL_Total_Moisture_%"]), cell_format)
+                            worksheet.write(row, 9, str(result["GWEL_Inherent_Moisture_(Adb)_%"]), cell_format)
+                            worksheet.write(row, 10, str(result["GWEL_Ash_(Adb)_%"]), cell_format)
+                            worksheet.write(row, 11, str(result["GWEL_Volatile_Matter_(Adb)_%"]), cell_format)
+                            worksheet.write(row, 12, str(result["GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
+                            worksheet.write(row, 13, str(result["GWEL_Ash_(Arb)_%"]), cell_format)
+                            worksheet.write(row, 14, str(result["GWEL_Volatile_Matter_(Arb)_%"]), cell_format)
+                            worksheet.write(row, 15, str(result["GWEL_Fixed_Carbon_(Arb)_%"]), cell_format)
+                            worksheet.write(row, 16, str(result["GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
+                            if result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= int(result.get("Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
                                         worksheet.write(row, 17, str(single_coal_grades["grade"]), cell_format)
-                                    elif int(result.get("Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
+                                    elif int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
                                         worksheet.write(row, 17, "G-1", cell_format)
                             
                         elif filter_type == "third_party":
@@ -977,26 +987,26 @@ class DataExecutions:
                             worksheet.write(row, 5, str(result["Supplier"]), cell_format)
                             worksheet.write(row, 6, str(result["Date"]), cell_format)
                             worksheet.write(row, 7, str(result["Time"]), cell_format)
-                            worksheet.write(row, 8, str(result["Total_Moisture_%"]), cell_format)
-                            worksheet.write(row, 9, str(result["Inherent_Moisture_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 10, str(result["Ash_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 11, str(result["Volatile_Matter_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 12, str(result["Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            worksheet.write(row, 13, str(result["Ash_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 14, str(result["Volatile_Matter_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 15, str(result["Fixed_Carbon_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 16, str(result["Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                            worksheet.write(row, 8, str(result["GWEL_Total_Moisture_%"]), cell_format)
+                            worksheet.write(row, 9, str(result["GWEL_Inherent_Moisture_(Adb)_%"]), cell_format)
+                            worksheet.write(row, 10, str(result["GWEL_Ash_(Adb)_%"]), cell_format)
+                            worksheet.write(row, 11, str(result["GWEL_Volatile_Matter_(Adb)_%"]), cell_format)
+                            worksheet.write(row, 12, str(result["GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
+                            worksheet.write(row, 13, str(result["GWEL_Ash_(Arb)_%"]), cell_format)
+                            worksheet.write(row, 14, str(result["GWEL_Volatile_Matter_(Arb)_%"]), cell_format)
+                            worksheet.write(row, 15, str(result["GWEL_Fixed_Carbon_(Arb)_%"]), cell_format)
+                            worksheet.write(row, 16, str(result["GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
+                            if result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= int(result.get("Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
                                         worksheet.write(row, 17, str(single_coal_grades["grade"]), cell_format)
-                                    elif int(result.get("Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
+                                    elif int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
                                         worksheet.write(row, 17, "G-1", cell_format)
                             if result.get("Third_Party_Report_No"):
                                 worksheet.write(row, 17, str(result["Third_Party_Report_No"]), cell_format)
@@ -1340,19 +1350,18 @@ class DataExecutions:
             if mine and mine != "All":
                 data["mine__icontains"] = mine.upper()
 
-            # if specified_date:
-            from_ts = self.convert_to_utc_format(f'{specified_date} 00:00:00', "%Y-%m-%d %H:%M:%S")
-            to_ts = self.convert_to_utc_format(f'{specified_date} 23:59:59', "%Y-%m-%d %H:%M:%S")
+            if specified_date:
+                to_ts = self.convert_to_utc_format(f'{specified_date} 23:59:59', "%Y-%m-%d %H:%M:%S")
 
             logs = (
-                Gmrdata.objects(GWEL_Tare_Time__ne=None,GWEL_Tare_Time__gte=from_ts,
-                            GWEL_Tare_Time__lte=to_ts)                                   # modified by Faisal
+                Gmrdata.objects(GWEL_Tare_Time__lte=to_ts, actual_tare_qty__ne=None, gate_approved=True, GWEL_Tare_Time__ne=None)
+                # Gmrdata.objects()
                 .order_by("-GWEL_Tare_Time")
             )
 
             sap_records = SapRecords.objects.all()
         
-            if any(logs) or any(sap_records):
+            if any(logs):
                 aggregated_data = defaultdict(
                     lambda: defaultdict(
                         lambda: {
@@ -1485,8 +1494,11 @@ class DataExecutions:
                         dictData['average_GCV_Grade'] = values["grade"]
                         
                         if dictData["start_date"] != "0" and dictData["end_date"] != "0":
+                            today_date = datetime.datetime.today().date()
                             # balance_days = datetime.datetime.strptime(dictData["end_date"], "%Y-%m-%d").date() - datetime.datetime.strptime(dictData["start_date"], "%Y-%m-%d").date()
-                            balance_days = datetime.datetime.strptime(dictData["end_date"], "%Y-%m-%d").date() - datetime.datetime.today().date()
+                            tomorrow_date = datetime.datetime.strptime(dictData["end_date"], "%Y-%m-%d").date() + datetime.timedelta(days=1)
+                            # balance_days = datetime.datetime.strptime(dictData["end_date"], "%Y-%m-%d").date() - datetime.datetime.today().date()
+                            balance_days = tomorrow_date - datetime.datetime.today().date()
                             dictData["balance_days"] = balance_days.days
                         else:
                             dictData["balance_days"] = 0
@@ -2090,18 +2102,22 @@ class DataExecutions:
                     end_date =f'{date}T23:59:59'
 
                     start_date = f'{date}T00:00:00'
-                    endd_date=self.convert_to_utc_format(end_date,"%Y-%m-%dT%H:%M:%S")
-                    startd_date=self.convert_to_utc_format(start_date,"%Y-%m-%dT%H:%M:%S")
-                    date_query = Q(created_date__gte=startd_date) & Q(created_date__lte=endd_date)
+                    # endd_date=self.convert_to_utc_format(end_date,"%Y-%m-%dT%H:%M:%S")
+                    # startd_date=self.convert_to_utc_format(start_date,"%Y-%m-%dT%H:%M:%S")
+                    endd_date=datetime.datetime.strptime(end_date, "%Y-%m-%dT%H:%M:%S") 
+                    startd_date=datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%S") 
+                    date_query = Q(start_date__gte=startd_date) & Q(start_date__lte=endd_date)
                     data &= date_query
 
                 if start_timestamp:
-                    start_date = self.convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
-                    data &= Q(created_date__gte = start_date)
+                    # start_date = self.convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                    start_date = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+                    data &= Q(start_date__gte = start_date)
 
                 if end_timestamp:
-                    end_date = self.convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
-                    data &= Q(created_date__lte = end_date)
+                    # end_date = self.convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
+                    end_date = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
+                    data &= Q(start_date__lte = end_date)
 
                 if search_text:
                     if search_text.isdigit():
@@ -2120,7 +2136,8 @@ class DataExecutions:
                 if any(logs):
                     for log in logs:
                         payload = log.payload()
-                        result["labels"] = list(payload.keys())
+                        # result["labels"] = list(payload.keys())
+                        result["labels"] = ["Sr.No", "shift_name", "unit", "bunkering", "mgcv", "hgcv", "ratio", "start_date", "Date"]
                         result["datasets"].append(log.payload())
                 result["total"] = (len(bunkerAnalysis.objects(data)))
                 return result
@@ -2136,12 +2153,14 @@ class DataExecutions:
                 data = Q()
 
                 if start_timestamp:
-                    start_date = self.convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
-                    data &= Q(created_date__gte = start_date)
+                    # start_date = self.convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                    start_date = datetime.datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M")
+                    data &= Q(start_date__gte = start_date)
 
                 if end_timestamp:
-                    end_date = self.convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
-                    data &= Q(created_date__lte = end_date)
+                    # end_date = self.convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
+                    end_date = datetime.datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M")
+                    data &= Q(start_date__lte = end_date)
                 
                 if search_text:
                     if search_text.isdigit():
@@ -2186,8 +2205,9 @@ class DataExecutions:
                                 "MGCV", 
                                 "HGCV", 
                                 "Ratio",
-                                "Date",
-                                "Created At"
+                                "Start Date",
+                                "End Date",
+                                # "Created At"
                                 ]
                         for index, header in enumerate(headers):
                             worksheet.write(0, index, header, cell_format2)
@@ -2200,8 +2220,9 @@ class DataExecutions:
                             worksheet.write(row, 4, str(result["mgcv"]), cell_format)                     
                             worksheet.write(row, 5, str(result["hgcv"]), cell_format)                     
                             worksheet.write(row, 6, str(result["ratio"]), cell_format)                     
-                            worksheet.write(row, 7, str(result["date"]), cell_format)                     
-                            worksheet.write(row, 8, str(result["created_at"]), cell_format)                     
+                            worksheet.write(row, 7, str(result["start_date"]), cell_format)                     
+                            worksheet.write(row, 8, str(result["date"]), cell_format)                     
+                            # worksheet.write(row, 9, str(result["created_at"]), cell_format)                     
                             count-=1
                         workbook.close()
                         console_logger.debug("sent data {}".format(path))

@@ -517,7 +517,7 @@ def logistic_report_table(data):
 
         grouped_data = defaultdict(list)
         for single_data in data:
-            source_type = single_data.get("source_type").strip()
+            source_type = single_data.get("source_type")
             grouped_data[source_type].append(single_data)
 
         final_total_do_qty = 0
@@ -554,6 +554,7 @@ def logistic_report_table(data):
             total_balance_qty = 0
 
             for entry in entries:
+                # console_logger.debug(entry)
                 per_data += f"<tr style='height: 30px;'>"
                 per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {entry.get('slno')}</span></td>"
                 per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {entry.get('mine_name')}</span></td>"
@@ -570,11 +571,13 @@ def logistic_report_table(data):
                 per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(entry.get('percent_supply'), 2)}%</span></td>"
                 per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {entry.get('balance_days')}</span></td>"
                 per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {round(entry.get('asking_rate'))}</span></td>"
-                if entry.get("start_date") != "0":
+                # if entry.get("start_date") != "0" or entry.get("start_date") is not None:
+                if entry.get("start_date") not in [None, "0"]:
                     per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {datetime.strptime(entry.get('start_date'),'%Y-%m-%d').strftime('%d %B %y')}</span></td>"
                 else:
                     per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'>0</span></td>"
-                if entry.get("end_date") != "0":
+                # if entry.get("end_date") != "0" or entry.get("end_date") is not None:
+                if entry.get("end_date") not in [None, "0"]:
                     per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {datetime.strptime(entry.get('end_date'),'%Y-%m-%d').strftime('%d %B %y')}</span></td>"
                 else:    
                     per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'>0</span></td>"
@@ -775,6 +778,7 @@ def bar_graph_gcv_wise(rrNo_values, aopList, month_date):
 
 def profit_loss_gmr_data(data):
     try:
+        data = {('Unknown' if key is None else key): value for key, value in data.items()}
         if data:
             # Extracting mine names and profit/loss values
             mine_names = list(data.keys())
@@ -784,6 +788,8 @@ def profit_loss_gmr_data(data):
             plt.figure(figsize=(8, 6))
             # bars = plt.bar(mine_names, profit_loss_values, color=['red' if value < 0 else 'green' for value in profit_loss_values])
             bars = plt.bar(mine_names, profit_loss_values, color='red')
+
+            plt.xticks(rotation=90)
 
             # Adding labels and title
             plt.xlabel('Mine', fontsize=15)
@@ -971,40 +977,49 @@ def rake_quota_data(fetchRakeQuota):
         single_html = "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
         single_html += "<thead style='background-color: #3a62ff; color: #ffffff; height: 20px'>"
         single_html += "<tr style='height: 30px;'>"
-        # single_html += "<th class='logic_table_th' style='font-size: 12px;'>SrNo</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Month</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Source Type</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Rakes previous month quota received</th>"
-        # single_html += "<th class='logic_table_th' style='font-size: 12px;'>Year</th>"
-        # single_html += "<th class='logic_table_th' style='font-size: 12px;'>Valid Upto</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Rake planned for the month</th>"
-        # single_html += "<th class='logic_table_th' style='font-size: 12px;'>Rakes planned for month</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Rakes loaded till date</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Rakes loaded on date</th>"
-        single_html += "<th class='logic_table_th' style='font-size: 12px;'>Previous month rake</th>"
+        # single_html += "<th class='logic_table_th' style='font-size: 12px;'>Previous month rake</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Rakes received on date</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Total rakes received for month</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Balance rakes to receive</th>"
-        single_html += "<th class='logic_table_th' style='font-size: 12px;'>No of rakes in transist</th>"
+        single_html += "<th class='logic_table_th' style='font-size: 12px;'>No of rakes in transit</th>"
         single_html += "</tr></thead><tbody style='border: 1px solid gray;'>"
-        single_html += "<tr style='height: 30px;'>"
-        for single_rake_quota in fetchRakeQuota:
-            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {fetchRakeQuota[0].get('SrNo')}</span></td>"
+
+        for single_rake_quota in fetchRakeQuota['data']:
+            single_html += "<tr style='height: 30px;'>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('month')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('source_type')}</span></td>"
-            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('year')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_previous_month_quota_received')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rake_planned_for_the_month')}</span></td>"
-            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_planned_for_month')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_loaded_till_date')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_loaded_on_date')}</span></td>"
-            single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('previous_month_rake')}</span></td>"
+            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('previous_month_rake')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_received_on_date')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('total_rakes_received_for_month')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('balance_rakes_to_receive')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('no_of_rakes_in_transist')}</span></td>"
+            single_html += "</tr>"
+
+        single_html += "<tr style='background-color: #3a62ff; color: #ffffff;'>"
+        single_html += "<td class='logic_table_td' style='text-align: center; font-size: 14px;' colspan='2'><strong>Total</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rakes_previous_month_quota_received')}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rake_planned_for_the_month')}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rakes_loaded_till_date')}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rakes_loaded_on_date')}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rakes_received_on_date')}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_total_rakes_received_for_month')}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_balance_rakes_to_receive')}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_no_of_rakes_in_transist')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_expected_rakes_date')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_expected_rakes_value')}</strong></td>"
         single_html += "</tr>"
         single_html += "</tbody></table>"
+
         return single_html
     except Exception as e:
         console_logger.debug(e)
@@ -1017,7 +1032,11 @@ def seclGraphData(seclLinkagegraph):
 
         data = seclLinkagegraph["datasets"][0]["data"]
 
-        str_labels = [str(label) for label in labels]
+        # console_logger.debug(labels)
+
+        # str_labels = [datetime.strptime(item, '%Y-%m').strftime('%b') for item in labels]
+
+        # str_labels = [str(label) for label in labels]
 
         # Optional: Sort data for better visualization
         # combined = sorted(zip(data, str_labels), reverse=True)
@@ -1027,7 +1046,7 @@ def seclGraphData(seclLinkagegraph):
         plt.figure(figsize=(12, 8))
 
         # Create bar plot
-        bars = plt.bar(str_labels, data, color='blue', edgecolor='black')
+        bars = plt.bar(labels, data, color='blue', edgecolor='black')
 
         # Add data labels on top of each bar
         for bar in bars:
@@ -1040,12 +1059,12 @@ def seclGraphData(seclLinkagegraph):
                         fontsize=10, color='black')
 
         # Labels and title
-        plt.xlabel('Labels', fontsize=14)
+        # plt.xlabel('Labels', fontsize=14)
         plt.ylabel('Percentage', fontsize=14)
-        plt.title('Percentage Bar Graph', fontsize=16)
+        # plt.title('Percentage Bar Graph', fontsize=16)
 
         # Rotate x-axis labels for better readability
-        plt.xticks(rotation=45)
+        plt.xticks(rotation=0)
 
         # Add gridlines for better readability
         plt.grid(axis='y', linestyle='--', alpha=0.7)
@@ -1073,9 +1092,13 @@ def wclGraphData(wclLinkagegraph):
     try:
         labels = wclLinkagegraph.get("labels")
 
+        # console_logger.debug(labels)
+        
+        # converted_data = [f"{label[:4]}-{label[4:]}" for label in labels]
+        # str_labels = [datetime.strptime(item, '%Y-%m').strftime('%b') for item in converted_data]
         data = wclLinkagegraph["datasets"][0]["data"]
 
-        str_labels = [str(label) for label in labels]
+        # str_labels = [str(label) for label in labels]
 
         # Optional: Sort data for better visualization
         # combined = sorted(zip(data, str_labels), reverse=True)
@@ -1085,7 +1108,7 @@ def wclGraphData(wclLinkagegraph):
         plt.figure(figsize=(12, 8))
 
         # Create bar plot
-        bars = plt.bar(str_labels, data, color='blue', edgecolor='black')
+        bars = plt.bar(labels, data, color='blue', edgecolor='black')
 
         # Add data labels on top of each bar
         for bar in bars:
@@ -1098,12 +1121,12 @@ def wclGraphData(wclLinkagegraph):
                         fontsize=10, color='black')
 
         # Labels and title
-        plt.xlabel('Labels', fontsize=14)
+        # plt.xlabel('Labels', fontsize=14)
         plt.ylabel('Percentage', fontsize=14)
-        plt.title('Percentage Bar Graph', fontsize=16)
+        # plt.title('Percentage Bar Graph', fontsize=16)
 
         # Rotate x-axis labels for better readability
-        plt.xticks(rotation=45)
+        plt.xticks(rotation=0)
 
         # Add gridlines for better readability
         plt.grid(axis='y', linestyle='--', alpha=0.7)
@@ -1184,12 +1207,12 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
         fetchwclGraphData = wclGraphData(wclLinkagegraph)
 
         if fetchseclGraphData:
-            secl_linkage_bar_data = f'<img src="data:image/png;base64,{fetchseclGraphData}" alt="img not present" style="margin: 1px auto; width: 90%; height: 90%; object-fit: scale-down;"/>'
+            secl_linkage_bar_data = f'<img src="data:image/png;base64,{fetchseclGraphData}" alt="img not present" style="margin: 1px auto; width: 100%; height: 100%; object-fit: fill;"/>'
         else:
             secl_linkage_bar_data = f"<div style='color: #000; font-size: 16px; margin: 5px ;font-weight: 600;'><b>No data found for {datetime.strptime(month_date,'%Y-%m-%d').strftime('%d %B %Y')}</b></div>"
 
         if fetchwclGraphData:
-            wecl_linkage_bar_data = f'<img src="data:image/png;base64,{fetchwclGraphData}" alt="img not present" style="margin: 1px auto; width: 90%; height: 90%; object-fit: scale-down;"/>'
+            wecl_linkage_bar_data = f'<img src="data:image/png;base64,{fetchwclGraphData}" alt="img not present" style="margin: 1px auto; width: 100%; height: 100%; object-fit: fill;"/>'
         else:
             wecl_linkage_bar_data = f"<div style='color: #000; font-size: 16px; margin: 5px ;font-weight: 600;'><b>No data found for {datetime.strptime(month_date,'%Y-%m-%d').strftime('%d %B %Y')}</b></div>"
 
@@ -1313,8 +1336,8 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
                 </div>
             </div>
 
-            <div class="footertable" style="width:100%;margin-top:20px;">
-                <div class="title" style="width: 100%; display: flex ; flex-direction:row; gap: 10px; height:50px ; align-items:center">
+            <div class="footertable" style="width:100%; margin-top:20px;">
+                <div class="title" style="width: 100%; display: flex; flex-direction:row; gap: 10px; height:50px ; align-items:center">
                     <p style="color: #3a62ff; font-size: 16px; margin: 5px; font-weight: 600;">
                         Rake Quota Report for {datetime.strptime(month_date,'%Y-%m-%d').strftime('%B %Y')}
                     </p>
@@ -1322,8 +1345,8 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
                 {fetchquotaData}
             </div>
 
-            <div class="footertable" style="width:100%;margin-top:20px;">
-                <div class="title" style="width: 100%; display: flex ; flex-direction:row; gap: 10px; height:50px ; align-items:center">
+            <div class="footertable" style="width:100%; margin-top:20px;">
+                <div class="title" style="width: 100%; display: flex; flex-direction:row; gap: 10px; height:50px ; align-items:center">
                     <p style="color: #3a62ff; font-size: 16px; margin: 5px; font-weight: 600;">
                         Daily Road Coal Logistic Report for {datetime.strptime(month_date,'%Y-%m-%d').strftime('%d %B %Y')}
                     </p>
@@ -1343,19 +1366,19 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
             <br>
             <br>
 
-            <div style="display:flex; flex-wrap:wrap;">
-                 <div class="body" style="margin-top:20px; width:50% ; height: 300px;">
+            <div style="display: flex; flex-direction: column; flex-wrap:wrap; align-items: center;">
+                 <div class="body" style="width: 90%; height: 800px;">
                     <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;display: flex; justify-content:center; flex-direction:column;  height: 300px;">
                         <p style="margin:1px; margin-bottom:5px;">
-                            Secl Linkage Materialisation
+                            Annually - SECL Linkage Materialisation (FY {f"{datetime.today().year if datetime.today().month >= 4 else datetime.today().year - 1}-{(datetime.today().year + 1) if datetime.today().month >= 4 else datetime.today().year}"})
                         </p>
                         {secl_linkage_bar_data}
                     </div>
                 </div>
-                <div class="body" style="margin-top:20px; width:50% ; height: 300px;">
+                <div class="body" style="width: 90%; height: 800px;">
                     <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;display: flex; justify-content:center; flex-direction:column;  height: 300px;">
                         <p style="margin:1px; margin-bottom:5px;">
-                            Wcl Linkage Materialisation
+                            Annually - WCL Linkage Materialisation (FY {f"{datetime.today().year if datetime.today().month >= 4 else datetime.today().year - 1}-{(datetime.today().year + 1) if datetime.today().month >= 4 else datetime.today().year}"})
                         </p>
                         {wecl_linkage_bar_data}
                     </div>

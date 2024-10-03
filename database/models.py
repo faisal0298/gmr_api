@@ -300,9 +300,17 @@ class CoalTestingTrain(Document):
                     ).astimezone(tz=to_zone).strftime("%H:%M:%S") if self.receive_date else None,
             "Id": str(self.pk)}
 
+        # for param in self.parameters:
+        #     param_name = f"{param['parameter_Name']}_{param['unit_Val'].replace(' ','')}"
+        #     payload_dict[f"GWEL_{param_name}"] = param["val1"]
+
         for param in self.parameters:
+            # console_logger.debug(param)
             param_name = f"{param['parameter_Name']}_{param['unit_Val'].replace(' ','')}"
-            payload_dict[f"GWEL_{param_name}"] = param["val1"]
+            if "Third" in param_name:
+                payload_dict[f"{param_name}"] = param["val1"]
+            else:
+                payload_dict[f"GWEL_{param_name}"] = param["val1"]
 
         return payload_dict
 
@@ -619,6 +627,7 @@ class Gmrdata(Document):
     line_item = StringField(null=True)
     GWEL_Gross_Time = DateTimeField(null=True)
     GWEL_Tare_Time = DateTimeField(null=True)
+    grn_status  = BooleanField(default=False)
     
 
     ID = IntField(min_value=1)
@@ -707,6 +716,200 @@ class Gmrdata(Document):
                 "do_date": self.do_date,
                 "po_amount": self.po_amount,
                 "slno": self.slno,
+                "grn_status": self.grn_status,
+                "Line_Item" : self.line_item if self.line_item else None,
+
+                "GWEL_Gross_Time" : datetime.datetime.fromisoformat(
+                                    self.GWEL_Gross_Time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.GWEL_Gross_Time else None,
+
+                "GWEL_Tare_Time" : datetime.datetime.fromisoformat(
+                                    self.GWEL_Tare_Time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.GWEL_Tare_Time else None,
+
+                "Scanned_Time" : datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+
+                "mine_date" : datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+
+                "TAT_difference": tat,
+                }
+    
+class gmrdataHistoric(Document):
+    record_id = StringField(default=uuid.uuid4().hex, unique=True)
+    camera_name = StringField()
+    out_camera_name = StringField()
+    direction = StringField()
+    vehicle_type = StringField()
+    vehicle_brand = StringField()
+    vehicle_number = StringField()
+    plate_image = StringField()
+    out_plate_image = StringField()
+    vehicle_image = StringField()
+    out_vehicle_image = StringField()
+    vehicle_out_time = DateTimeField(null=True)
+    
+    delivery_challan_number = StringField()
+    arv_cum_do_number = StringField()
+    mine = StringField()
+    gross_qty = StringField()                       # gross weight extracted from challan
+    tare_qty = StringField()                        # tare weight extracted from challan        
+    net_qty = StringField()                         # net weight extracted from challan
+    delivery_challan_date = StringField()
+    type_consumer = StringField()
+    grade = StringField()
+    weightment_date = StringField() 
+    weightment_time = StringField()
+    total_net_amount = StringField() 
+    challan_file = StringField()
+
+    # lr_fasttag = BooleanField(default=False)
+    lr_fasttag = BooleanField(default=True)
+    
+    driver_name = StringField()
+    gate_pass_no = StringField()
+    fr_file = StringField()
+
+    transporter_lr_no = StringField(null=True)
+    transporter_lr_date = StringField(null=True)
+    transporter_lr_time = StringField(null=True)
+    e_way_bill_no = StringField(null=True)
+    gate_user = StringField(null=True)
+
+    gate_approved = BooleanField(default=False)
+    gate_fastag  = BooleanField(default=False)
+    
+    vehicle_chassis_number = StringField()
+    certificate_expiry = StringField()
+    actual_gross_qty = StringField(null=True)            # actual gross weight measured from weightbridge
+    actual_tare_qty = StringField(null=True)             # actual tare weight measured from weightbridge
+    actual_net_qty = StringField(null=True)             # actual net weight measured from weightbridge
+    # wastage = StringField(null=True)
+    fitness_file = StringField()
+    lr_file = StringField()
+    po_no = StringField(null=True)
+    po_date = StringField(null=True)
+    po_qty = StringField(null=True)
+
+    gross_weighbridge = StringField(null=True)
+    tare_weighbridge = StringField(null=True)
+
+    dc_request = BooleanField(default=False)
+    dc_request_status = BooleanField(default=None, null=True)
+    
+    tare_request = BooleanField(default=False)
+    tare_request_status = BooleanField(default=None, null=True)
+
+    start_date = StringField(null=True)
+    end_date = StringField(null=True)
+
+    do_date = StringField(null=True)
+    do_qty = StringField(null=True)
+    po_amount = StringField(null=True)
+    slno = StringField(null=True)
+
+    created_at = DateTimeField(default=datetime.datetime.utcnow())
+
+    # remark = StringField(null=True)
+  
+    vehicle_in_time = DateTimeField(null=True)
+    lot = StringField()
+    line_item = StringField(null=True)
+    GWEL_Gross_Time = DateTimeField(null=True)
+    GWEL_Tare_Time = DateTimeField(null=True)
+    grn_status  = BooleanField(default=False)
+    
+
+    ID = IntField(min_value=1)
+
+    meta = {"db_alias" : "gmrDB-alias" , "collection" : "gmrdataHistoric"}
+
+    def payload(self):
+
+        Loss = None
+        transit_loss=None
+        tat=None
+
+        if self.net_qty is not None and self.actual_net_qty is not None:
+            Loss = float(self.actual_net_qty) - float(self.net_qty)
+            transit_loss = round(Loss,5)
+            
+        if self.vehicle_in_time is not None and self.GWEL_Tare_Time is not None:
+            diff = self.GWEL_Tare_Time - self.vehicle_in_time
+            days = diff.days
+            seconds = diff.seconds
+            hours = seconds // 3600
+            minutes = (seconds % 3600) // 60
+            seconds = seconds % 60
+            components = []
+            if days > 0:
+                components.append(f"{days} days")
+            if hours > 0:
+                components.append(f"{hours} hours")
+            if minutes > 0:
+                components.append(f"{minutes} minutes")
+            if seconds > 0:
+                components.append(f"{seconds} seconds")
+            
+            tat = ", ".join(components)
+
+        return {"record_id":self.record_id,
+                "Sr.No.":self.ID,
+                "Mines_Name":self.mine,
+                "PO_No":self.po_no,
+                "PO_Date":self.po_date,
+                "DO_Qty":self.po_qty, 
+                "Delivery_Challan_No":self.delivery_challan_number,
+                "DO_No":self.arv_cum_do_number,
+                "Grade":self.grade,
+                "Type_of_consumer":self.type_consumer,
+                "DC_Date":self.delivery_challan_date,
+                "vehicle_number":self.vehicle_number,
+                "Vehicle_Chassis_No":self.vehicle_chassis_number,
+                "Fitness_Expiry":self.certificate_expiry,
+                "Total_net_amount":self.total_net_amount,
+                # "In gate": self.camera_name if self.camera_name else None,
+                "Weightment_Date" : self.weightment_date,
+                "Weightment_Time" : self.weightment_time,
+                # "Out gate": self.out_camera_name if self.out_camera_name else None,
+                "Challan_Gross_Wt(MT)" : self.gross_qty,
+                "Challan_Tare_Wt(MT)" : self.tare_qty,
+                "Challan_Net_Wt(MT)" : self.net_qty,
+                "GWEL_Gross_Wt(MT)" : self.actual_gross_qty,
+                "GWEL_Tare_Wt(MT)" : self.actual_tare_qty,
+                "GWEL_Net_Wt(MT)" : self.actual_net_qty,
+                # "Wastage" : self.wastage,
+                "Driver_Name" : self.driver_name,
+                "Gate_Pass_No" : self .gate_pass_no,
+                "Transporter_LR_No": self.transporter_lr_no,
+                "Transporter_LR_Date": self.transporter_lr_date,
+                "Eway_bill_No": self.e_way_bill_no,
+                # "Gate_verified_time" : datetime.datetime.fromisoformat(
+                #                     self.gate_verified_time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                #                     ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.gate_verified_time else None,
+
+                "Vehicle_in_time" : datetime.datetime.fromisoformat(
+                                    self.vehicle_in_time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.vehicle_in_time else None,
+
+                "Vehicle_out_time" : datetime.datetime.fromisoformat(
+                                    self.vehicle_out_time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.vehicle_out_time else None,
+                
+                "Challan_image" : self.challan_file if self.challan_file else None,
+                "Fitness_image": self.fitness_file if self.fitness_file else None,
+                "Face_image": self.fr_file if self.fr_file else None,
+                "Transit_Loss": transit_loss if transit_loss else 0,
+                "LOT":self.lot,
+                "start_date": self.start_date,
+                "end_date": self.end_date,
+                "do_date": self.do_date,
+                "po_amount": self.po_amount,
+                "slno": self.slno,
+                "grn_status": self.grn_status,
                 "Line_Item" : self.line_item if self.line_item else None,
 
                 "GWEL_Gross_Time" : datetime.datetime.fromisoformat(
@@ -871,11 +1074,11 @@ class SapRecords(Document):
             "line_item": self.line_item,
             "do_no": self.do_no,
             "do_qty": self.do_qty,
-            "rake_no": self.rake_no,
+            # "rake_no": self.rake_no,
             "start_date": self.start_date,
             "end_date": self.end_date,
             "grade": self.grade,
-            "po_date": self.po_date,
+            # "po_date": self.po_date,
         }
     
 
@@ -938,12 +1141,16 @@ class AveryRailData(EmbeddedDocument):
     tip_endtime = StringField()
     tipple_time = StringField()
     status = StringField()
-    wagon_gross_wt = StringField()
-    wagon_tare_wt = StringField()
-    wagon_net_wt = StringField()
+    # wagon_gross_wt = StringField()
+    # wagon_tare_wt = StringField()
+    # wagon_net_wt = StringField()
+    gwel_gross_wt = StringField()
+    gwel_tare_wt = StringField()
+    gwel_net_wt = StringField()
     time_in_tipp = StringField()
     po_number = StringField()
     coal_grade = StringField()
+    data_from = StringField()
 
     def payload(self):
         return {
@@ -966,12 +1173,16 @@ class AveryRailData(EmbeddedDocument):
             "tipple_time": self.tipple_time,
             "status": self.status,
             "wagon_type_avery": self.wagon_type_avery,
-            "wagon_gross_wt": self.wagon_gross_wt,
-            "wagon_tare_wt": self.wagon_tare_wt,
-            "wagon_net_wt": self.wagon_net_wt,
+            # "wagon_gross_wt": self.wagon_gross_wt,
+            # "wagon_tare_wt": self.wagon_tare_wt,
+            # "wagon_net_wt": self.wagon_net_wt,
+            "gwel_gross_wt": self.gwel_gross_wt,
+            "gwel_tare_wt": self.gwel_tare_wt,
+            "gwel_net_wt": self.gwel_net_wt,
             "time_in_tipp": self.time_in_tipp,
             "po_number": self.po_number,
             "coal_grade": self.coal_grade,
+            "data_from": self.data_from,
         }
 
 
@@ -1061,6 +1272,16 @@ class RailData(Document):
     grade = StringField(default="")
     po_amount = StringField(default="")
     rake_no = StringField(default="")
+    GWEL_received_wagons = StringField(default="")
+    GWEL_pending_wagons = StringField(default="")
+    Total_gwel_gross = StringField(default="")
+    Total_gwel_tare = StringField(default="")
+    Total_gwel_net = StringField(default="")
+
+    penalty_ol = StringField(default="")                    # modified by faisal
+    penal_ul = StringField(default="")                      # modified by faisal
+    freight_pmt = StringField(default="")                   # modified by faisal              
+
     secl_rly_data = EmbeddedDocumentListField(SeclRailData)
     avery_rly_data = EmbeddedDocumentListField(AveryRailData)
     created_at = DateTimeField(default=datetime.datetime.utcnow)
@@ -1120,6 +1341,10 @@ class RailData(Document):
         for avery_data in self.avery_rly_data:
             averyrail.append(avery_data.payload())
 
+        seclrail = []
+        for serl_data in self.secl_rly_data:
+            seclrail.append(serl_data.payload())
+
         return {
             "rr_no": self.rr_no,
             "rr_qty": self.rr_qty,
@@ -1155,6 +1380,12 @@ class RailData(Document):
             "grade": self.grade,
             "po_amount": self.po_amount,
             "rake_no": self.rake_no,
+            "GWEL_received_wagons": self.GWEL_received_wagons,
+            "GWEL_pending_wagons": self.GWEL_pending_wagons,
+            "GWEL_Total_gwel_gross": self.Total_gwel_gross,
+            "GWEL_Total_gwel_tare": self.Total_gwel_tare,
+            "GWEL_Total_gwel_net": self.Total_gwel_net,
+            "secl_rly_data": seclrail,
             "avery_rly_data": averyrail,
             "created_at": datetime.datetime.fromisoformat(
                     self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
@@ -1189,6 +1420,11 @@ class RailData(Document):
             "siding": self.siding,
             "mine": self.mine,
             "grade": self.grade,
+            "GWEL_received_wagons": self.GWEL_received_wagons,
+            "GWEL_pending_wagons": self.GWEL_pending_wagons,
+            "GWEL_Total_gwel_gross": self.Total_gwel_gross,
+            "GWEL_Total_gwel_tare": self.Total_gwel_tare,
+            "GWEL_Total_gwel_net": self.Total_gwel_net,
             "created_at": datetime.datetime.fromisoformat(
                     self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
                     ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
@@ -1378,6 +1614,7 @@ class bunkerAnalysis(Document):
     hgcv = StringField(default=None)
     ratio = StringField(default=None)
     shift_name = StringField(default=None)
+    start_date = DateTimeField()
     created_date = DateTimeField()
     ID = IntField(min_value=1)
     created_at = DateTimeField(default=datetime.datetime.utcnow())
@@ -1386,8 +1623,8 @@ class bunkerAnalysis(Document):
 
     def payload(self):
         return {
+            "id": str(self.id),
             "Sr.No": self.ID,
-            # "id": str(self.id),
             "shift_name": self.shift_name,
             "unit": self.units,
             # "tagid": self.tagid,
@@ -1396,13 +1633,15 @@ class bunkerAnalysis(Document):
             "hgcv": self.hgcv,
             "ratio": self.ratio,
 
-            "Date": datetime.datetime.fromisoformat(
-                    self.created_date.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
-                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_date else None,
+            # "Date": datetime.datetime.fromisoformat(
+            #         self.created_date.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+            #         ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_date else None,
+            "start_date": self.start_date.strftime("%Y-%m-%d %H:%M:%S"),
+            "Date": self.created_date.strftime("%Y-%m-%d %H:%M:%S"),
 
-            "created_at": datetime.datetime.fromisoformat(
-                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
-                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+            # "created_at": datetime.datetime.fromisoformat(
+            #         self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+            #         ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
         }
 
 
@@ -1648,4 +1887,68 @@ class BunkerDataExtra(Document):
             "humidity": self.humidity,
             "test_temp": self.test_temp,
             "created_at": self.created_at,
+        }
+
+
+class gcvComparisionAnalysis(Document):
+    coal_receipt_year = IntField()
+    coal_receipt_month = IntField()
+    coal_receipt_domestic_qty = IntField()
+    coal_receipt_domestic_gcv = IntField()
+    coal_receipt_imported_qty = IntField()
+    coal_receipt_imported_gcv = IntField()
+    coal_receipt_weighted_gcv = IntField()
+    coal_receipt_ytd_weighted_gcv = IntField()
+    bunker_coal_weighted_gcv = IntField()
+    bunker_coal_imported_qty = IntField()
+    bunker_coal_domestic_qty = IntField()
+    bunker_coal_weighted_gcv_ytd = IntField()
+    difference_mtd = IntField()
+    difference_ytd = IntField()
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "gcvComparisionAnalysis"}
+
+    def payload(self):
+        return {
+            "coal_receipt_year": self.coal_receipt_year,
+            "coal_receipt_month": self.coal_receipt_month,
+            "coal_receipt_domestic_qty": self.coal_receipt_domestic_qty,
+            "coal_receipt_domestic_gcv": self.coal_receipt_domestic_gcv,
+            "coal_receipt_imported_qty": self.coal_receipt_imported_qty,
+            "coal_receipt_imported_gcv": self.coal_receipt_imported_gcv,
+            "coal_receipt_weighted_gcv": self.coal_receipt_weighted_gcv,
+            "coal_receipt_ytd_weighted_gcv": self.coal_receipt_ytd_weighted_gcv,
+            "bunker_coal_weighted_gcv": self.bunker_coal_weighted_gcv,
+            "bunker_coal_imported_qty": self.bunker_coal_imported_qty,
+            "bunker_coal_domestic_qty": self.bunker_coal_domestic_qty,
+            "bunker_coal_weighted_gcv_ytd": self.bunker_coal_weighted_gcv_ytd,
+            "difference_mtd": self.difference_mtd,
+            "difference_ytd": self.difference_ytd,
+        }
+    
+
+class BunkerQualitySummary(Document):
+    date = DateTimeField(required=True, default=datetime.datetime.utcnow)
+    cum_total_qty = FloatField(required=True)
+    cum_weighted_domestic_gcv = FloatField(required=True)
+    domestic_qty = FloatField(required=True)
+    imported_qty = IntField(required=True)
+    total_qty = FloatField(required=True)
+    weighted_domestic_gcv = FloatField(required=True)
+    weighted_gcv = FloatField(required=True)
+    wt_gcv = FloatField(required=True)
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "BunkerQualitySummary"}
+
+    def payload(self):
+        return {
+            "date": self.date,
+            "cum_total_qty": self.cum_total_qty,
+            "cum_weighted_domestic_gcv": self.cum_weighted_domestic_gcv,
+            "domestic_qty": self.domestic_qty,
+            "imported_qty":self.imported_qty, 
+            "total_qty": self.total_qty,
+            "weighted_domestic_gcv": self.weighted_domestic_gcv,
+            "weighted_gcv": self.weighted_gcv,
+            "wt_gcv": self.wt_gcv, 
         }

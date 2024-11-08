@@ -244,8 +244,9 @@ class rakeQuotaManual(BaseModel):
 
 
 class rakeQuotaUpdate(BaseModel):
-    month: str
-    rakes_planned_for_month: Optional[str]
+    month: Optional[str]
+    source_type: Optional[str]
+    rakes_planned_for_month: Optional[int]
     expected_rakes: Optional[dict]
 
 
@@ -279,3 +280,46 @@ class averyUserData(BaseModel):
 
 class mainAveryData(BaseModel):
     data : List[averyUserData]
+
+
+class taxInvoiceGmr(BaseModel):
+    id: Optional[str]
+    do_no: Optional[str]
+    dc_date: Optional[str]
+    challan_no: Optional[str]
+    grade: Optional[str]
+    truck_no: Optional[str]
+    tare: Optional[str]
+    gross: Optional[str]
+    net: Optional[str]
+
+class mineNameUpdate(BaseModel):
+    id: Optional[str]
+    mine_code: Optional[str]
+    mine_mode: Optional[str]
+    source_type: Optional[str]
+
+class rakequotaUpload(BaseModel):
+    # date: Optional[str]
+    month: Optional[str]
+    year: Optional[str]
+    valid: Optional[str]
+    coal_field: Optional[str]
+    rake_alloted: Optional[str]
+    grade: Optional[str]
+    source_type: Optional[str]
+
+
+class roadSapUpload(BaseModel):
+    # do_no: Optional[str]
+    # do_date: Optional[str]
+    # start_date: Optional[str]
+    # end_date: Optional[str]
+    # slno: Optional[str]
+    # consumer_type: Optional[str]
+    # grade: Optional[str]
+    # mine_name: Optional[str]
+    # line_item: Optional[str]
+    # do_qty: Optional[str]
+    # po_amount: Optional[str]
+    data: List[dict]

@@ -9,7 +9,7 @@ from lxml import etree
 import xml.etree.ElementTree as ET
 import datetime
 import requests
-from datetime import timedelta
+from datetime import timedelta, date
 import xlsxwriter
 import copy
 from dateutil.relativedelta import relativedelta
@@ -35,6 +35,9 @@ from bson.objectid import ObjectId
 load_dotenv() 
 
 
+
+
+
 IST = pytz.timezone('Asia/Kolkata')
 
 class DataExecutions:
@@ -48,6 +51,130 @@ class DataExecutions:
         if not start:
             _datetime =_datetime.replace(hour=23,minute=59)
         return _datetime.replace(tzinfo=to_zone).astimezone(datetime.timezone.utc).replace(tzinfo=None)
+
+    # def fetchcoalBunkerData(self, start_date, end_date):
+    #     try:
+    #         global consumption_headers, proxies
+    #         # entry = UsecaseParameters.objects.filter(Parameters__gmr_api__exists=True).first()
+    #         entry = UsecaseParameters.objects.first()
+    #         testing_ip = entry.Parameters.get('gmr_api', {}).get('roi1', {}).get('Coal Testing IP') if entry else None
+    #         testing_timer = entry.Parameters.get('gmr_api', {}).get('roi1', {}).get('Coal Testing Duration') if entry else None
+
+    #         console_logger.debug(f"---- Coal Consumption IP ----        {testing_ip}")
+    #         console_logger.debug(f"---- Coal Consumption Duration ----  {testing_timer}")
+
+    #         current_time = datetime.datetime.now(IST)
+    #         current_date = current_time.date()
+
+    #         if not end_date:
+    #             end_date = current_date.__str__()                                                    # end_date will always be the current date
+    #         if not start_date:
+    #             no_of_day = testing_ip.split(":")[0]
+    #             start_date = (current_date-timedelta(int(no_of_day))).__str__()
+
+    #         console_logger.debug(f"{start_date}")
+    #         console_logger.debug(f"{end_date}")
+
+    #         startd_date = datetime.datetime.strptime(start_date, '%Y-%m-%d').strftime('%m/%d/%y')
+    #         endd_date = datetime.datetime.strptime(end_date, '%Y-%m-%d').strftime('%m/%d/%y')
+    #         console_logger.debug(ip)
+    #         url = f"http://{ip}/api/v1/host/bunker_data?start_date={startd_date}&end_date={endd_date}"
+    #         # url = f"http://{testing_ip}/limsapi/api/SampleDetails/GetSampleRecord/GetSampleRecord?Fromdate={startd_date}&todate={endd_date}"
+     
+    #         try:
+    #             payload = {}
+    #             headers = {}
+
+    #             response = requests.request("GET", url, headers=headers, data=payload)
+    #             console_logger.debug(response.status_code)
+    #             data = response.json()
+    #             if response.status_code == 200:
+    #                 sample_list_data = []
+    #                 for single_data in data["responseData"]:
+    #                     try:
+    #                         fetchBunkerData = BunkerData.objects.get(sample_details_id=single_data.get("sample_Details_Id"))
+    #                     except DoesNotExist as e:
+    #                         if single_data.get("sample_Desc") == "Bunker U#01" or single_data.get("sample_Desc") == "Bunker U#02":
+    #                             # console_logger.debug(single_data["sample_Desc"])
+    #                             sample_list_data = []
+    #                             for final_single_data in single_data.get("sample_Parameters", []):
+    #                                 bunker_sample_para = {
+    #                                     "sample_details_id": final_single_data.get("sample_Details_Id"),
+    #                                     "parameters_id": final_single_data.get("parameters_Id"),
+    #                                     "parameter_name": final_single_data.get("parameter_Name"),
+    #                                     "unit_val": final_single_data.get("unit_Val"),
+    #                                     "test_method": final_single_data.get("test_Method"),
+    #                                     "val1": final_single_data.get("val1"),
+    #                                     "parameter_type": final_single_data.get("parameter_Type"),
+    #                                 }
+    #                                 sample_list_data.append(bunker_sample_para)
+
+    #                             bunkerData = BunkerData(
+    #                                 sample_details_id=single_data.get("sample_Details_Id"),
+    #                                 work_order_id=single_data.get("work_Order_Id"),
+    #                                 test_report_no=single_data.get("test_Report_No"),
+    #                                 ulr_no = single_data.get("ulrNo"),
+    #                                 test_report_date=single_data.get("test_Report_Date"),
+    #                                 sample_id_no=single_data.get("sample_Id_No"),
+    #                                 sample_desc=single_data.get("sample_Desc"),
+    #                                 # rake_no=single_data.get("rake_No"),
+    #                                 # rrNo=single_data.get("rrNo"),
+    #                                 rR_Qty=single_data.get("rR_Qty"),
+    #                                 supplier=single_data.get("supplier"),
+    #                                 received_condition=single_data.get("received_Condition"),
+    #                                 from_sample_condition_date=single_data.get("from_Sample_Collection_Date"),
+    #                                 to_sample_condition_date=single_data.get("to_Sample_Collection_Date"),
+    #                                 sample_received_date=single_data.get("sample_Received_Date"),
+    #                                 sample_date=single_data.get("sample_Date"),
+    #                                 analysis_date=single_data.get("analysis_Date"),
+    #                                 sample_qty=single_data.get("sample_Qty"),
+    #                                 # method_reference=single_data.get("method_Reference"),
+    #                                 humidity=single_data.get("humidity"),
+    #                                 test_temp=single_data.get("test_Temp"),
+    #                                 sample_parameters=sample_list_data,
+    #                             )
+    #                             bunkerData.save()
+    #             return "success"
+    #         except requests.exceptions.Timeout:
+    #             console_logger.debug("Request timed out!")
+    #         except requests.exceptions.ConnectionError:
+    #             console_logger.debug("Connection error")
+
+    #     except Exception as e:
+    #         success = False
+    #         console_logger.debug("----- Coal Testing Error -----",e)
+    #         exc_type, exc_obj, exc_tb = sys.exc_info()
+    #         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+    #         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+    #         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+    #         success = e
+
+
+    def get_val_from_sample_params(self, params, param_type):
+        try:
+            for param in params:
+                if param['parameter_Type'] == param_type:
+                    return float(param['val1'])
+            return None
+        except Exception as e:
+            success = False
+            console_logger.debug("----- Coal Testing Error -----",e)
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+            console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            success = e
+
+    def convert_to_float(self, value):
+        try:
+            # Sanitize the string by replacing invalid patterns like multiple dots
+            sanitized_value = value.replace('..', '.')
+            
+            # Attempt to convert to float
+            return float(sanitized_value)
+        except (ValueError, AttributeError):
+            # Handle invalid conversion (return None or log the error)
+            return None
 
     def fetchcoalBunkerData(self, start_date, end_date):
         try:
@@ -83,54 +210,93 @@ class DataExecutions:
                 headers = {}
 
                 response = requests.request("GET", url, headers=headers, data=payload)
-                console_logger.debug(response.status_code)
+                # console_logger.debug(response.status_code)
                 data = response.json()
+                # console_logger.debug(len(data["responseData"]))
+                # console_logger.debug(data["responseData"])
                 if response.status_code == 200:
                     sample_list_data = []
                     for single_data in data["responseData"]:
                         try:
-                            fetchBunkerData = BunkerData.objects.get(sample_details_id=single_data.get("sample_Details_Id"))
+                            console_logger.debug(single_data.get("sample_Desc"))
+                            # if single_data.get("sample_Desc") in ["Bunker U#01", "Bunker U#02", "BUNKER U#01", "BUNKER U#02"]:
+                            if "bunker" in single_data.get("sample_Desc").strip().lower():
+                                sample_date = single_data.get("sample_Date", "").strip()
+                                
+                                # Check if the sample_Date is not empty and has valid length (> 0)
+                                if len(sample_date) > 0:
+                                    # Further processing of sample_Date
+                                    
+                                    if len(sample_date) == 19:  # If date contains time
+                                        new_date = sample_date.split(' ')[0]
+                                    else:
+                                        if '.' in sample_date:  # If the date uses '.' as a delimiter
+                                            new_date = datetime.datetime.strptime(sample_date, "%d.%m.%Y").strftime("%d/%m/%Y")
+                                        elif '/' in sample_date:  # If the date uses '/' as a delimiter
+                                            new_date = datetime.datetime.strptime(sample_date, "%d/%m/%Y").strftime("%d/%m/%Y")
+                                        else:
+                                            new_date = sample_date
+                                    
+                                    # Fetch data or insert new record into the database
+                                    fetchBunkerData = BunkerQualityAnalysis.objects.get(sample_date=datetime.datetime.strptime(new_date, "%d/%m/%Y"), unit_no=int(single_data["sample_Desc"].split("#")[1]))
+                                    fetchBunkerData.ulr = single_data.get("ulrNo") if single_data.get("ulrNo") else fetchBunkerData.ulr
+                                    fetchBunkerData.certificate_no = single_data.get("sample_Id_No") if single_data.get("sample_Id_No") else fetchBunkerData.certificate_no
+                                    fetchBunkerData.test_report_date = single_data.get("test_Report_Date") if single_data.get("test_Report_Date") else fetchBunkerData.test_report_date
+                                    fetchBunkerData.analysis_date = single_data.get("analysis_Date") if single_data.get("analysis_Date") else fetchBunkerData.analysis_date
+                                    fetchBunkerData.bunkered_qty = float(single_data.get("sample_Qty")) if single_data.get("sample_Qty") else fetchBunkerData.bunkered_qty
+                                    # fetchBunkerData.sample_name = single_data.get("sample_Desc").split(' ')[0] if single_data.get("sample_Desc") else fetchBunkerData.sample_name
+                                    fetchBunkerData.sample_name = "Bunker"
+                                    fetchBunkerData.lab_temp = self.convert_to_float(single_data.get("test_Temp")) if single_data.get("test_Temp") else fetchBunkerData.lab_temp
+                                    fetchBunkerData.lab_rh = float(single_data.get("humidity")) if single_data.get("humidity") else fetchBunkerData.lab_rh
+                                    # Continue processing other fields...
+                                    fetchBunkerData.save()
+                                else:
+                                    console_logger.debug("sample_Date is missing or empty, skipping DB operation.")
                         except DoesNotExist as e:
-                            if single_data.get("sample_Desc") == "Bunker U#01" or single_data.get("sample_Desc") == "Bunker U#02":
-                                # console_logger.debug(single_data["sample_Desc"])
-                                sample_list_data = []
-                                for final_single_data in single_data.get("sample_Parameters", []):
-                                    bunker_sample_para = {
-                                        "sample_details_id": final_single_data.get("sample_Details_Id"),
-                                        "parameters_id": final_single_data.get("parameters_Id"),
-                                        "parameter_name": final_single_data.get("parameter_Name"),
-                                        "unit_val": final_single_data.get("unit_Val"),
-                                        "test_method": final_single_data.get("test_Method"),
-                                        "val1": final_single_data.get("val1"),
-                                        "parameter_type": final_single_data.get("parameter_Type"),
-                                    }
-                                    sample_list_data.append(bunker_sample_para)
+                            console_logger.debug(single_data.get("sample_Desc"))
+                            # Handle DoesNotExist and proceed similarly
+                            # if single_data.get("sample_Desc") in ["Bunker U#01", "Bunker U#02", "BUNKER U#01", "BUNKER U#02"]:
+                            if "bunker" in single_data.get("sample_Desc").strip().lower():
+                                sample_date = single_data.get("sample_Date", "").strip()
+                                
+                                if len(sample_date) > 0:  # Check if sample_Date exists and is not empty
+                                    if len(sample_date) == 19:
+                                        new_date = sample_date.split(' ')[0]
+                                    else:
+                                        if '.' in sample_date:  # Handle dot delimiter
+                                            new_date = datetime.datetime.strptime(sample_date, "%d.%m.%Y").strftime("%d/%m/%Y")
+                                        elif '/' in sample_date:  # Handle slash delimiter
+                                            new_date = datetime.datetime.strptime(sample_date, "%d/%m/%Y").strftime("%d/%m/%Y")
+                                        else:
+                                            new_date = sample_date
+                                    
+                                    insertBunkerQualityAnalysis = BunkerQualityAnalysis(
+                                        slno=BunkerQualityAnalysis.objects.count() + 1,
+                                        sample_date=datetime.datetime.strptime(new_date, "%d/%m/%Y") if single_data.get("sample_Date") else None,
+                                        ulr=single_data.get("ulrNo") if single_data.get("ulrNo") else None,
+                                        certificate_no=single_data.get("sample_Id_No") if single_data.get("sample_Id_No") else None,
+                                        test_report_date=single_data.get("test_Report_Date") if single_data.get("test_Report_Date") else None,
+                                        unit_no=int(single_data.get("sample_Desc").split("#")[1]) if single_data.get("sample_Desc") else None,
+                                        analysis_date=single_data.get("analysis_Date") if single_data.get("analysis_Date") else None,
+                                        bunkered_qty=single_data.get("sample_Qty") if single_data.get("sample_Qty") else None,
+                                        # sample_name=single_data.get("sample_Desc").split(' ')[0] if single_data.get("sample_Desc") else None,
+                                        sample_name="Bunker",
+                                        lab_temp=self.convert_to_float(single_data.get("test_Temp")) if single_data.get("test_Temp") else None,
+                                        lab_rh=single_data.get("humidity") if single_data.get("humidity") else None,
+                                        adb_im=self.get_val_from_sample_params(single_data['sample_Parameters'], "AirDryBasis_IM"),
+                                        adb_ash=self.get_val_from_sample_params(single_data['sample_Parameters'], "AirDryBasis_Ash"),
+                                        adb_vm=self.get_val_from_sample_params(single_data['sample_Parameters'], "AirDryBasis_VM"),
+                                        adb_gcv=self.get_val_from_sample_params(single_data['sample_Parameters'], "AirDryBasis_GCV"),
+                                        arb_tm=self.get_val_from_sample_params(single_data['sample_Parameters'], "ReceivedBasis_TM"),
+                                        arb_vm=self.get_val_from_sample_params(single_data['sample_Parameters'], "ReceivedBasis_VM"),
+                                        arb_ash=self.get_val_from_sample_params(single_data['sample_Parameters'], "ReceivedBasis_ASH"),
+                                        arb_fc=self.get_val_from_sample_params(single_data['sample_Parameters'], "ReceivedBasis_FC"),
+                                        arb_gcv=self.get_val_from_sample_params(single_data['sample_Parameters'], "ReceivedBasis_GCV"),
+                                    )
+                                    insertBunkerQualityAnalysis.save()
+                                else:
+                                    console_logger.debug("sample_Date is missing or empty, skipping DB operation.")
 
-                                bunkerData = BunkerData(
-                                    sample_details_id=single_data.get("sample_Details_Id"),
-                                    work_order_id=single_data.get("work_Order_Id"),
-                                    test_report_no=single_data.get("test_Report_No"),
-                                    ulr_no = single_data.get("ulrNo"),
-                                    test_report_date=single_data.get("test_Report_Date"),
-                                    sample_id_no=single_data.get("sample_Id_No"),
-                                    sample_desc=single_data.get("sample_Desc"),
-                                    # rake_no=single_data.get("rake_No"),
-                                    # rrNo=single_data.get("rrNo"),
-                                    rR_Qty=single_data.get("rR_Qty"),
-                                    supplier=single_data.get("supplier"),
-                                    received_condition=single_data.get("received_Condition"),
-                                    from_sample_condition_date=single_data.get("from_Sample_Collection_Date"),
-                                    to_sample_condition_date=single_data.get("to_Sample_Collection_Date"),
-                                    sample_received_date=single_data.get("sample_Received_Date"),
-                                    sample_date=single_data.get("sample_Date"),
-                                    analysis_date=single_data.get("analysis_Date"),
-                                    sample_qty=single_data.get("sample_Qty"),
-                                    # method_reference=single_data.get("method_Reference"),
-                                    humidity=single_data.get("humidity"),
-                                    test_temp=single_data.get("test_Temp"),
-                                    sample_parameters=sample_list_data,
-                                )
-                                bunkerData.save()
                 return "success"
             except requests.exceptions.Timeout:
                 console_logger.debug("Request timed out!")
@@ -146,6 +312,295 @@ class DataExecutions:
             console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
             success = e
 
+
+    # def fetchcoalBunkerDbData(self, currentPage, perPage, search_text, start_timestamp, end_timestamp, month_date, type):
+    #     try:
+    #         result = {        
+    #             "labels": [],
+    #             "datasets": [],
+    #             "total" : 0,
+    #             "page_size": 15
+    #         }
+    #         if type and type == "display":
+    #             data = Q()
+    #             page_no = 1
+    #             page_len = result["page_size"]
+
+    #             if currentPage:
+    #                 page_no = currentPage
+
+    #             if perPage:
+    #                 page_len = perPage
+    #                 result["page_size"] = perPage
+
+    #             offset = (page_no - 1) * page_len
+
+    #             # based on condition for timestamp playing with & and | 
+    #             if start_timestamp:
+    #                 start_date = self.convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+    #                 data &= Q(created_at__gte = start_date)
+
+    #             if end_timestamp:
+    #                 end_date = self.convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
+    #                 data &= Q(created_at__lte = end_date)
+
+    #             if month_date:
+    #                 start_date = f'{month_date}-01'
+    #                 startd_date=datetime.datetime.strptime(start_date,"%Y-%m-%d")
+    #                 end_date = startd_date + relativedelta(day=31)
+    #                 data &= Q(created_at__gte = startd_date)
+    #                 data &= Q(created_at__lte = end_date)
+
+    #             # if search_text:
+    #             #     if search_text.isdigit():
+    #             #         # data &= Q(rrNo__icontains=search_text) | Q(rake_no__icontains=search_text) | Q(work_order_id__icontains=search_text) | Q(sample_details_id__icontains=search_text)
+    #             #         data &= Q(sample_details_id__icontains=search_text) | Q(rrNo__icontains=search_text)
+    #             #     else:
+    #             #         data &= Q(sample_desc__icontains=search_text)
+
+    #             if search_text:
+    #                 if search_text.isdigit():
+    #                     data &= Q(sample_details_id__icontains=search_text) | Q(rrNo__icontains=search_text)
+    #                 else:
+    #                     data &= Q(sample_desc__icontains=search_text) | Q(ulr_no__icontains=search_text)
+
+    #             # console_logger.debug(data)
+
+    #             # listData = []
+    #             # logs = (
+    #             #     BunkerData.objects(data)
+    #             #     .order_by("-created_at")
+    #             #     .skip(offset)
+    #             #     .limit(page_len)
+    #             # )
+    #             logs = (
+    #                 BunkerQualityAnalysis.objects(data)
+    #                 .order_by("-created_at")
+    #                 .skip(offset)
+    #                 .limit(page_len)
+    #             )   
+    #             if any(logs):
+    #                 for log in logs:
+    #                     console_logger.debug(log)
+    #                     # result["labels"] = list(log.simplepayload().keys())
+    #                     result["labels"] = [
+    #                         "sample_details_id",
+    #                         "work_order_id",
+    #                         "test_report_no",
+    #                         "ulr_no",
+    #                         "test_report_date",
+    #                         "sample_id_no",
+    #                         "sample_desc",
+    #                         "rR_Qty",
+    #                         "supplier",
+    #                         "received_condition",
+    #                         "from_sample_condition_date",
+    #                         "to_sample_condition_date",
+    #                         "sample_received_date",
+    #                         "sample_date",
+    #                         "analysis_date",
+    #                         "sample_qty",
+    #                         "humidity",
+    #                         "test_temp",
+    #                         "created_at",
+    #                         "Inherent_Moisture_(Adb)",
+    #                         "Ash_(Adb)",
+    #                         "Volatile_Matter_(Adb)",
+    #                         "Gross_Calorific_Value_(Adb)",
+    #                         "Total_Moisture_(Arb)",
+    #                         "Volatile_Matter_(Arb)",
+    #                         "Ash_(Arb)",
+    #                         "Fixed_Carbon_(Arb)",
+    #                         "Gross_Calorific_Value_(Arb)",
+    #                     ]
+    #                     updated_payload = log.simplepayload()
+    #                     for single_under_log in log["sample_parameters"]:
+    #                         # console_logger.debug(single_under_log.parameter_type)
+    #                         # console_logger.debug(single_under_log.val1)
+    #                         if single_under_log.parameter_type == "AirDryBasis_IM":
+    #                             updated_payload.update({"Inherent_Moisture_(Adb)": single_under_log.val1})
+    #                         if single_under_log.parameter_type == "AirDryBasis_Ash":
+    #                             updated_payload.update({"Ash_(Adb)": single_under_log.val1})
+    #                         if single_under_log.parameter_type == "AirDryBasis_VM":
+    #                             updated_payload.update({"Volatile_Matter_(Adb)": single_under_log.val1})
+    #                         if single_under_log.parameter_type == "AirDryBasis_GCV":
+    #                             updated_payload.update({"Gross_Calorific_Value_(Adb)": single_under_log.val1})
+    #                         if single_under_log.parameter_type == "ReceivedBasis_TM":
+    #                             updated_payload.update({"Total_Moisture_(Arb)": single_under_log.val1})
+    #                         if single_under_log.parameter_type == "ReceivedBasis_VM":
+    #                             updated_payload.update({"Volatile_Matter_(Arb)": single_under_log.val1})
+    #                         if single_under_log.parameter_type == "ReceivedBasis_ASH":
+    #                             updated_payload.update({"Ash_(Arb)": single_under_log.val1})
+    #                         if single_under_log.parameter_type == "ReceivedBasis_FC":
+    #                             updated_payload.update({"Fixed_Carbon_(Arb)": single_under_log.val1})
+    #                         if single_under_log.parameter_type == "ReceivedBasis_GCV":
+    #                             updated_payload.update({"Gross_Calorific_Value_(Arb)": single_under_log.val1})
+    #                     result["datasets"].append(updated_payload)
+    #             result["total"]= len(BunkerData.objects(data))
+    #             return result
+    #         elif type and type == "download":
+    #             del type
+
+    #             file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+    #             target_directory = f"static_server/gmr_ai/{file}"
+    #             os.umask(0)
+    #             os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+    #             # Constructing the base for query
+    #             data = Q()
+
+    #             if start_timestamp:
+    #                 start_date = self.convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+    #                 data &= Q(created_at__gte = start_date)
+
+    #             if end_timestamp:
+    #                 end_date = self.convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
+    #                 data &= Q(created_at__lte = end_date)
+                
+    #             if search_text:
+    #                 if search_text.isdigit():
+    #                     data &= Q(arv_cum_do_number__icontains = search_text) | Q(delivery_challan_number__icontains = search_text)
+    #                 else:
+    #                     data &= Q(vehicle_number__icontains = search_text)
+
+    #             usecase_data = BunkerData.objects(data).order_by("-created_at")
+    #             count = len(usecase_data)
+    #             path = None
+    #             if usecase_data:
+    #                 try:
+    #                     path = os.path.join(
+    #                         "static_server",
+    #                         "gmr_ai",
+    #                         file,
+    #                         "Bunker_Report_{}.xlsx".format(
+    #                             datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+    #                         ),
+    #                     )
+    #                     filename = os.path.join(os.getcwd(), path)
+    #                     workbook = xlsxwriter.Workbook(filename)
+    #                     workbook.use_zip64()
+    #                     cell_format2 = workbook.add_format()
+    #                     cell_format2.set_bold()
+    #                     cell_format2.set_font_size(10)
+    #                     cell_format2.set_align("center")
+    #                     cell_format2.set_align("vjustify")
+
+    #                     worksheet = workbook.add_worksheet()
+    #                     worksheet.set_column("A:AZ", 20)
+    #                     worksheet.set_default_row(50)
+    #                     cell_format = workbook.add_format()
+    #                     cell_format.set_font_size(10)
+    #                     cell_format.set_align("center")
+    #                     cell_format.set_align("vcenter")
+
+    #                     headers = [
+    #                         "Sr.No",
+    #                         "Sample Details Id",
+    #                         "Work Order Id",
+    #                         "Test Report No",
+    #                         "ULR No",
+    #                         "Test Report Date",
+    #                         "Sample ID No",
+    #                         "Sample Desc",
+    #                         "RR Qty",
+    #                         "Supplier",
+    #                         "Received Condition",
+    #                         "From Sample Condition Date",
+    #                         "To Sample Condition Date",
+    #                         "Sample Received Date",
+    #                         "Sample Date",
+    #                         "Analysis Date",
+    #                         "Sample Qty",
+    #                         "Humidity",
+    #                         "Test Temp",
+    #                         "Inherent Moisture (Adb)",
+    #                         "Ash (Adb)",
+    #                         "Volatile Matter (Adb)",
+    #                         "Gross Calorific Value (Adb)",
+    #                         "Total Moisture (Arb)",
+    #                         "Volatile Matter (Arb)",
+    #                         "Ash (Arb)",
+    #                         "Fixed Carbon (Arb)",
+    #                         "Gross Calorific Value (Arb)",
+    #                         "Created At"
+    #                     ]
+                    
+    #                     for index, header in enumerate(headers):
+    #                         worksheet.write(0, index, header, cell_format2)
+
+    #                     for row, query in enumerate(usecase_data, start=1):
+    #                         result = query.payload()
+    #                         worksheet.write(row, 0, count, cell_format)     
+    #                         worksheet.write(row, 1, str(result["sample_details_id"]))                      
+    #                         worksheet.write(row, 2, str(result["work_order_id"]))                      
+    #                         worksheet.write(row, 3, str(result["test_report_no"]))                      
+    #                         worksheet.write(row, 4, str(result["ulr_no"]))                      
+    #                         worksheet.write(row, 5, str(result["test_report_date"]))                      
+    #                         worksheet.write(row, 6, str(result["sample_id_no"]))                      
+    #                         worksheet.write(row, 7, str(result["sample_desc"]))                  
+    #                         worksheet.write(row, 8, str(result["rR_Qty"]))                      
+    #                         worksheet.write(row, 9, str(result["supplier"]))                      
+    #                         worksheet.write(row, 10, str(result["received_condition"]))                      
+    #                         worksheet.write(row, 11, str(result["from_sample_condition_date"]))                      
+    #                         worksheet.write(row, 12, str(result["to_sample_condition_date"]))                      
+    #                         worksheet.write(row, 13, str(result["sample_received_date"]))                      
+    #                         worksheet.write(row, 14, str(result["sample_date"]))                      
+    #                         worksheet.write(row, 15, str(result["analysis_date"]))                      
+    #                         worksheet.write(row, 16, str(result["sample_qty"]))                     
+    #                         worksheet.write(row, 17, str(result["humidity"]))                      
+    #                         worksheet.write(row, 18, str(result["test_temp"]))
+    #                         for single_under_log in result["sample_parameters"]:
+    #                             console_logger.debug(single_under_log)
+    #                             if single_under_log.get("parameter_type") == "AirDryBasis_IM":
+    #                                 worksheet.write(row, 19, single_under_log.get("val1"))
+    #                             if single_under_log.get("parameter_type") == "AirDryBasis_Ash":
+    #                                 worksheet.write(row, 20, single_under_log.get("val1"))
+    #                             if single_under_log.get("parameter_type") == "AirDryBasis_VM":
+    #                                 worksheet.write(row, 21, single_under_log.get("val1"))
+    #                             if single_under_log.get("parameter_type") == "AirDryBasis_GCV":
+    #                                 worksheet.write(row, 22, single_under_log.get("val1"))
+    #                             if single_under_log.get("parameter_type") == "ReceivedBasis_TM":
+    #                                 worksheet.write(row, 23, single_under_log.get("val1"))
+    #                             if single_under_log.get("parameter_type") == "ReceivedBasis_VM":
+    #                                 worksheet.write(row, 24, single_under_log.get("val1"))
+    #                             if single_under_log.get("parameter_type") == "ReceivedBasis_ASH":
+    #                                 worksheet.write(row, 25, single_under_log.get("val1"))
+    #                             if single_under_log.get("parameter_type") == "ReceivedBasis_FC":
+    #                                 worksheet.write(row, 26, single_under_log.get("val1"))
+    #                             if single_under_log.get("parameter_type") == "ReceivedBasis_GCV":
+    #                                 worksheet.write(row, 27, single_under_log.get("val1"))  
+    #                         worksheet.write(row, 28, str(result["created_at"]))               
+                            
+    #                         count-=1
+                            
+    #                     workbook.close()
+
+    #                     return {
+    #                             "Type": "gmr_coal_bunker_download_event",
+    #                             "Datatype": "Report",
+    #                             "File_Path": path,
+    #                             }
+    #                 except Exception as e:
+    #                     console_logger.debug(e)
+    #                     exc_type, exc_obj, exc_tb = sys.exc_info()
+    #                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+    #                     console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+    #                     console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+    #             else:
+    #                 console_logger.error("No data found")
+    #                 return {
+    #                         "Type": "gmr_coal_bunker_download_event",
+    #                         "Datatype": "Report",
+    #                         "File_Path": path,
+    #                         }
+    #     except Exception as e:
+    #         success = False
+    #         console_logger.debug("----- Coal Bunker Error -----",e)
+    #         exc_type, exc_obj, exc_tb = sys.exc_info()
+    #         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+    #         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+    #         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+    #         success = e
 
     def fetchcoalBunkerDbData(self, currentPage, perPage, search_text, start_timestamp, end_timestamp, month_date, type):
         try:
@@ -201,35 +656,33 @@ class DataExecutions:
                 # console_logger.debug(data)
 
                 # listData = []
+                # logs = (
+                #     BunkerData.objects(data)
+                #     .order_by("-created_at")
+                #     .skip(offset)
+                #     .limit(page_len)
+                # )
                 logs = (
-                    BunkerData.objects(data)
+                    BunkerQualityAnalysis.objects(data)
                     .order_by("-created_at")
                     .skip(offset)
                     .limit(page_len)
                 )   
                 if any(logs):
                     for log in logs:
-                        # result["labels"] = list(log.simplepayload().keys())
+                        # console_logger.debug(log)
+                        # result["labels"] = list(log.payload().keys())
                         result["labels"] = [
-                            "sample_details_id",
-                            "work_order_id",
-                            "test_report_no",
-                            "ulr_no",
-                            "test_report_date",
-                            "sample_id_no",
-                            "sample_desc",
-                            "rR_Qty",
-                            "supplier",
-                            "received_condition",
-                            "from_sample_condition_date",
-                            "to_sample_condition_date",
-                            "sample_received_date",
+                            "srno",
+                            "ULR",
+                            "certificate_no",
+                            "unit_no",
                             "sample_date",
                             "analysis_date",
-                            "sample_qty",
+                            "bunkered_qty",
+                            "sample_name",
                             "humidity",
                             "test_temp",
-                            "created_at",
                             "Inherent_Moisture_(Adb)",
                             "Ash_(Adb)",
                             "Volatile_Matter_(Adb)",
@@ -239,29 +692,33 @@ class DataExecutions:
                             "Ash_(Arb)",
                             "Fixed_Carbon_(Arb)",
                             "Gross_Calorific_Value_(Arb)",
+                            "created_at",
                         ]
-                        updated_payload = log.simplepayload()
-                        for single_under_log in log["sample_parameters"]:
-                            # console_logger.debug(single_under_log.parameter_type)
-                            # console_logger.debug(single_under_log.val1)
-                            if single_under_log.parameter_type == "AirDryBasis_IM":
-                                updated_payload.update({"Inherent_Moisture_(Adb)": single_under_log.val1})
-                            if single_under_log.parameter_type == "AirDryBasis_Ash":
-                                updated_payload.update({"Ash_(Adb)": single_under_log.val1})
-                            if single_under_log.parameter_type == "AirDryBasis_VM":
-                                updated_payload.update({"Volatile_Matter_(Adb)": single_under_log.val1})
-                            if single_under_log.parameter_type == "AirDryBasis_GCV":
-                                updated_payload.update({"Gross_Calorific_Value_(Adb)": single_under_log.val1})
-                            if single_under_log.parameter_type == "ReceivedBasis_TM":
-                                updated_payload.update({"Total_Moisture_(Arb)": single_under_log.val1})
-                            if single_under_log.parameter_type == "ReceivedBasis_VM":
-                                updated_payload.update({"Volatile_Matter_(Arb)": single_under_log.val1})
-                            if single_under_log.parameter_type == "ReceivedBasis_ASH":
-                                updated_payload.update({"Ash_(Arb)": single_under_log.val1})
-                            if single_under_log.parameter_type == "ReceivedBasis_FC":
-                                updated_payload.update({"Fixed_Carbon_(Arb)": single_under_log.val1})
-                            if single_under_log.parameter_type == "ReceivedBasis_GCV":
-                                updated_payload.update({"Gross_Calorific_Value_(Arb)": single_under_log.val1})
+                        updated_payload = log.payload()
+                        updated_payload["srno"] = updated_payload.pop("slno")
+                        updated_payload["ULR"] = updated_payload.pop("ulr")
+                        if "adb_im" in log:
+                            updated_payload["Inherent_Moisture_(Adb)"] = updated_payload.pop("adb_im")
+                        if "adb_ash" in log:
+                            updated_payload["Ash_(Adb)"] = updated_payload.pop("adb_ash")
+                        if "adb_vm" in log:
+                            updated_payload["Volatile_Matter_(Adb)"] = updated_payload.pop("adb_vm")
+                        if "adb_gcv" in log:
+                            updated_payload["Gross_Calorific_Value_(Adb)"] = updated_payload.pop("adb_gcv")
+                        if "arb_tm" in log:
+                            updated_payload["Total_Moisture_(Arb)"] = updated_payload.pop("arb_tm")
+                        if "arb_vm" in log:
+                            updated_payload["Volatile_Matter_(Arb)"] = updated_payload.pop("arb_vm")
+                        if "arb_ash" in log:
+                            updated_payload["Ash_(Arb)"] = updated_payload.pop("arb_ash")
+                        if "arb_fc" in log:
+                            updated_payload["Fixed_Carbon_(Arb)"] = updated_payload.pop("arb_fc")
+                        if "arb_gcv" in log:
+                            updated_payload["Gross_Calorific_Value_(Arb)"] = updated_payload.pop("arb_gcv")
+                        if "lab_rh" in log:
+                            updated_payload["humidity"] = updated_payload.pop("lab_rh")
+                        if "lab_temp" in log:
+                            updated_payload["test_temp"] = updated_payload.pop("lab_temp")
                         result["datasets"].append(updated_payload)
                 result["total"]= len(BunkerData.objects(data))
                 return result
@@ -290,9 +747,10 @@ class DataExecutions:
                     else:
                         data &= Q(vehicle_number__icontains = search_text)
 
-                usecase_data = BunkerData.objects(data).order_by("-created_at")
+                usecase_data = BunkerQualityAnalysis.objects(data).order_by("-created_at")
                 count = len(usecase_data)
                 path = None
+                logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
                 if usecase_data:
                     try:
                         path = os.path.join(
@@ -310,7 +768,20 @@ class DataExecutions:
                         cell_format2.set_bold()
                         cell_format2.set_font_size(10)
                         cell_format2.set_align("center")
-                        cell_format2.set_align("vjustify")
+                        cell_format2.set_align("vcenter")
+                        cell_format2.set_text_wrap(True)
+                        cell_format2.set_border(1)
+
+                        header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                        date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+                        report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+
+                        header_format.set_align("vcenter")
+                        date_format.set_align("vcenter")
+                        report_name_format.set_align("vcenter")
+                        header_format.set_border(1)
+                        date_format.set_border(1)
+                        report_name_format.set_border(1)
 
                         worksheet = workbook.add_worksheet()
                         worksheet.set_column("A:AZ", 20)
@@ -319,25 +790,29 @@ class DataExecutions:
                         cell_format.set_font_size(10)
                         cell_format.set_align("center")
                         cell_format.set_align("vcenter")
+                        cell_format.set_text_wrap(True)
+                        cell_format.set_border(1)
+
+
+                        worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                        # Merge cells for the main header and place it in the center
+                        main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                        worksheet.merge_range("A1:T1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                        
+                        # Write the current date on the left side (A2)
+                        worksheet.write("A2", f"Date: {datetime.datetime.now().strftime('%d-%m-%Y')}", date_format)
+                        worksheet.merge_range("C2:T2", f"Bunker Quality Analysis", report_name_format)
 
                         headers = [
                             "Sr.No",
-                            "Sample Details Id",
-                            "Work Order Id",
-                            "Test Report No",
-                            "ULR No",
-                            "Test Report Date",
-                            "Sample ID No",
-                            "Sample Desc",
-                            "RR Qty",
-                            "Supplier",
-                            "Received Condition",
-                            "From Sample Condition Date",
-                            "To Sample Condition Date",
-                            "Sample Received Date",
+                            "ULR",
+                            "Certificate No",
+                            "Unit No",
                             "Sample Date",
                             "Analysis Date",
-                            "Sample Qty",
+                            "Bunkered Qty",
+                            "Sample Name",
                             "Humidity",
                             "Test Temp",
                             "Inherent Moisture (Adb)",
@@ -349,54 +824,34 @@ class DataExecutions:
                             "Ash (Arb)",
                             "Fixed Carbon (Arb)",
                             "Gross Calorific Value (Arb)",
-                            "Created At"
+                            "Created At",
                         ]
                     
                         for index, header in enumerate(headers):
-                            worksheet.write(0, index, header, cell_format2)
+                            worksheet.write(2, index, header, cell_format2)
 
-                        for row, query in enumerate(usecase_data, start=1):
+                        for row, query in enumerate(usecase_data, start=3):
                             result = query.payload()
                             worksheet.write(row, 0, count, cell_format)     
-                            worksheet.write(row, 1, str(result["sample_details_id"]))                      
-                            worksheet.write(row, 2, str(result["work_order_id"]))                      
-                            worksheet.write(row, 3, str(result["test_report_no"]))                      
-                            worksheet.write(row, 4, str(result["ulr_no"]))                      
-                            worksheet.write(row, 5, str(result["test_report_date"]))                      
-                            worksheet.write(row, 6, str(result["sample_id_no"]))                      
-                            worksheet.write(row, 7, str(result["sample_desc"]))                  
-                            worksheet.write(row, 8, str(result["rR_Qty"]))                      
-                            worksheet.write(row, 9, str(result["supplier"]))                      
-                            worksheet.write(row, 10, str(result["received_condition"]))                      
-                            worksheet.write(row, 11, str(result["from_sample_condition_date"]))                      
-                            worksheet.write(row, 12, str(result["to_sample_condition_date"]))                      
-                            worksheet.write(row, 13, str(result["sample_received_date"]))                      
-                            worksheet.write(row, 14, str(result["sample_date"]))                      
-                            worksheet.write(row, 15, str(result["analysis_date"]))                      
-                            worksheet.write(row, 16, str(result["sample_qty"]))                     
-                            worksheet.write(row, 17, str(result["humidity"]))                      
-                            worksheet.write(row, 18, str(result["test_temp"]))
-                            for single_under_log in result["sample_parameters"]:
-                                console_logger.debug(single_under_log)
-                                if single_under_log.get("parameter_type") == "AirDryBasis_IM":
-                                    worksheet.write(row, 19, single_under_log.get("val1"))
-                                if single_under_log.get("parameter_type") == "AirDryBasis_Ash":
-                                    worksheet.write(row, 20, single_under_log.get("val1"))
-                                if single_under_log.get("parameter_type") == "AirDryBasis_VM":
-                                    worksheet.write(row, 21, single_under_log.get("val1"))
-                                if single_under_log.get("parameter_type") == "AirDryBasis_GCV":
-                                    worksheet.write(row, 22, single_under_log.get("val1"))
-                                if single_under_log.get("parameter_type") == "ReceivedBasis_TM":
-                                    worksheet.write(row, 23, single_under_log.get("val1"))
-                                if single_under_log.get("parameter_type") == "ReceivedBasis_VM":
-                                    worksheet.write(row, 24, single_under_log.get("val1"))
-                                if single_under_log.get("parameter_type") == "ReceivedBasis_ASH":
-                                    worksheet.write(row, 25, single_under_log.get("val1"))
-                                if single_under_log.get("parameter_type") == "ReceivedBasis_FC":
-                                    worksheet.write(row, 26, single_under_log.get("val1"))
-                                if single_under_log.get("parameter_type") == "ReceivedBasis_GCV":
-                                    worksheet.write(row, 27, single_under_log.get("val1"))  
-                            worksheet.write(row, 28, str(result["created_at"]))               
+                            worksheet.write(row, 1, str(result["ulr"]), cell_format)                      
+                            worksheet.write(row, 2, str(result["certificate_no"]), cell_format)                      
+                            worksheet.write(row, 3, str(result["unit_no"]), cell_format)                      
+                            worksheet.write(row, 4, str(result["sample_date"]), cell_format)                      
+                            worksheet.write(row, 5, str(result["analysis_date"]), cell_format)                      
+                            worksheet.write(row, 6, str(result["bunkered_qty"]), cell_format)                      
+                            worksheet.write(row, 7, str(result["sample_name"]), cell_format)                  
+                            worksheet.write(row, 8, str(result["lab_rh"]), cell_format)                      
+                            worksheet.write(row, 9, str(result["lab_temp"]), cell_format)                      
+                            worksheet.write(row, 10, str(result["adb_im"]), cell_format)                      
+                            worksheet.write(row, 11, str(result["adb_ash"]), cell_format)                      
+                            worksheet.write(row, 12, str(result["adb_vm"]), cell_format)                      
+                            worksheet.write(row, 13, str(result["adb_gcv"]), cell_format)                      
+                            worksheet.write(row, 14, str(result["arb_tm"]), cell_format)                      
+                            worksheet.write(row, 15, str(result["arb_vm"]), cell_format)                      
+                            worksheet.write(row, 16, str(result["arb_ash"]), cell_format)                     
+                            worksheet.write(row, 17, str(result["arb_fc"]), cell_format)                      
+                            worksheet.write(row, 18, str(result["arb_gcv"]), cell_format)
+                            worksheet.write(row, 19, str(result["created_at"]), cell_format)               
                             
                             count-=1
                             
@@ -467,25 +922,27 @@ class DataExecutions:
             if filter_type == "gwel":
                 if start_date:
                     start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M")
-                    data &= Q(created_at__gte = start_date)
+                    data &= Q(plant_analysis_date__gte = start_date)
 
                 if end_date:
                     end_date = datetime.datetime.strptime(end_date, "%Y-%m-%dT%H:%M")
-                    data &= Q(receive_date__lte = end_date)
+                    data &= Q(plant_analysis_date__lte = end_date)
                 
-                usecase_data = CoalTesting.objects(data).order_by("-created_at")
+                usecase_data = RecieptCoalQualityAnalysis.objects(data, mode="Road").order_by("-plant_analysis_date")
             else:
                 if start_date:
                     start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M")
-                    data &= Q(third_party_upload_date__gte = start_date)
+                    data &= Q(thirdparty_created_date__gte = start_date)
 
                 if end_date:
                     end_date = datetime.datetime.strptime(end_date, "%Y-%m-%dT%H:%M")
-                    data &= Q(third_party_upload_date__lte = end_date)
+                    data &= Q(thirdparty_created_date__lte = end_date)
                 
-                usecase_data = CoalTesting.objects(data).order_by("-third_party_upload_date")
+                # usecase_data = CoalTesting.objects(data).order_by("-third_party_upload_date")
+                usecase_data = RecieptCoalQualityAnalysis.objects(data, mode="Road").order_by("-third_party_upload_date")
             count = len(usecase_data)
             path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             if usecase_data:
                 try:
                     path = os.path.join(
@@ -501,7 +958,18 @@ class DataExecutions:
                     cell_format2.set_bold()
                     cell_format2.set_font_size(10)
                     cell_format2.set_align("center")
-                    cell_format2.set_align("vjustify")
+                    cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+                    cell_format2.set_border(1)
+
+
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+
+                    header_format.set_align("vcenter")
+                    date_format.set_align("vcenter")
+                    report_name_format.set_align("vcenter")
 
                     worksheet = workbook.add_worksheet()
                     worksheet.set_column("A:AZ", 20)
@@ -510,237 +978,319 @@ class DataExecutions:
                     cell_format.set_font_size(10)
                     cell_format.set_align("center")
                     cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+                    cell_format.set_border(1)
+
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range("A1:Y1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    console_logger.debug(end_date)
+                    # Write the current date on the left side (A2)
+                    worksheet.write("A2", f"Date: {end_date.strftime('%d-%m-%Y')}", date_format)
 
                     if filter_type == "gwel":
-                        headers = ["Sr.No",
+                        # worksheet.merge_range("C2:Y2", f"Report Name: GWEL Receipt Quality Analysis (Road)", report_name_format)
+                        worksheet.merge_range("C2:Y2", f"GWEL Receipt Quality Analysis (Road)", report_name_format)
+                        headers = [
+                                "Sr.No.",
+                                "Plant Certificate ID",
+                                "Sample No",
+                                "Do No",
+                                "Plant Sample Date",
+                                "Plant Preparation Date",
+                                "Plant Analysis Date",
+                                "Sample Qty",
                                 "Mine",
-                                "Lot No",
-                                "DO No",
-                                "DO Qty", 
-                                "Supplier",
-                                "Date", 
-                                "Time",
-                                "GWEL Total Moisture%", 
-                                "GWEL Inherent Moisture (Adb)%", 
-                                "GWEL Ash (Adb)%", 
-                                "GWEL Volatile Matter (Adb)%", 
-                                "GWEL Gross Calorific Value (Adb) Kcal/Kg", 
-                                "GWEL Ash (Arb)%", 
-                                "GWEL Volatile Matter (Arb)%", 
-                                "GWEL Fixed Carbon (Arb)%", 
-                                "GWEL Gross Calorific Value (Arb) Kcal/Kg",
-                                "GWEL Grade (Adb)",
+                                "Mine Grade",
+                                "Mode",
+                                "GWEL LAB TEMP",
+                                "GWEL LAB RH",
+                                "GWEL ARB TM",
+                                "GWEL ARB VM",
+                                "GWEL ARB ASH",
+                                "GWEL ARB FC",
+                                "GWEL ARB GCV",
+                                "GWEL ADB IM",
+                                "GWEL ADB VM",
+                                "GWEL ADB ASH",
+                                "GWEL ADB FC",
+                                "GWEL ADB GCV",
+                                "GWEL ULR ID",
+                                "GWEL GRADE"
                                 ]
                     elif filter_type == "third_party":
-                        headers = ["Sr.No",
-                                "Mine",
-                                "Lot No",
-                                "DO No",
-                                "DO Qty", 
-                                "Supplier", 
-                                "Date", 
-                                "Time",
-                                "Third Party Report No", 
-                                "Third Party Total Moisture%", 
-                                "Third Party Inherent Moisture (Adb)%", 
-                                "Third Party Ash (Adb)%", 
-                                "Third Party Volatile Matter (Adb)%", 
-                                "Third Party Gross Calorific Value (Adb) Kcal/Kg",  
-                                "Third Party Ash (Arb)%", 
-                                "Third Party Volatile Matter (Arb)%", 
-                                "Third Party Fixed Carbon (Arb)%", 
-                                "Third Party Gross Calorific Value (Arb) Kcal/Kg", 
-                                "Third Party Grade (Adb)",
+                        # worksheet.merge_range("C2:Y2", f"Report Name: ThirdParty Receipt Quality Analysis (Road)", report_name_format)
+                        worksheet.merge_range("C2:Y2", f"ThirdParty Receipt Quality Analysis (Road)", report_name_format)
+                        headers = [
+                                    "Sr.No.",
+                                    "Plant Certificate ID",
+                                    "Sample No",
+                                    "Do No",
+                                    "Plant Sample Date",
+                                    "Plant Preparation Date",
+                                    "Plant Analysis Date",
+                                    "Sample Qty",
+                                    "Mine",
+                                    "Mine Grade",
+                                    "Mode",
+                                    "THIRDPARTY Report Date",
+                                    "THIRDPARTY Reference No",
+                                    "THIRDPARTY Sample Date",
+                                    "THIRDPARTY ARB TM",
+                                    "THIRDPARTY ARB VM",
+                                    "THIRDPARTY ARB ASH",
+                                    "THIRDPARTY ARB FC",
+                                    "THIRDPARTY ARB GCV",
+                                    "THIRDPARTY ADB IM",
+                                    "THIRDPARTY ADB VM",
+                                    "THIRDPARTY ADB ASH",
+                                    "THIRDPARTY ADB FC",
+                                    "THIRDPARTY ADB GCV",
+                                    "THIRDPARTY GRADE"
                                     ]
                     elif filter_type == "all":
-                        headers = ["Sr.No",
+                        # worksheet.merge_range("C2:Y2", f"Report Name: Receipt Quality Analysis (Road)", report_name_format)
+                        worksheet.merge_range("C2:Y2", f"Receipt Quality Analysis (Road)", report_name_format)
+                        headers = [
+                                    "Sr.No.",
+                                    "Plant Certificate Id",
+                                    "Sample No",
+                                    "Do No",
+                                    "Plant Sample Date",
+                                    "Plant Preparation Date",
+                                    "Plant Analysis Date",
+                                    "Sample Qty",
                                     "Mine",
-                                    "Lot No",
-                                    "DO No",
-                                    "DO Qty", 
-                                    "Supplier",
-                                    "Date", 
-                                    "Time",
-                                    "GWEL Total Moisture%", 
-                                    "GWEL Inherent Moisture (Adb)%", 
-                                    "GWEL Ash (Adb)%", 
-                                    "GWEL Volatile Matter (Adb)%", 
-                                    "GWEL Gross Calorific Value (Adb) Kcal/Kg", 
-                                    "GWEL Ash (Arb)%", 
-                                    "GWEL Volatile Matter (Arb)%", 
-                                    "GWEL Fixed Carbon (Arb)%", 
-                                    "GWEL Gross Calorific Value (Arb) Kcal/Kg",
-                                    "GWEL Grade (Adb)",
-                                    "Third Party Report No", 
-                                    "Third Party Total Moisture%", 
-                                    "Third Party Inherent Moisture (Adb)%", 
-                                    "Third Party Ash (Adb)%", 
-                                    "Third Party Volatile Matter (Adb)%", 
-                                    "Third Party Gross Calorific Value (Adb) Kcal/Kg",  
-                                    "Third Party Ash (Arb)%", 
-                                    "Third Party Volatile Matter (Arb)%", 
-                                    "Third Party Fixed Carbon (Arb)%", 
-                                    "Third Party Gross Calorific Value (Arb) Kcal/Kg",
-                                    "Third Party Grade (Adb)",
+                                    "Mine Grade",
+                                    "Mode",
+                                    "GWEL Lab Temp",
+                                    "GWEL Lab RH",
+                                    "GWEL ARB TM",
+                                    "GWEL ARB VM",
+                                    "GWEL ARB ASH",
+                                    "GWEL ARB FC",
+                                    "GWEL ARB GCV",
+                                    "GWEL ADB IM",
+                                    "GWEL ADB VM",
+                                    "GWEL ADB ASH",
+                                    "GWEL ADB FC",
+                                    "GWEL ADB GCV",
+                                    "GWEL ULR ID",
+                                    "GWEL GRADE",
+                                    "THIRDPARTY REPORT DATE",
+                                    "THIRDPARTY REFERENCE NO",
+                                    "THIRDPARTY SAMPLE DATE",
+                                    "THIRDPARTY ARB TM",
+                                    "THIRDPARTY ARB VM",
+                                    "THIRDPARTY ARB ASH",
+                                    "THIRDPARTY ARB FC",
+                                    "THIRDPARTY ARB GCV",
+                                    "THIRDPARTY ADB IM",
+                                    "THIRDPARTY ADB VM",
+                                    "THIRDPARTY ADB Ash",
+                                    "THIRDPARTY ADB FC",
+                                    "THIRDPARTY ADB GCV",
+                                    "THIRRDPARTY GRADE",
                                     ]
                     else:
-                        headers = ["Sr.No",
+                        # worksheet.merge_range("C2:Y2", f"Report Name: Receipt Quality Analysis (Road)", report_name_format)
+                        worksheet.merge_range("C2:Y2", f"Receipt Quality Analysis (Road)", report_name_format)
+                        headers = [
+                                "Sr.No.",
+                                "Plant Certificate Id",
+                                "Sample No",
+                                "Do No",
+                                "Plant Sample Date",
+                                "Plant Preparation Date",
+                                "Plant Analysis Date",
+                                "Sample Qty",
                                 "Mine",
-                                "Lot No",
-                                "DO No",
-                                "DO Qty", 
-                                "Supplier", 
-                                "Date", 
-                                "Time"]
+                                "Mine Grade",
+                                "Mode"
+                            ]
 
                     for index, header in enumerate(headers):
-                        worksheet.write(0, index, header, cell_format2)
+                        worksheet.write(2, index, header, cell_format2)
 
                     fetchCoalGrades = CoalGrades.objects()
 
-                    for row, query in enumerate(usecase_data,start=1):
+                    for row, query in enumerate(usecase_data, start=3):
                         result = query.payload()
                         worksheet.write(row, 0, count, cell_format)
                         if filter_type == "gwel":
-                            worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                            worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
-                            worksheet.write(row, 3, str(result["DO_No"]), cell_format)
-                            worksheet.write(row, 4, str(result["DO_Qty"]), cell_format)
-                            worksheet.write(row, 5, str(result["Supplier"]), cell_format)
-                            worksheet.write(row, 6, str(result["Date"]), cell_format)
-                            worksheet.write(row, 7, str(result["Time"]), cell_format)
-                            worksheet.write(row, 8, str(result["GWEL_Total_Moisture_%"]), cell_format)
-                            worksheet.write(row, 9, str(result["GWEL_Inherent_Moisture_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 10, str(result["GWEL_Ash_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 11, str(result["GWEL_Volatile_Matter_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 12, str(result["GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            worksheet.write(row, 13, str(result["GWEL_Ash_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 14, str(result["GWEL_Volatile_Matter_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 15, str(result["GWEL_Fixed_Carbon_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 16, str(result["GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                            worksheet.write(row, 1, str(result["plant_certificate_id"]), cell_format)
+                            worksheet.write(row, 2, str(result["sample_no"]), cell_format)
+                            worksheet.write(row, 3, str(result["do_no"]), cell_format)
+                            worksheet.write(row, 4, str(result["GWEL_sample_date"]), cell_format)
+                            worksheet.write(row, 5, str(result["GWEL_preparation_date"]), cell_format)
+                            worksheet.write(row, 6, str(result["GWEL_analysis_date"]), cell_format)
+                            worksheet.write(row, 7, str(result["sample_qty"]), cell_format)
+                            worksheet.write(row, 8, str(result["mine"]), cell_format)
+                            worksheet.write(row, 9, str(result["mine_grade"]), cell_format)
+                            worksheet.write(row, 10, str(result["mode"]), cell_format)
+                            worksheet.write(row, 11, str(result["GWEL_LAB_TEMP"]), cell_format)
+                            worksheet.write(row, 12, str(result["GWEL_LAB_RH"]), cell_format)
+                            worksheet.write(row, 13, str(result["GWEL_ARB_TM"]), cell_format)
+                            worksheet.write(row, 14, str(result["GWEL_ARB_VM"]), cell_format)
+                            worksheet.write(row, 15, str(result["GWEL_ARB_ASH"]), cell_format)
+                            worksheet.write(row, 16, str(result["GWEL_ARB_FC"]), cell_format)
+                            worksheet.write(row, 17, str(result["GWEL_ARB_GCV"]), cell_format)
+                            worksheet.write(row, 18, str(result["GWEL_ADB_IM"]), cell_format)
+                            worksheet.write(row, 19, str(result["GWEL_ADB_VM"]), cell_format)
+                            worksheet.write(row, 20, str(result["GWEL_ADB_ASH"]), cell_format)
+                            worksheet.write(row, 21, str(result["GWEL_ADB_FC"]), cell_format)
+                            worksheet.write(row, 22, str(result["GWEL_ADB_GCV"]), cell_format)
+                            worksheet.write(row, 23, str(result["GWEL_ULR_ID"]), cell_format)
+                            if result.get("GWEL_ADB_GCV"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= int(result.get("GWEL_ADB_GCV"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
-                                        worksheet.write(row, 17, str(single_coal_grades["grade"]), cell_format)
-                                    elif int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
-                                        worksheet.write(row, 17, "G-1", cell_format)
+                                        worksheet.write(row, 24, str(single_coal_grades["grade"]), cell_format)
+                                    elif int(result.get("GWEL_ADB_GCV")) > 7001:
+                                        worksheet.write(row, 24, "G-1", cell_format)
 
                         elif filter_type == "third_party":
-                            worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                            worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
-                            worksheet.write(row, 3, str(result["DO_No"]), cell_format)
-                            worksheet.write(row, 4, str(result["DO_Qty"]), cell_format)
-                            worksheet.write(row, 5, str(result["Supplier"]), cell_format)
-                            worksheet.write(row, 6, str(result["Date"]), cell_format)
-                            worksheet.write(row, 7, str(result["Time"]), cell_format)
-                            if result.get("Third_Party_Report_No"):
-                                worksheet.write(row, 8, str(result["Third_Party_Report_No"]), cell_format)
-                            if result.get("Third_Party_Total_Moisture_%"):
-                                worksheet.write(row, 9, str(result["Third_Party_Total_Moisture_%"]), cell_format)
-                            if result.get("Third_Party_Inherent_Moisture_(Adb)_%"):
-                                worksheet.write(row, 10, str(result["Third_Party_Inherent_Moisture_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Ash_(Adb)_%"):
-                                worksheet.write(row, 11, str(result["Third_Party_Ash_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Volatile_Matter_(Adb)_%"):
-                                worksheet.write(row, 12, str(result["Third_Party_Volatile_Matter_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
-                                worksheet.write(row, 13, str(result["Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            if result.get("Third_Party_Ash_(Arb)_%"):
-                                worksheet.write(row, 14, str(result["Third_Party_Ash_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Volatile_Matter_(Arb)_%"):
-                                worksheet.write(row, 15, str(result["Third_Party_Volatile_Matter_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Fixed_Carbon_(Arb)_%"):
-                                worksheet.write(row, 16, str(result["Third_Party_Fixed_Carbon_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"):
-                                worksheet.write(row, 17, str(result["Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                            worksheet.write(row, 1, str(result["plant_certificate_id"]), cell_format)
+                            worksheet.write(row, 2, str(result["sample_no"]), cell_format)
+                            worksheet.write(row, 3, str(result["do_no"]), cell_format)
+                            worksheet.write(row, 4, str(result["GWEL_sample_date"]), cell_format)
+                            worksheet.write(row, 5, str(result["GWEL_preparation_date"]), cell_format)
+                            worksheet.write(row, 6, str(result["GWEL_analysis_date"]), cell_format)
+                            worksheet.write(row, 7, str(result["sample_qty"]), cell_format)
+                            worksheet.write(row, 8, str(result["mine"]), cell_format)
+                            worksheet.write(row, 9, str(result["mine_grade"]), cell_format)
+                            worksheet.write(row, 10, str(result["mode"]), cell_format)
+                            if result.get("THIRDPARTY_REPORT_DATE"):
+                                worksheet.write(row, 11, str(result["THIRDPARTY_REPORT_DATE"]), cell_format)
+                            if result.get("THIRDPARTY_REFERENCE_NO"):
+                                worksheet.write(row, 12, str(result["THIRDPARTY_REFERENCE_NO"]), cell_format)
+                            if result.get("THIRDPARTY_SAMPLE_DATE"):
+                                worksheet.write(row, 13, str(result["THIRDPARTY_SAMPLE_DATE"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_TM"):
+                                worksheet.write(row, 14, str(result["THIRDPARTY_ARB_TM"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_VM"):
+                                worksheet.write(row, 15, str(result["THIRDPARTY_ARB_VM"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_ASH"):
+                                worksheet.write(row, 16, str(result["THIRDPARTY_ARB_ASH"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_FC"):
+                                worksheet.write(row, 17, str(result["THIRDPARTY_ARB_FC"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_GCV"):
+                                worksheet.write(row, 18, str(result["THIRDPARTY_ARB_GCV"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_IM"):
+                                worksheet.write(row, 19, str(result["THIRDPARTY_ADB_IM"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_VM"):
+                                worksheet.write(row, 20, str(result["THIRDPARTY_ADB_VM"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_ASH"):
+                                worksheet.write(row, 21, str(result["THIRDPARTY_ADB_ASH"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_FC"):
+                                worksheet.write(row, 22, str(result["THIRDPARTY_ADB_FC"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_GCV"):
+                                worksheet.write(row, 23, str(result["THIRDPARTY_ADB_GCV"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_GCV"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= float(result.get("THIRDPARTY_ADB_GCV"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
-                                        worksheet.write(row, 18, str(single_coal_grades["grade"]), cell_format)
-                                    elif int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
-                                        worksheet.write(row, 18, "G-1", cell_format)
+                                        worksheet.write(row, 24, str(single_coal_grades["grade"]), cell_format)
+                                    elif float(result.get("THIRDPARTY_ADB_GCV")) > 7001:
+                                        worksheet.write(row, 24, "G-1", cell_format)
                         elif filter_type == "all":
-                            console_logger.debug(result)
-                            worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                            worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
-                            worksheet.write(row, 3, str(result["DO_No"]), cell_format)
-                            worksheet.write(row, 4, str(result["DO_Qty"]), cell_format)
-                            worksheet.write(row, 5, str(result["Supplier"]), cell_format)
-                            worksheet.write(row, 6, str(result["Date"]), cell_format)
-                            worksheet.write(row, 7, str(result["Time"]), cell_format)
-                            worksheet.write(row, 8, str(result["GWEL_Total_Moisture_%"]), cell_format)
-                            worksheet.write(row, 9, str(result["GWEL_Inherent_Moisture_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 10, str(result["GWEL_Ash_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 11, str(result["GWEL_Volatile_Matter_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 12, str(result["GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            worksheet.write(row, 13, str(result["GWEL_Ash_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 14, str(result["GWEL_Volatile_Matter_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 15, str(result["GWEL_Fixed_Carbon_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 16, str(result["GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                            worksheet.write(row, 1, str(result["plant_certificate_id"]), cell_format)
+                            worksheet.write(row, 2, str(result["sample_no"]), cell_format)
+                            worksheet.write(row, 3, str(result["do_no"]), cell_format)
+                            worksheet.write(row, 4, str(result["GWEL_sample_date"]), cell_format)
+                            worksheet.write(row, 5, str(result["GWEL_preparation_date"]), cell_format)
+                            worksheet.write(row, 6, str(result["GWEL_analysis_date"]), cell_format)
+                            worksheet.write(row, 7, str(result["sample_qty"]), cell_format)
+                            worksheet.write(row, 8, str(result["mine"]), cell_format)
+                            worksheet.write(row, 9, str(result["mine_grade"]), cell_format)
+                            worksheet.write(row, 10, str(result["mode"]), cell_format)
+                            worksheet.write(row, 11, str(result["GWEL_LAB_TEMP"]), cell_format)
+                            worksheet.write(row, 12, str(result["GWEL_LAB_RH"]), cell_format)
+                            worksheet.write(row, 13, str(result["GWEL_ARB_TM"]), cell_format)
+                            worksheet.write(row, 14, str(result["GWEL_ARB_VM"]), cell_format)
+                            worksheet.write(row, 15, str(result["GWEL_ARB_ASH"]), cell_format)
+                            worksheet.write(row, 16, str(result["GWEL_ARB_FC"]), cell_format)
+                            worksheet.write(row, 17, str(result["GWEL_ARB_GCV"]), cell_format)
+                            worksheet.write(row, 18, str(result["GWEL_ADB_IM"]), cell_format)
+                            worksheet.write(row, 19, str(result["GWEL_ADB_VM"]), cell_format)
+                            worksheet.write(row, 20, str(result["GWEL_ADB_ASH"]), cell_format)
+                            worksheet.write(row, 21, str(result["GWEL_ADB_FC"]), cell_format)
+                            worksheet.write(row, 22, str(result["GWEL_ADB_GCV"]), cell_format)
+                            worksheet.write(row, 23, str(result["GWEL_ULR_ID"]), cell_format)
+                            if result.get("GWEL_ADB_GCV"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= float(result.get("GWEL_ADB_GCV"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
-                                        worksheet.write(row, 17, str(single_coal_grades["grade"]), cell_format)
-                                    elif int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
-                                        worksheet.write(row, 17, "G-1", cell_format)
-                            if result.get("Third_Party_Report_No"):
-                                worksheet.write(row, 17, str(result["Third_Party_Report_No"]), cell_format)
-                            if result.get("Third_Party_Total_Moisture_%"):
-                                worksheet.write(row, 18, str(result["Third_Party_Total_Moisture_%"]), cell_format)
-                            if result.get("Third_Party_Inherent_Moisture_(Adb)_%"):
-                                worksheet.write(row, 19, str(result["Third_Party_Inherent_Moisture_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Ash_(Adb)_%"):
-                                worksheet.write(row, 20, str(result["Third_Party_Ash_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Volatile_Matter_(Adb)_%"):
-                                worksheet.write(row, 21, str(result["Third_Party_Volatile_Matter_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
-                                worksheet.write(row, 22, str(result["Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            if result.get("Third_Party_Ash_(Arb)_%"):
-                                worksheet.write(row, 23, str(result["Third_Party_Ash_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Volatile_Matter_(Arb)_%"):
-                                worksheet.write(row, 24, str(result["Third_Party_Volatile_Matter_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Fixed_Carbon_(Arb)_%"):
-                                worksheet.write(row, 25, str(result["Third_Party_Fixed_Carbon_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"):
-                                worksheet.write(row, 26, str(result["Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                                        worksheet.write(row, 24, str(single_coal_grades["grade"]), cell_format)
+                                    elif float(result.get("GWEL_ADB_GCV")) > 7001:
+                                        worksheet.write(row, 24, "G-1", cell_format)
+                            if result.get("THIRDPARTY_REPORT_DATE"):
+                                worksheet.write(row, 25, str(result["THIRDPARTY_REPORT_DATE"]), cell_format)
+                            if result.get("THIRDPARTY_REFERENCE_NO"):
+                                worksheet.write(row, 26, str(result["THIRDPARTY_REFERENCE_NO"]), cell_format)
+                            if result.get("THIRDPARTY_SAMPLE_DATE"):
+                                worksheet.write(row, 27, str(result["THIRDPARTY_SAMPLE_DATE"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_TM"):
+                                worksheet.write(row, 28, str(result["THIRDPARTY_ARB_TM"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_VM"):
+                                worksheet.write(row, 29, str(result["THIRDPARTY_ARB_VM"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_ASH"):
+                                worksheet.write(row, 30, str(result["THIRDPARTY_ARB_ASH"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_FC"):
+                                worksheet.write(row, 31, str(result["THIRDPARTY_ARB_FC"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_GCV"):
+                                worksheet.write(row, 32, str(result["THIRDPARTY_ARB_GCV"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_IM"):
+                                worksheet.write(row, 33, str(result["THIRDPARTY_ADB_IM"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_VM"):
+                                worksheet.write(row, 34, str(result["THIRDPARTY_ADB_VM"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_ASH"):
+                                worksheet.write(row, 35, str(result["THIRDPARTY_ADB_ASH"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_FC"):
+                                worksheet.write(row, 36, str(result["THIRDPARTY_ADB_FC"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_GCV"):
+                                worksheet.write(row, 37, str(result["THIRDPARTY_ADB_GCV"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_GCV"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= float(result.get("THIRDPARTY_ADB_GCV"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
-                                        worksheet.write(row, 27, str(single_coal_grades["grade"]), cell_format)
-                                    elif int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
-                                        worksheet.write(row, 27, "G-1", cell_format)
+                                        worksheet.write(row, 38, str(single_coal_grades["grade"]), cell_format)
+                                    elif float(result.get("THIRDPARTY_ADB_GCV")) > 7001:
+                                        worksheet.write(row, 38, "G-1", cell_format)
                         else:
-                            worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                            worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
-                            worksheet.write(row, 3, str(result["DO_No"]), cell_format)
-                            worksheet.write(row, 4, str(result["DO_Qty"]), cell_format)
-                            worksheet.write(row, 5, str(result["Supplier"]), cell_format)
-                            worksheet.write(row, 6, str(result["Date"]), cell_format)
-                            worksheet.write(row, 7, str(result["Time"]), cell_format)
+                            worksheet.write(row, 1, str(result["plant_certificate_id"]), cell_format)
+                            worksheet.write(row, 2, str(result["sample_no"]), cell_format)
+                            worksheet.write(row, 3, str(result["do_no"]), cell_format)
+                            worksheet.write(row, 4, str(result["GWEL_sample_date"]), cell_format)
+                            worksheet.write(row, 5, str(result["GWEL_preparation_date"]), cell_format)
+                            worksheet.write(row, 6, str(result["GWEL_analysis_date"]), cell_format)
+                            worksheet.write(row, 7, str(result["sample_qty"]), cell_format)
+                            worksheet.write(row, 8, str(result["mine"]), cell_format)
+                            worksheet.write(row, 9, str(result["mine_grade"]), cell_format)
+                            worksheet.write(row, 10, str(result["mode"]), cell_format)
                         count -= 1
                     workbook.close()
 
@@ -783,17 +1333,41 @@ class DataExecutions:
             data = Q()
             # console_logger.debug(start_date)
             # console_logger.debug(end_date)
-            if start_date:
-                start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M")
-                data &= Q(created_at__gte = start_date)
+            # if start_date:
+            #     start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M")
+            #     data &= Q(created_at__gte = start_date)
 
-            if end_date:
-                end_date = datetime.datetime.strptime(end_date, "%Y-%m-%dT%H:%M")
-                data &= Q(created_at__lte = end_date)
+            # if end_date:
+            #     end_date = datetime.datetime.strptime(end_date, "%Y-%m-%dT%H:%M")
+            #     data &= Q(created_at__lte = end_date)
 
-            usecase_data = CoalTestingTrain.objects(data).order_by("-created_at")
+            usecase_data = RecieptCoalQualityAnalysis.objects(data, mode="Rail").order_by("-created_at")
+            
+            if filter_type == "gwel":
+                if start_date:
+                    start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M")
+                    data &= Q(plant_analysis_date__gte = start_date)
+
+                if end_date:
+                    end_date = datetime.datetime.strptime(end_date, "%Y-%m-%dT%H:%M")
+                    data &= Q(plant_analysis_date__lte = end_date)
+                
+                usecase_data = RecieptCoalQualityAnalysis.objects(data, mode="Rail").order_by("-plant_analysis_date")
+            else:
+                if start_date:
+                    start_date = datetime.datetime.strptime(start_date, "%Y-%m-%dT%H:%M")
+                    data &= Q(thirdparty_created_date__gte = start_date)
+
+                if end_date:
+                    end_date = datetime.datetime.strptime(end_date, "%Y-%m-%dT%H:%M")
+                    data &= Q(thirdparty_created_date__lte = end_date)
+                
+                # usecase_data = CoalTesting.objects(data).order_by("-third_party_upload_date")
+                usecase_data = RecieptCoalQualityAnalysis.objects(data, mode="Rail").order_by("-third_party_upload_date")
+            
             count = len(usecase_data)
             path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             if usecase_data:
                 try:
                     path = os.path.join(
@@ -809,7 +1383,18 @@ class DataExecutions:
                     cell_format2.set_bold()
                     cell_format2.set_font_size(10)
                     cell_format2.set_align("center")
-                    cell_format2.set_align("vjustify")
+                    cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+                    cell_format2.set_border(1)
+                    
+
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+
+                    header_format.set_align("vcenter")
+                    date_format.set_align("vcenter")
+                    report_name_format.set_align("vcenter")
 
                     worksheet = workbook.add_worksheet()
                     worksheet.set_column("A:AZ", 20)
@@ -818,236 +1403,316 @@ class DataExecutions:
                     cell_format.set_font_size(10)
                     cell_format.set_align("center")
                     cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+                    cell_format.set_border(1)
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range("A1:Y1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    # Write the current date on the left side (A2)
+                    worksheet.write("A2", f"Date: {end_date.strftime('%d-%m-%Y')}", date_format)
 
                     if filter_type == "gwel":
-                        headers = ["Sr.No",
-                                "Mine",
-                                "Lot No", 
-                                "RR No", 
-                                "RR Qty", 
-                                "Supplier", 
-                                "Date", 
-                                "Time",
-                                "GWEL Total Moisture%", 
-                                "GWEL Inherent Moisture (Adb)%", 
-                                "GWEL Ash (Adb)%", 
-                                "GWEL Volatile Matter (Adb)%", 
-                                "GWEL Gross Calorific Value (Adb) Kcal/Kg", 
-                                "GWEL Ash (Arb)%", 
-                                "GWEL Volatile Matter (Arb)%", 
-                                "GWEL Fixed Carbon (Arb)%", 
-                                "GWEL Gross Calorific Value (Arb) Kcal/Kg",
-                                "GWEL Grade (Adb)",
-                                ]
-                    elif filter_type == "third_party":
-                        headers = [
-                            "Sr.No",
+                        # worksheet.merge_range("C2:H2", f"Report Name: GWEL Receipt Quality Analysis (Rail)", report_name_format)
+                        worksheet.merge_range("C2:Y2", f"GWEL Receipt Quality Analysis (Rail)", report_name_format)
+                        headers =[
+                            "Sr.No.",
+                            "Plant Certificate ID",
+                            "Sample No",
+                            "Do No",
+                            "Plant Sample Date",
+                            "Plant Preparation Date",
+                            "Plant Analysis Date",
+                            "Sample Qty",
                             "Mine",
-                            "Lot No", 
-                            "RR No", 
-                            "RR Qty", 
-                            "Supplier",
-                            "Date", 
-                            "Time",
-                            "Third Party Report No", 
-                            "Third Party Total Moisture%", 
-                            "Third Party Inherent Moisture (Adb)%", 
-                            "Third Party Ash (Adb)%", 
-                            "Third Party Volatile Matter (Adb)%", 
-                            "Third Party Gross Calorific Value (Adb) Kcal/Kg",
-                            "Third Party Ash (Arb)%", 
-                            "Third Party Volatile Matter (Arb)%", 
-                            "Third Party Fixed Carbon (Arb)%", 
-                            "Third Party Gross Calorific Value (Arb) Kcal/Kg",
-                            "Third Party Grade (Adb)",
-                            ]
-                    elif filter_type == "all":
-                        headers = ["Sr.No",
-                                "Mine",
-                                "Lot No", 
-                                "RR No", 
-                                "RR Qty", 
-                                "Supplier", 
-                                "Date", 
-                                "Time",
-                                "GWEL Total Moisture%", 
-                                "GWEL Inherent Moisture (Adb)%", 
-                                "GWEL Ash (Adb)%", 
-                                "GWEL Volatile Matter (Adb)%", 
-                                "GWEL Gross Calorific Value (Adb) Kcal/Kg", 
-                                "GWEL Ash (Arb)%", 
-                                "GWEL Volatile Matter (Arb)%", 
-                                "GWEL Fixed Carbon (Arb)%", 
-                                "GWEL Gross Calorific Value (Arb) Kcal/Kg",
-                                "GWEL Grade (Adb)",
-                                "Third Party Report No", 
-                                "Third Party Total Moisture%", 
-                                "Third Party Inherent Moisture (Adb)%", 
-                                "Third Party Ash (Adb)%", 
-                                "Third Party Volatile Matter (Adb)%", 
-                                "Third Party Gross Calorific Value (Adb) Kcal/Kg",
-                                "Third Party Ash (Arb)%", 
-                                "Third Party Volatile Matter (Arb)%", 
-                                "Third Party Fixed Carbon (Arb)%", 
-                                "Third Party Gross Calorific Value (Arb) Kcal/Kg",
-                                "Third Party Grade (Adb)",
-                                ]
-                    else:
+                            "Mine Grade",
+                            "Mode",
+                            "GWEL LAB TEMP",
+                            "GWEL LAB RH",
+                            "GWEL ARB TM",
+                            "GWEL ARB VM",
+                            "GWEL ARB ASH",
+                            "GWEL ARB FC",
+                            "GWEL ARB GCV",
+                            "GWEL ADB IM",
+                            "GWEL ADB VM",
+                            "GWEL ADB ASH",
+                            "GWEL ADB FC",
+                            "GWEL ADB GCV",
+                            "GWEL ULR ID",
+                            "GWEL GRADE"
+                        ]
+                    elif filter_type == "third_party":
+                        # worksheet.merge_range("C2:H2", f"Report Name: ThirdParty Receipt Quality Analysis (Rail)", report_name_format)
+                        worksheet.merge_range("C2:Y2", f"ThirdParty Receipt Quality Analysis (Rail)", report_name_format)
                         headers = [
-                                "Sr.No",
-                                "Mine",
-                                "Lot No", 
-                                "RR No", 
-                                "RR Qty", 
-                                "Supplier",
-                                "Date", 
-                                "Time"]
+                            "Sr.No.",
+                            "Plant Certificate ID",
+                            "Sample No",
+                            "Do No",
+                            "Plant Sample Date",
+                            "Plant Preparation Date",
+                            "Plant Analysis Date",
+                            "Sample Qty",
+                            "Mine",
+                            "Mine Grade",
+                            "Mode",
+                            "THIRDPARTY Report Date",
+                            "THIRDPARTY Reference No",
+                            "THIRDPARTY Sample Date",
+                            "THIRDPARTY ARB TM",
+                            "THIRDPARTY ARB VM",
+                            "THIRDPARTY ARB ASH",
+                            "THIRDPARTY ARB FC",
+                            "THIRDPARTY ARB GCV",
+                            "THIRDPARTY ADB IM",
+                            "THIRDPARTY ADB VM",
+                            "THIRDPARTY ADB ASH",
+                            "THIRDPARTY ADB FC",
+                            "THIRDPARTY ADB GCV",
+                            "THIRDPARTY GRADE"
+                        ]
+                    elif filter_type == "all":
+                        # worksheet.merge_range("C2:H2", f"Report Name: Receipt Quality Analysis (Rail)", report_name_format)
+                        worksheet.merge_range("C2:Y2", f"Receipt Quality Analysis (Rail)", report_name_format)
+                        headers = [
+                            "Sr.No.",
+                            "Plant Certificate Id",
+                            "Sample No",
+                            "Do No",
+                            "Plant Sample Date",
+                            "Plant Preparation Date",
+                            "Plant Analysis Date",
+                            "Sample Qty",
+                            "Mine",
+                            "Mine Grade",
+                            "Mode",
+                            "GWEL Lab Temp",
+                            "GWEL Lab RH",
+                            "GWEL ARB TM",
+                            "GWEL ARB VM",
+                            "GWEL ARB ASH",
+                            "GWEL ARB FC",
+                            "GWEL ARB GCV",
+                            "GWEL ADB IM",
+                            "GWEL ADB VM",
+                            "GWEL ADB ASH",
+                            "GWEL ADB FC",
+                            "GWEL ADB GCV",
+                            "GWEL ULR ID",
+                            "GWEL GRADE",
+                            "THIRDPARTY REPORT DATE",
+                            "THIRDPARTY REFERENCE NO",
+                            "THIRDPARTY SAMPLE DATE",
+                            "THIRDPARTY ARB TM",
+                            "THIRDPARTY ARB VM",
+                            "THIRDPARTY ARB ASH",
+                            "THIRDPARTY ARB FC",
+                            "THIRDPARTY ARB GCV",
+                            "THIRDPARTY ADB IM",
+                            "THIRDPARTY ADB VM",
+                            "THIRDPARTY ADB Ash",
+                            "THIRDPARTY ADB FC",
+                            "THIRDPARTY ADB GCV",
+                            "THIRRDPARTY GRADE",
+                        ]
+                    else:
+                        # worksheet.merge_range("C2:H2", f"Report Name: Receipt Quality Analysis (Rail)", report_name_format)
+                        worksheet.merge_range("C2:Y2", f"Receipt Quality Analysis (Rail)", report_name_format)
+                        headers = [
+                            "Sr.No.",
+                            "Plant Certificate Id",
+                            "Sample No",
+                            "Do No",
+                            "Plant Sample Date",
+                            "Plant Preparation Date",
+                            "Plant Analysis Date",
+                            "Sample Qty",
+                            "Mine",
+                            "Mine Grade",
+                            "Mode"]
 
                     for index, header in enumerate(headers):
-                        worksheet.write(0, index, header, cell_format2)
+                        worksheet.write(2, index, header, cell_format2)
                     fetchCoalGrades = CoalGrades.objects()
-                    for row, query in enumerate(usecase_data,start=1):
+                    for row, query in enumerate(usecase_data,start=3):
                         result = query.payload()
                         worksheet.write(row, 0, count, cell_format)
                         if filter_type == "gwel":
-                            worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                            worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
-                            worksheet.write(row, 3, str(result["RR_No"]), cell_format)
-                            worksheet.write(row, 4, str(result["RR_Qty"]), cell_format)
-                            worksheet.write(row, 5, str(result["Supplier"]), cell_format)
-                            worksheet.write(row, 6, str(result["Date"]), cell_format)
-                            worksheet.write(row, 7, str(result["Time"]), cell_format)
-                            worksheet.write(row, 8, str(result["GWEL_Total_Moisture_%"]), cell_format)
-                            worksheet.write(row, 9, str(result["GWEL_Inherent_Moisture_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 10, str(result["GWEL_Ash_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 11, str(result["GWEL_Volatile_Matter_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 12, str(result["GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            worksheet.write(row, 13, str(result["GWEL_Ash_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 14, str(result["GWEL_Volatile_Matter_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 15, str(result["GWEL_Fixed_Carbon_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 16, str(result["GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                            worksheet.write(row, 1, str(result["plant_certificate_id"]), cell_format)
+                            worksheet.write(row, 2, str(result["sample_no"]), cell_format)
+                            worksheet.write(row, 3, str(result["do_no"]), cell_format)
+                            worksheet.write(row, 4, str(result["GWEL_sample_date"]), cell_format)
+                            worksheet.write(row, 5, str(result["GWEL_preparation_date"]), cell_format)
+                            worksheet.write(row, 6, str(result["GWEL_analysis_date"]), cell_format)
+                            worksheet.write(row, 7, str(result["sample_qty"]), cell_format)
+                            worksheet.write(row, 8, str(result["mine"]), cell_format)
+                            worksheet.write(row, 9, str(result["mine_grade"]), cell_format)
+                            worksheet.write(row, 10, str(result["mode"]), cell_format)
+                            worksheet.write(row, 11, str(result["GWEL_LAB_TEMP"]), cell_format)
+                            worksheet.write(row, 12, str(result["GWEL_LAB_RH"]), cell_format)
+                            worksheet.write(row, 13, str(result["GWEL_ARB_TM"]), cell_format)
+                            worksheet.write(row, 14, str(result["GWEL_ARB_VM"]), cell_format)
+                            worksheet.write(row, 15, str(result["GWEL_ARB_ASH"]), cell_format)
+                            worksheet.write(row, 16, str(result["GWEL_ARB_FC"]), cell_format)
+                            worksheet.write(row, 17, str(result["GWEL_ARB_GCV"]), cell_format)
+                            worksheet.write(row, 18, str(result["GWEL_ADB_IM"]), cell_format)
+                            worksheet.write(row, 19, str(result["GWEL_ADB_VM"]), cell_format)
+                            worksheet.write(row, 20, str(result["GWEL_ADB_ASH"]), cell_format)
+                            worksheet.write(row, 21, str(result["GWEL_ADB_FC"]), cell_format)
+                            worksheet.write(row, 22, str(result["GWEL_ADB_GCV"]), cell_format)
+                            worksheet.write(row, 23, str(result["GWEL_ULR_ID"]), cell_format)
+                            if result.get("GWEL_ADB_GCV"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= int(result.get("GWEL_ADB_GCV"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
-                                        worksheet.write(row, 17, str(single_coal_grades["grade"]), cell_format)
-                                    elif int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
-                                        worksheet.write(row, 17, "G-1", cell_format)
-                            
+                                        console_logger.debug("inside if")
+                                        worksheet.write(row, 24, str(single_coal_grades["grade"]), cell_format)
+                                    elif int(result.get("GWEL_ADB_GCV")) > 7001:
+                                        worksheet.write(row, 24, "G-1", cell_format)
+                                        console_logger.debug("inside else")
+
                         elif filter_type == "third_party":
-                            worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                            worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
-                            worksheet.write(row, 3, str(result["RR_No"]), cell_format)
-                            worksheet.write(row, 4, str(result["RR_Qty"]), cell_format)
-                            worksheet.write(row, 5, str(result["Supplier"]), cell_format)
-                            worksheet.write(row, 6, str(result["Date"]), cell_format)
-                            worksheet.write(row, 7, str(result["Time"]), cell_format)
-                            if result.get("Third_Party_Report_No"):
-                                worksheet.write(row, 8, str(result["Third_Party_Report_No"]), cell_format)
-                            if result.get("Third_Party_Total_Moisture_%"):
-                                worksheet.write(row, 9, str(result["Third_Party_Total_Moisture_%"]), cell_format)
-                            if result.get("Third_Party_Inherent_Moisture_(Adb)_%"):
-                                worksheet.write(row, 10, str(result["Third_Party_Inherent_Moisture_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Ash_(Adb)_%"):
-                                worksheet.write(row, 11, str(result["Third_Party_Ash_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Volatile_Matter_(Adb)_%"):
-                                worksheet.write(row, 12, str(result["Third_Party_Volatile_Matter_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
-                                worksheet.write(row, 13, str(result["Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            if result.get("Third_Party_Ash_(Arb)_%"):
-                                worksheet.write(row, 14, str(result["Third_Party_Ash_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Volatile_Matter_(Arb)_%"):
-                                worksheet.write(row, 15, str(result["Third_Party_Volatile_Matter_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Fixed_Carbon_(Arb)_%"):
-                                worksheet.write(row, 16, str(result["Third_Party_Fixed_Carbon_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"):
-                                worksheet.write(row, 17, str(result["Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                            worksheet.write(row, 1, str(result["plant_certificate_id"]), cell_format)
+                            worksheet.write(row, 2, str(result["sample_no"]), cell_format)
+                            worksheet.write(row, 3, str(result["do_no"]), cell_format)
+                            worksheet.write(row, 4, str(result["GWEL_sample_date"]), cell_format)
+                            worksheet.write(row, 5, str(result["GWEL_preparation_date"]), cell_format)
+                            worksheet.write(row, 6, str(result["GWEL_analysis_date"]), cell_format)
+                            worksheet.write(row, 7, str(result["sample_qty"]), cell_format)
+                            worksheet.write(row, 8, str(result["mine"]), cell_format)
+                            worksheet.write(row, 9, str(result["mine_grade"]), cell_format)
+                            worksheet.write(row, 10, str(result["mode"]), cell_format)
+                            if result.get("THIRDPARTY_REPORT_DATE"):
+                                worksheet.write(row, 11, str(result["THIRDPARTY_REPORT_DATE"]), cell_format)
+                            if result.get("THIRDPARTY_REFERENCE_NO"):
+                                worksheet.write(row, 12, str(result["THIRDPARTY_REFERENCE_NO"]), cell_format)
+                            if result.get("THIRDPARTY_SAMPLE_DATE"):
+                                worksheet.write(row, 13, str(result["THIRDPARTY_SAMPLE_DATE"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_TM"):
+                                worksheet.write(row, 14, str(result["THIRDPARTY_ARB_TM"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_VM"):
+                                worksheet.write(row, 15, str(result["THIRDPARTY_ARB_VM"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_ASH"):
+                                worksheet.write(row, 16, str(result["THIRDPARTY_ARB_ASH"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_FC"):
+                                worksheet.write(row, 17, str(result["THIRDPARTY_ARB_FC"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_GCV"):
+                                worksheet.write(row, 18, str(result["THIRDPARTY_ARB_GCV"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_IM"):
+                                worksheet.write(row, 19, str(result["THIRDPARTY_ADB_IM"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_VM"):
+                                worksheet.write(row, 20, str(result["THIRDPARTY_ADB_VM"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_ASH"):
+                                worksheet.write(row, 21, str(result["THIRDPARTY_ADB_ASH"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_FC"):
+                                worksheet.write(row, 22, str(result["THIRDPARTY_ADB_FC"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_GCV"):
+                                worksheet.write(row, 23, str(result["THIRDPARTY_ADB_GCV"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_GCV"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= float(result.get("THIRDPARTY_ADB_GCV"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
-                                        worksheet.write(row, 18, str(single_coal_grades["grade"]), cell_format)
-                                    elif int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
-                                        worksheet.write(row, 18, "G-1", cell_format)
+                                        worksheet.write(row, 24, str(single_coal_grades["grade"]), cell_format)
+                                    elif float(result.get("THIRDPARTY_ADB_GCV")) > 7001:
+                                        worksheet.write(row, 24, "G-1", cell_format)
                         elif filter_type == "all":
-                            worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                            worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
-                            worksheet.write(row, 3, str(result["RR_No"]), cell_format)
-                            worksheet.write(row, 4, str(result["RR_Qty"]), cell_format)
-                            worksheet.write(row, 5, str(result["Supplier"]), cell_format)
-                            worksheet.write(row, 6, str(result["Date"]), cell_format)
-                            worksheet.write(row, 7, str(result["Time"]), cell_format)
-                            worksheet.write(row, 8, str(result["GWEL_Total_Moisture_%"]), cell_format)
-                            worksheet.write(row, 9, str(result["GWEL_Inherent_Moisture_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 10, str(result["GWEL_Ash_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 11, str(result["GWEL_Volatile_Matter_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 12, str(result["GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            worksheet.write(row, 13, str(result["GWEL_Ash_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 14, str(result["GWEL_Volatile_Matter_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 15, str(result["GWEL_Fixed_Carbon_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 16, str(result["GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                            worksheet.write(row, 1, str(result["plant_certificate_id"]), cell_format)
+                            worksheet.write(row, 2, str(result["sample_no"]), cell_format)
+                            worksheet.write(row, 3, str(result["do_no"]), cell_format)
+                            worksheet.write(row, 4, str(result["GWEL_sample_date"]), cell_format)
+                            worksheet.write(row, 5, str(result["GWEL_preparation_date"]), cell_format)
+                            worksheet.write(row, 6, str(result["GWEL_analysis_date"]), cell_format)
+                            worksheet.write(row, 7, str(result["sample_qty"]), cell_format)
+                            worksheet.write(row, 8, str(result["mine"]), cell_format)
+                            worksheet.write(row, 9, str(result["mine_grade"]), cell_format)
+                            worksheet.write(row, 10, str(result["mode"]), cell_format)
+                            worksheet.write(row, 11, str(result["GWEL_LAB_TEMP"]), cell_format)
+                            worksheet.write(row, 12, str(result["GWEL_LAB_RH"]), cell_format)
+                            worksheet.write(row, 13, str(result["GWEL_ARB_TM"]), cell_format)
+                            worksheet.write(row, 14, str(result["GWEL_ARB_VM"]), cell_format)
+                            worksheet.write(row, 15, str(result["GWEL_ARB_ASH"]), cell_format)
+                            worksheet.write(row, 16, str(result["GWEL_ARB_FC"]), cell_format)
+                            worksheet.write(row, 17, str(result["GWEL_ARB_GCV"]), cell_format)
+                            worksheet.write(row, 18, str(result["GWEL_ADB_IM"]), cell_format)
+                            worksheet.write(row, 19, str(result["GWEL_ADB_VM"]), cell_format)
+                            worksheet.write(row, 20, str(result["GWEL_ADB_ASH"]), cell_format)
+                            worksheet.write(row, 21, str(result["GWEL_ADB_FC"]), cell_format)
+                            worksheet.write(row, 22, str(result["GWEL_ADB_GCV"]), cell_format)
+                            worksheet.write(row, 23, str(result["GWEL_ULR_ID"]), cell_format)
+                            if result.get("GWEL_ADB_GCV"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= float(result.get("GWEL_ADB_GCV"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
-                                        worksheet.write(row, 17, str(single_coal_grades["grade"]), cell_format)
-                                    elif int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
-                                        worksheet.write(row, 17, "G-1", cell_format)
-                            if result.get("Third_Party_Report_No"):
-                                worksheet.write(row, 17, str(result["Third_Party_Report_No"]), cell_format)
-                            if result.get("Third_Party_Total_Moisture_%"):
-                                worksheet.write(row, 18, str(result["Third_Party_Total_Moisture_%"]), cell_format)
-                            if result.get("Third_Party_Inherent_Moisture_(Adb)_%"):
-                                worksheet.write(row, 19, str(result["Third_Party_Inherent_Moisture_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Ash_(Adb)_%"):
-                                worksheet.write(row, 20, str(result["Third_Party_Ash_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Volatile_Matter_(Adb)_%"):
-                                worksheet.write(row, 21, str(result["Third_Party_Volatile_Matter_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
-                                worksheet.write(row, 22, str(result["Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            if result.get("Third_Party_Ash_(Arb)_%"):
-                                worksheet.write(row, 23, str(result["Third_Party_Ash_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Volatile_Matter_(Arb)_%"):
-                                worksheet.write(row, 24, str(result["Third_Party_Volatile_Matter_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Fixed_Carbon_(Arb)_%"):
-                                worksheet.write(row, 25, str(result["Third_Party_Fixed_Carbon_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"):
-                                worksheet.write(row, 26, str(result["Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                                        worksheet.write(row, 24, str(single_coal_grades["grade"]), cell_format)
+                                    elif float(result.get("GWEL_ADB_GCV")) > 7001:
+                                        worksheet.write(row, 24, "G-1", cell_format)
+                            if result.get("THIRDPARTY_REPORT_DATE"):
+                                worksheet.write(row, 25, str(result["THIRDPARTY_REPORT_DATE"]), cell_format)
+                            if result.get("THIRDPARTY_REFERENCE_NO"):
+                                worksheet.write(row, 26, str(result["THIRDPARTY_REFERENCE_NO"]), cell_format)
+                            if result.get("THIRDPARTY_SAMPLE_DATE"):
+                                worksheet.write(row, 27, str(result["THIRDPARTY_SAMPLE_DATE"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_TM"):
+                                worksheet.write(row, 28, str(result["THIRDPARTY_ARB_TM"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_VM"):
+                                worksheet.write(row, 29, str(result["THIRDPARTY_ARB_VM"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_ASH"):
+                                worksheet.write(row, 30, str(result["THIRDPARTY_ARB_ASH"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_FC"):
+                                worksheet.write(row, 31, str(result["THIRDPARTY_ARB_FC"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_GCV"):
+                                worksheet.write(row, 32, str(result["THIRDPARTY_ARB_GCV"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_IM"):
+                                worksheet.write(row, 33, str(result["THIRDPARTY_ADB_IM"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_VM"):
+                                worksheet.write(row, 34, str(result["THIRDPARTY_ADB_VM"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_ASH"):
+                                worksheet.write(row, 35, str(result["THIRDPARTY_ADB_ASH"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_FC"):
+                                worksheet.write(row, 36, str(result["THIRDPARTY_ADB_FC"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_GCV"):
+                                worksheet.write(row, 37, str(result["THIRDPARTY_ADB_GCV"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_GCV"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= float(result.get("THIRDPARTY_ADB_GCV"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
-                                        worksheet.write(row, 27, str(single_coal_grades["grade"]), cell_format)
-                                    elif int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
-                                        worksheet.write(row, 27, "G-1", cell_format)
+                                        worksheet.write(row, 38, str(single_coal_grades["grade"]), cell_format)
+                                    elif float(result.get("THIRDPARTY_ADB_GCV")) > 7001:
+                                        worksheet.write(row, 38, "G-1", cell_format)
                         else:
-                            worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                            worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
-                            worksheet.write(row, 3, str(result["RR_No"]), cell_format)
-                            worksheet.write(row, 4, str(result["RR_Qty"]), cell_format)
-                            worksheet.write(row, 5, str(result["Supplier"]), cell_format)
-                            worksheet.write(row, 6, str(result["Date"]), cell_format)
-                            worksheet.write(row, 7, str(result["Time"]), cell_format)
+                            worksheet.write(row, 1, str(result["plant_certificate_id"]), cell_format)
+                            worksheet.write(row, 2, str(result["sample_no"]), cell_format)
+                            worksheet.write(row, 3, str(result["do_no"]), cell_format)
+                            worksheet.write(row, 4, str(result["GWEL_sample_date"]), cell_format)
+                            worksheet.write(row, 5, str(result["GWEL_preparation_date"]), cell_format)
+                            worksheet.write(row, 6, str(result["GWEL_analysis_date"]), cell_format)
+                            worksheet.write(row, 7, str(result["sample_qty"]), cell_format)
+                            worksheet.write(row, 8, str(result["mine"]), cell_format)
+                            worksheet.write(row, 9, str(result["mine_grade"]), cell_format)
+                            worksheet.write(row, 10, str(result["mode"]), cell_format)
                         count -= 1
                     workbook.close()
 
@@ -1938,7 +2603,6 @@ class DataExecutions:
                         per_data += "</thead>"
                         per_data += "<tbody>"
                         for single_final_data in final_data:
-                            console_logger.debug(single_final_data)
                             per_data += "<tr>"
                             per_data += f"<td>{single_final_data.get('mine_name')}</td>"
                             per_data += f"<td>{single_final_data.get('rr_no')}</td>"
@@ -1957,7 +2621,6 @@ class DataExecutions:
                         per_data += "</tbody>"
                         per_data += "</table>"
 
-                        console_logger.debug(per_data)
                         return per_data
                     else:
                         return 404
@@ -1967,9 +2630,10 @@ class DataExecutions:
             console_logger.debug(e)
 
 
-    def display_pdf_report_bunker_addons(self, sample_id):
+    def display_pdf_report_bunker_addons(self, certificate_no):
         try:
-            fetchBunkerSingleData = BunkerData.objects.get(sample_details_id=sample_id)
+            fetchBunkerSingleData = BunkerQualityAnalysis.objects.get(certificate_no=certificate_no)
+            # fetchBunkerSingleData = BunkerData.objects.get(sample_details_id=sample_id)
             fetch_pdf_bunker = bunker_single_generate_report(fetchBunkerSingleData=fetchBunkerSingleData)
             return fetch_pdf_bunker
         except Exception as e:
@@ -2065,9 +2729,9 @@ class DataExecutions:
                 else:
                     console_logger.warning(f"Unexpected tagid: {tagid}")
 
-            console_logger.debug(inputData)
+            # console_logger.debug(inputData)
 
-            console_logger.debug(outputDict)
+            # console_logger.debug(outputDict)
             return {"detail": "success"}
         except Exception as e:
             console_logger.debug(e)
@@ -2422,6 +3086,49 @@ class DataExecutions:
                     return {"detail": "success"}
                 else:
                     return {"detail":"no data found"}
+        except Exception as e:
+            console_logger.debug(e)
+
+    def get_financial_year_dates_from_todays(self, input_date):
+        try:
+            if input_date.month >= 4:
+                start_date = date(input_date.year, 4, 1)
+            else:
+                start_date = date(input_date.year - 1, 4, 1)
+            
+            end_date = input_date
+            
+            return start_date, end_date
+        except Exception as e:
+            console_logger.debug(e)
+    
+    def get_financial_year_final(self, input_date):
+        try:
+            if input_date.month >= 4:
+                start_year = input_date.year
+                end_year = input_date.year + 1
+            # If the month is before April, the financial year started the previous year
+            # and ends in the current year.
+            else:
+                start_year = input_date.year - 1
+                end_year = input_date.year
+            
+            return f"{start_year}-{str(end_year)[-2:]}"
+        except Exception as e:
+            console_logger.debug(e)
+    
+    def findExcelColumnTitleFromColumnNumber(self, n):
+        try:
+            arr = []
+            while n > 0:
+                remainder = n % 26
+                if remainder == 0:
+                    arr.append('Z')
+                    n = (n // 26) - 1
+                else:
+                    arr.append(chr((remainder - 1) + ord('A')))
+                    n = n // 26
+            return ''.join(reversed(arr))
         except Exception as e:
             console_logger.debug(e)
 

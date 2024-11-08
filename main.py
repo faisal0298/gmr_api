@@ -108,6 +108,14 @@ from io import StringIO
 from requests.auth import HTTPBasicAuth
 import calendar
 import numpy as np
+from helpers.service_handler import *
+
+from pymongo.operations import UpdateOne, DeleteMany
+import polars as pl
+
+import pdfplumber
+
+from calendar import monthrange
 
 ### database setup
 # host = os.environ.get("HOST", "192.168.1.57")
@@ -139,6 +147,12 @@ server_port = os.environ.get("PORT", "80")
 db_name = os.environ.get("DB_NAME", "gmrDB")
 
 client = MongoClient(f"mongodb://{host}:{db_port}/")
+
+# client = MongoClient("mongodb://gmr:Gmr%402026@192.168.1.42:27017/?authSource=gmrDB")
+# print(f"--{client}")
+db = client.gmrDB
+gmrdata = db.gmrdata
+
 db = client.gmrDB.get_collection("gmrdata")
 short_mine_collection = db.short_mine
 
@@ -147,6 +161,15 @@ sapraildb = client.gmrDB.get_collection("sapRecordsRail")
 raildb = client.gmrDB.get_collection("raildata")
 coaltestdb = client.gmrDB.get_collection("coaltesting")
 receiptCoalQualityAnalysisdb = client.gmrDB.get_collection("RecieptCoalQualityAnalysis")
+
+gmrDB = client.get_database("gmrDB")
+collectionList = gmrDB.list_collection_names()
+if "RecieptCoalQualityAnalysis" not in collectionList:
+    RCA = gmrDB.create_collection("RecieptCoalQualityAnalysis")
+else:
+    RCA = gmrDB.get_collection("RecieptCoalQualityAnalysis")
+    BQS = gmrDB.get_collection("BunkerQualitySummary")
+
 
 proxies = {
     "http": None,
@@ -754,56 +777,93 @@ def extract_and_standardize_date(text):
 
 
 def extract_data_from_text(text):
-    # print(text)
-    extracted_data = {}
-    patterns = {
-        # "date": re.compile(r"Date\.?\s*:?\s*(\d{2}\.\d{2}\.\d{4})"),
-        "lot": re.compile(r"Lot\-\s*(\d+)"),
-        "do": re.compile(r"D[O0]\s+(\d+)"),
-        "rake": re.compile(r"Rake\s+(?:No\.?\s+)?(\d+)", re.IGNORECASE),
-        "rr": re.compile(r"RR\s*.*?(\d+)", re.DOTALL),
-    }
+    try:
+        # print(text)
+        extracted_data = {}
+        patterns = {
+            # "date": re.compile(r"Date\.?\s*:?\s*(\d{2}\.\d{2}\.\d{4})"),
+            "lot": re.compile(r"Lot\-\s*(\d+)"),
+            "do": re.compile(r"D[O0]\s+(\d+)"),
+            "rake": re.compile(r"Rake\s+(?:No\.?\s+)?(\d+)", re.IGNORECASE),
+            "rr": re.compile(r"RR\s*.*?(\d+)", re.DOTALL),
+        }
 
-    result_section_pattern = r"Discipline:.*?(?=END\s+OF\s+REPORT)"
-    result_section = re.search(result_section_pattern, text, re.DOTALL)
+        result_section_pattern = r"Discipline:.*?(?=END\s+OF\s+REPORT)"
+        result_section = re.search(result_section_pattern, text, re.DOTALL)
 
-    extracted_data["report_no"] = extract_report_no(text)
-    extracted_data["date"] = extract_and_standardize_date(text)
+        extracted_data["report_no"] = extract_report_no(text)
+        extracted_data["date"] = extract_and_standardize_date(text)
 
-    for key, pattern in patterns.items():
-        match = pattern.search(text)
-        if match:
-            extracted_data[key] = match.group(1)
-            if result_section:
-                results_text = result_section.group(0)
+        for key, pattern in patterns.items():
+            match = pattern.search(text)
+            if match:
+                extracted_data[key] = match.group(1)
+                if result_section:
+                    results_text = result_section.group(0)
 
-                exclude_pattern = r"IS\s+\d{4}\s*\(Part\s+[IVXLCDM|]+\)\s*:\s*\d{4}"
-                cleaned_text = re.sub(exclude_pattern, "", results_text)
+                    exclude_pattern = r"IS\s+\d{4}\s*\(Part\s+[IVXLCDM|]+\)\s*:\s*\d{4}"
+                    cleaned_text = re.sub(exclude_pattern, "", results_text)
 
-                values_pattern = r"\b\d+\.\d+|\b\d+\b"
-                values = re.findall(values_pattern, cleaned_text)
+                    values_pattern = r"\b\d+\.\d+|\b\d+\b"
+                    values = re.findall(values_pattern, cleaned_text)
 
-                filtered_values = [
-                    value
-                    for value in values
-                    if value not in ["1", "2", "3", "4", "5", "6"]
-                ]
+                    filtered_values = [
+                        value
+                        for value in values
+                        if value not in ["1", "2", "3", "4", "5", "6"]
+                    ]
+                    new_filter = filtered_values[:10]
+                    extracted_data["total_moisture_adb"] = "-"
+                    try:
+                        extracted_data["moisture_inherent_adb"] = new_filter[0]
+                    except IndexError:
+                        extracted_data["moisture_inherent_adb"] = 0
+                    try:
+                        extracted_data["ash_adb"] = new_filter[1]
+                    except IndexError:
+                        extracted_data["ash_adb"] = 0
+                    try:
+                        extracted_data["volatile_adb"] = new_filter[2]
+                    except IndexError:
+                        extracted_data["volatile_adb"] = 0
+                    try:
+                        extracted_data["fixed_carbon_adb"] = new_filter[3]
+                    except IndexError:
+                        extracted_data["fixed_carbon_adb"] = 0
+                    try:
+                        extracted_data["gross_calorific_adb"] = new_filter[4]
+                    except IndexError:
+                        extracted_data["gross_calorific_adb"] = 0
+                    try:
+                        extracted_data["total_moisture_arb"] = new_filter[5]
+                    except IndexError:
+                        extracted_data["total_moisture_arb"] = 0
+                    extracted_data["moisture_inherent_arb"] = "-"
+                    try:
+                        extracted_data["ash_arb"] = new_filter[6]
+                    except IndexError:
+                        extracted_data["ash_arb"] = 0
+                    try:
+                        extracted_data["volatile_arb"] = new_filter[7]
+                    except IndexError:
+                        extracted_data["volatile_arb"] = 0
+                    try:
+                        extracted_data["fixed_carbon_arb"] = new_filter[8]
+                    except IndexError:
+                        extracted_data["fixed_carbon_arb"] = 0
+                    try:
+                        extracted_data["gross_calorific_arb"] = new_filter[9]
+                    except IndexError:
+                        extracted_data["gross_calorific_arb"] = 0
 
-                new_filter = filtered_values[:10]
-                extracted_data["total_moisture_adb"] = "-"
-                extracted_data["moisture_inherent_adb"] = new_filter[0]
-                extracted_data["ash_adb"] = new_filter[1]
-                extracted_data["volatile_adb"] = new_filter[2]
-                extracted_data["fixed_carbon_adb"] = new_filter[3]
-                extracted_data["gross_calorific_adb"] = new_filter[4]
-                extracted_data["total_moisture_arb"] = new_filter[5]
-                extracted_data["moisture_inherent_arb"] = "-"
-                extracted_data["ash_arb"] = new_filter[6]
-                extracted_data["volatile_arb"] = new_filter[7]
-                extracted_data["fixed_carbon_arb"] = new_filter[8]
-                extracted_data["gross_calorific_arb"] = new_filter[9]
-
-    return extracted_data
+        return extracted_data
+    except Exception as e:
+        console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
 
 
 @router.post("/pdf_data_upload", tags=["Extra"])
@@ -851,7 +911,6 @@ async def extract_data_from_mahabal_pdf(response: Response, pdf_upload: Optional
                     dictData[key] = value
             listData.append(dictData)
 
-        console_logger.debug(listData)
         mainListData = []
         for single_list in listData:
             api_data = {
@@ -884,12 +943,12 @@ async def extract_data_from_mahabal_pdf(response: Response, pdf_upload: Optional
                 "Third_Party_Report_No": None,
             }
 
-        
             # rail data
             if "rake" in single_list:
                 try:
                     # coalTrainData = CoalTestingTrain.objects.get(rake_no=f"{int(rrLot.get('rake'))}", rrNo=rrLot.get("rr"))
-                    querysetTrain = CoalTestingTrain.objects.filter(rake_no=f"{int(single_list.get('rake'))}", rrNo=single_list.get('rr'))
+                    # querysetTrain = CoalTestingTrain.objects.filter(rake_no=f"{int(single_list.get('rake'))}", rrNo=single_list.get('rr'))
+                    querysetTrain = RecieptCoalQualityAnalysis.objects.filter(sample_no=single_list.get("rake"), sample_id=single_list.get("rr"))
                     if querysetTrain.count() == 0:
                         console_logger.debug("no data available")
                         continue
@@ -898,41 +957,31 @@ async def extract_data_from_mahabal_pdf(response: Response, pdf_upload: Optional
                     else:
                         coalTrainData = querysetTrain.first() 
                     id = str(coalTrainData.id)
-                    if coalTrainData.rrNo:
-                        api_data["RR_No"] = coalTrainData.rrNo
-                    if coalTrainData.rake_no:
-                        api_data["Lot_No"] = coalTrainData.rake_no
-                    for single_data in coalTrainData.parameters:
-                        if single_data.get("parameter_Name") == "Total_Moisture":
-                            api_data["Total_Moisture_%"] = single_data.get("val1")
-                        if single_data.get("parameter_Name") == "Inherent_Moisture_(Adb)":
-                            api_data["Inherent_Moisture_(Adb)_%"] = single_data.get("val1")
-                        if single_data.get("parameter_Name") == "Ash_(Adb)":
-                            api_data["Ash_(Adb)_%"] = single_data.get("val1")
-                        if single_data.get("parameter_Name") == "Volatile_Matter_(Adb)":
-                            api_data["Volatile_Matter_(Adb)_%"] = single_data.get("val1")
-                        if single_data.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
-                            api_data["Gross_Calorific_Value_(Adb)_Kcal/Kg"] = single_data.get(
-                                "val1"
-                            )
-                        if single_data.get("parameter_Name") == "Ash_(Arb)":
-                            api_data["Ash_(Arb)_%"] = single_data.get("val1")
-                        if single_data.get("parameter_Name") == "Volatile_Matter_(Arb)":
-                            api_data["Volatile_Matter_(Arb)_%"] = single_data.get("val1")
-                        if single_data.get("parameter_Name") == "Fixed_Carbon_(Arb)":
-                            api_data["Fixed_Carbon_(Arb)_%"] = single_data.get("val1")
-                        if single_data.get("parameter_Name") == "Gross_Calorific_Value_(Arb)":
-                            api_data["Gross_Calorific_Value_(Arb)_Kcal/Kg"] = single_data.get(
-                                "val1"
-                            )
+                    api_data["RR_No"] = coalTrainData.sample_id
+                    api_data["Lot_No"] = coalTrainData.sample_no
+                    if "plant_arb_tm" in coalTrainData:
+                        api_data["Total_Moisture_%"] = coalTrainData.plant_arb_tm
+                    if "plant_adb_im" in coalTrainData:
+                        api_data["Inherent_Moisture_(Adb)_%"] = coalTrainData.plant_adb_im
+                    if "plant_adb_ash" in coalTrainData:
+                        api_data["Ash_(Adb)_%"] = coalTrainData.plant_adb_ash
+                    if "plant_adb_vm" in coalTrainData:
+                        api_data["Volatile_Matter_(Adb)_%"] = coalTrainData.plant_adb_vm
+                    if "plant_adb_gcv" in coalTrainData:
+                        api_data["Gross_Calorific_Value_(Adb)_Kcal/Kg"] = coalTrainData.plant_adb_gcv
+                    if "plant_arb_ash" in coalTrainData:
+                        api_data["Ash_(Arb)_%"] = coalTrainData.plant_arb_ash
+                    if "plant_arb_vm" in coalTrainData:
+                        api_data["Volatile_Matter_(Arb)_%"] = coalTrainData.plant_arb_vm
+                    if "plant_arb_fc" in coalTrainData:
+                        api_data["Fixed_Carbon_(Arb)_%"] = coalTrainData.plant_arb_fc
+                    if "plant_arb_gcv" in coalTrainData:
+                        api_data["Gross_Calorific_Value_(Arb)_Kcal/Kg"] = coalTrainData.plant_arb_gcv
                 except DoesNotExist as e:
                     continue
                 
                 if single_list.get("report_no"):
                     pdf_data["Third_Party_Report_No"]= single_list.get("report_no")
-                
-                # for key, value in parameterData.items():
-                #     if value != '-':
                 if 'total_moisture_adb' in single_list:
                     pdf_data["Third_Party_Total_Moisture(adb)_%"] = single_list["total_moisture_adb"]
                 if 'total_moisture_arb' in single_list:
@@ -965,7 +1014,7 @@ async def extract_data_from_mahabal_pdf(response: Response, pdf_upload: Optional
             elif "lot" in single_list:
                 try:
                     # queryset = CoalTesting.objects.get(rake_no=f'LOT-{rrLot.get("lot")}', rrNo=rrLot.get("do"))
-                    queryset = CoalTesting.objects.filter(rake_no=f'LOT-{single_list.get("lot")}', rrNo=single_list.get("do"))
+                    queryset = RecieptCoalQualityAnalysis.objects.filter(sample_no=single_list.get("lot"), sample_id=single_list.get("do"))
                     if queryset.count() == 0:
                         console_logger.debug("no data available")
                         continue
@@ -974,40 +1023,33 @@ async def extract_data_from_mahabal_pdf(response: Response, pdf_upload: Optional
                     else:
                         coalRoadData = queryset.first() 
                     id = str(coalRoadData.id)
-                    if coalRoadData.rrNo:
-                        api_data["DO_No"] = coalRoadData.rrNo
-                    if coalRoadData.rake_no:
-                        api_data["Lot_No"] = coalRoadData.rake_no
-                    for single_data in coalRoadData.parameters:
-                        if single_data.get("parameter_Name") == "Total_Moisture":
-                            api_data["Total_Moisture_%"] = single_data.get("val1")
-                        if single_data.get("parameter_Name") == "Inherent_Moisture_(Adb)":
-                            api_data["Inherent_Moisture_(Adb)_%"] = single_data.get("val1")
-                        if single_data.get("parameter_Name") == "Ash_(Adb)":
-                            api_data["Ash_(Adb)_%"] = single_data.get("val1")
-                        if single_data.get("parameter_Name") == "Volatile_Matter_(Adb)":
-                            api_data["Volatile_Matter_(Adb)_%"] = single_data.get("val1")
-                        if single_data.get("parameter_Name") == "Gross_Calorific_Value_(Adb)":
-                            api_data["Gross_Calorific_Value_(Adb)_Kcal/Kg"] = single_data.get(
-                                "val1"
-                            )
-                        if single_data.get("parameter_Name") == "Ash_(Arb)":
-                            api_data["Ash_(Arb)_%"] = single_data.get("val1")
-                        if single_data.get("parameter_Name") == "Volatile_Matter_(Arb)":
-                            api_data["Volatile_Matter_(Arb)_%"] = single_data.get("val1")
-                        if single_data.get("parameter_Name") == "Fixed_Carbon_(Arb)":
-                            api_data["Fixed_Carbon_(Arb)_%"] = single_data.get("val1")
-                        if single_data.get("parameter_Name") == "Gross_Calorific_Value_(Arb)":
-                            api_data["Gross_Calorific_Value_(Arb)_Kcal/Kg"] = single_data.get(
-                                "val1"
-                            )
+                    api_data["DO_No"] = coalRoadData.sample_id
+                    api_data["Lot_No"] = coalRoadData.sample_no
+                    # for single_data in coalRoadData.parameters:
+                    if "plant_arb_tm" in coalRoadData:
+                        api_data["Total_Moisture_%"] = coalRoadData.plant_arb_tm
+                    if "plant_adb_im" in coalRoadData:
+                        api_data["Inherent_Moisture_(Adb)_%"] = coalRoadData.plant_adb_im
+                    if "plant_adb_ash" in coalRoadData:
+                        api_data["Ash_(Adb)_%"] = coalRoadData.plant_adb_ash
+                    if "plant_adb_vm" in coalRoadData:
+                        api_data["Volatile_Matter_(Adb)_%"] = coalRoadData.plant_adb_vm
+                    if "plant_adb_gcv" in coalRoadData:
+                        api_data["Gross_Calorific_Value_(Adb)_Kcal/Kg"] = coalRoadData.plant_adb_gcv
+                    if "plant_arb_ash" in coalRoadData:
+                        api_data["Ash_(Arb)_%"] = coalRoadData.plant_arb_ash
+                    if "plant_arb_vm" in coalRoadData:
+                        api_data["Volatile_Matter_(Arb)_%"] = coalRoadData.plant_arb_vm
+                    if "plant_arb_fc" in coalRoadData:
+                        api_data["Fixed_Carbon_(Arb)_%"] = coalRoadData.plant_arb_fc
+                    if "plant_arb_gcv" in coalRoadData:
+                        api_data["Gross_Calorific_Value_(Arb)_Kcal/Kg"] = coalRoadData.plant_arb_gcv
                 except DoesNotExist as e:
                     console_logger.debug("data not there")
                     continue
 
                 if "report_no" in single_list:
                     pdf_data["Third_Party_Report_No"]= single_list.get("report_no")
-                
                 if 'total_moisture_adb' in single_list:
                     pdf_data["Third_Party_Total_Moisture(adb)_%"] = single_list["total_moisture_adb"]
                 if 'total_moisture_arb' in single_list:
@@ -1037,8 +1079,7 @@ async def extract_data_from_mahabal_pdf(response: Response, pdf_upload: Optional
                 # console_logger.debug(mainListData)
         if mainListData:
             return mainListData
-        else:
-            raise HTTPException(status_code="404", detail="No data available")      
+        raise HTTPException(status_code=404, detail="No data available")
     except DoesNotExist as e:
         console_logger.debug("No matching object found.")
         raise HTTPException(status_code="404", detail="No matching object found in db")
@@ -1047,11 +1088,11 @@ async def extract_data_from_mahabal_pdf(response: Response, pdf_upload: Optional
     #     console_logger.debug("multiple entry found for single rrno/dono")
     #     return HTTPException(status_code="400", detail="multiple entry found for single rrno/dono")
     except Exception as e:
-        console_logger.debug("----- Excel error -----", e)
+        console_logger.debug(f"----- Excel error ----- {e}")
         response.status_code = 404
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        # console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug(
             "Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno)
         )
@@ -1348,63 +1389,27 @@ def delete_historian_duplicates():
 
 
 @router.get("/coal_generation_graph", tags=["Coal Consumption"])
-def coal_generation_analysis(response:Response, type: Optional[str] = "Daily",
-                              Month: Optional[str] = None, 
-                              Daily: Optional[str] = None, Year: Optional[str] = None):
+def coal_generation_analysis(
+    response: Response,
+    type: Optional[str] = "Daily",
+    Month: Optional[str] = None,
+    Daily: Optional[str] = None,
+    Year: Optional[str] = None
+):
     try:
-        data={}
         UTC_OFFSET_TIMEDELTA = datetime.datetime.utcnow() - datetime.datetime.now()
 
-        # basePipeline = [
-        #     {
-        #         "$match": {
-        #             "created_date": {
-        #                 "$gte": None,
-        #             },
-        #         },
-        #     },
-        #     {
-        #         "$project": {
-        #             "ts": {
-        #                 "$hour": {"date": "$created_date"},
-        #             },
-        #             "tagid": "$tagid",
-        #             "sum": "$sum",
-        #             "_id": 0
-        #         },
-        #     },
-        #     {
-        #         "$group": {
-        #             "_id": {
-        #                 "ts": "$ts",
-        #                 "tagid": "$tagid"
-        #             },
-        #             "data": {
-        #                 "$push": "$sum"
-        #             }
-        #         }
-        #     },
-        # ]
-
+        # Define base pipeline
         basePipeline = [
             {
-                "$match": {
-                    "created_date": {
-                        "$gte": None,
-                    },
-                },
+                "$match": {"created_date": {"$gte": None}},
             },
-            {
-                "$sort": {
-                    "created_date": -1
-                }
-            },
+            {"$sort": {"created_date": -1}},
             {
                 "$group": {
                     "_id": {
-                        "ts": {"$hour": {"date": "$created_date"}},
-                        "tagid": "$tagid",
-                        "created_date": "$created_date"
+                        "ts": None,
+                        "tagid": "$tagid"
                     },
                     "latest_sum": {"$first": "$sum"}
                 }
@@ -1419,208 +1424,169 @@ def coal_generation_analysis(response:Response, type: Optional[str] = "Daily",
             },
             {
                 "$group": {
-                    "_id": {
-                        "ts": "$ts",
-                        "tagid": "$tagid"
-                    },
-                    "data": {
-                        "$push": "$sum"
-                    }
+                    "_id": {"ts": "$ts", "tagid": "$tagid"},
+                    "data": {"$push": "$sum"}
                 }
             }
         ]
 
-
         if type == "Daily":
+            date = Daily
+            start_date = datetime.datetime.strptime(f"{date} 00:00:00", "%Y-%m-%d %H:%M:%S")
+            end_date = datetime.datetime.strptime(f"{date} 23:59:59", "%Y-%m-%d %H:%M:%S")
+            basePipeline[0]["$match"]["created_date"].update({"$gte": start_date, "$lte": end_date})
+            basePipeline[2]["$group"]["_id"]["ts"] = {"$hour": "$created_date"}
+            result = {
+                "data": {
+                    "labels": [str(i) for i in range(24)],
+                    "datasets": [
+                        {"label": "Unit 1", "data": [0 for _ in range(24)]},  # tagid 2
+                        {"label": "Unit 2", "data": [0 for _ in range(24)]}   # tagid 3536
+                    ]
+                }
+            }
 
-            date=Daily
-            end_date =f'{date} 23:59:59'
-            start_date = f'{date} 00:00:00'
+
+        elif type == "Week":
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (
+                datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                + UTC_OFFSET_TIMEDELTA
+                - datetime.timedelta(days=7)
+            )
+            basePipeline[2]["$group"]["_id"]["ts"] = {"$dayOfMonth": "$created_date"}
+            result = {
+                "data": {
+                    "labels": [
+                        (
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
+                            + datetime.timedelta(days=i + 1)
+                        ).strftime("%d")
+                        for i in range(1, 8)
+                    ],
+                    "datasets": [
+                        {"label": "Unit 1", "data": [0 for i in range(1, 8)]},              # unit 1 = tagid_2
+                        {"label": "Unit 2", "data": [0 for i in range(1, 8)]},              # unit 2 = tagid_3536
+                    ],
+                }
+            }
+
+
+        elif type == "Month":
+
+            date=Month
+            format_data = "%Y - %m-%d"
+
+            start_date = f'{date}-01'
+            startd_date=datetime.datetime.strptime(start_date,format_data)
+            
+            end_date = startd_date + relativedelta( day=31)
+            end_label = (end_date).strftime("%d")
+
+            basePipeline[0]["$match"]["created_date"]["$lte"] = (end_date)
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (startd_date)
+            basePipeline[2]["$group"]["_id"]["ts"] = {"$dayOfMonth": "$created_date"}
+            result = {
+                "data": {
+                    "labels": [
+                        (
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
+                            + datetime.timedelta(days=i + 1)
+                        ).strftime("%d")
+                        for i in range(-1, (int(end_label))-1)
+                    ],
+                    "datasets": [
+                        {"label": "Unit 1", "data": [0 for i in range(-1, (int(end_label))-1)]},        # unit 1 = tagid_2
+                        {"label": "Unit 2", "data": [0 for i in range(-1, (int(end_label))-1)]},        # unit 2 = tagid_3536
+                    ],
+                }
+            }
+
+        elif type == "Year":
+
+            date=Year
+            end_date =f'{date}-12-31 23:59:59'
+            start_date = f'{date}-01-01 00:00:00'
             format_data = "%Y-%m-%d %H:%M:%S"
             endd_date=datetime.datetime.strptime(end_date,format_data)
             startd_date=datetime.datetime.strptime(start_date,format_data)
 
             basePipeline[0]["$match"]["created_date"]["$lte"] = (endd_date)
             basePipeline[0]["$match"]["created_date"]["$gte"] = (startd_date)
-            
 
+            basePipeline[2]["$group"]["_id"]["ts"] = {"$month": "$created_date"}
             result = {
                 "data": {
-                    "labels": [str(i) for i in range(0, 24)],
+                    "labels": [
+                        (
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
+                            + relativedelta(months=i)
+                        ).strftime("%m")
+                        for i in range(0, 12)
+                    ],
                     "datasets": [
-                        {"label": "Unit 1", "data": [0 for i in range(0, 24)]},             # unit 1 = tagid_2
-                        {"label": "Unit 2", "data": [0 for i in range(0, 24)]},             # unit 2 = tagid_3536
+                        {"label": "Unit 1", "data": [0 for i in range(0, 12)]},                     # unit 1 = tagid_2
+                        {"label": "Unit 2", "data": [0 for i in range(0, 12)]},                     # unit 2 = tagid_3536
                     ],
                 }
             }
 
-        # elif type == "Week":
-        #     basePipeline[0]["$match"]["created_date"]["$gte"] = (
-        #         datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        #         + UTC_OFFSET_TIMEDELTA
-        #         - datetime.timedelta(days=7)
-        #     )
-        #     basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$created_date"}
-        #     result = {
-        #         "data": {
-        #             "labels": [
-        #                 (
-        #                     basePipeline[0]["$match"]["created_date"]["$gte"]
-        #                     + datetime.timedelta(days=i + 1)
-        #                 ).strftime("%d")
-        #                 for i in range(1, 8)
-        #             ],
-        #             "datasets": [
-        #                 {"label": "Unit 1", "data": [0 for i in range(1, 8)]},              # unit 1 = tagid_2
-        #                 {"label": "Unit 2", "data": [0 for i in range(1, 8)]},              # unit 2 = tagid_3536
-        #             ],
-        #         }
-        #     }
-
-        # elif type == "Month":
-
-        #     date=Month
-        #     format_data = "%Y - %m-%d"
-
-        #     start_date = f'{date}-01'
-        #     startd_date=datetime.datetime.strptime(start_date,format_data)
-            
-        #     end_date = startd_date + relativedelta( day=31)
-        #     end_label = (end_date).strftime("%d")
-
-        #     basePipeline[0]["$match"]["created_date"]["$lte"] = (end_date)
-        #     basePipeline[0]["$match"]["created_date"]["$gte"] = (startd_date)
-        #     basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$created_date"}
-        #     result = {
-        #         "data": {
-        #             "labels": [
-        #                 (
-        #                     basePipeline[0]["$match"]["created_date"]["$gte"]
-        #                     + datetime.timedelta(days=i + 1)
-        #                 ).strftime("%d")
-        #                 for i in range(-1, (int(end_label))-1)
-        #             ],
-        #             "datasets": [
-        #                 {"label": "Unit 1", "data": [0 for i in range(-1, (int(end_label))-1)]},        # unit 1 = tagid_2
-        #                 {"label": "Unit 2", "data": [0 for i in range(-1, (int(end_label))-1)]},        # unit 2 = tagid_3536
-        #             ],
-        #         }
-        #     }
-
-        # elif type == "Year":
-
-        #     date=Year
-        #     end_date =f'{date}-12-31 23:59:59'
-        #     start_date = f'{date}-01-01 00:00:00'
-        #     format_data = "%Y-%m-%d %H:%M:%S"
-        #     endd_date=datetime.datetime.strptime(end_date,format_data)
-        #     startd_date=datetime.datetime.strptime(start_date,format_data)
-
-        #     basePipeline[0]["$match"]["created_date"]["$lte"] = (
-        #         endd_date
-        #     )
-        #     basePipeline[0]["$match"]["created_date"]["$gte"] = (
-        #         startd_date          
-        #     )
-
-        #     basePipeline[1]["$project"]["ts"] = {"$month": "$created_date"}
-        #     result = {
-        #         "data": {
-        #             "labels": [
-        #                 (
-        #                     basePipeline[0]["$match"]["created_date"]["$gte"]
-        #                     + relativedelta(months=i)
-        #                 ).strftime("%m")
-        #                 for i in range(0, 12)
-        #             ],
-        #             "datasets": [
-        #                 {"label": "Unit 1", "data": [0 for i in range(0, 12)]},                     # unit 1 = tagid_2
-        #                 {"label": "Unit 2", "data": [0 for i in range(0, 12)]},                     # unit 2 = tagid_3536
-        #             ],
-        #         }
-        #     }
-
         output = Historian.objects().aggregate(basePipeline)
         outputDict = {}
-
-        # for data in output:
-        #     if "_id" in data:
-        #         ts = data["_id"]["ts"]
-        #         tag_id = data["_id"]["tagid"]
-
-        #         data_list = data.get('data', [])
-        #         sum_list = []
-        #         for item in data_list:
-        #             try:
-        #                 sum_value = float(item)
-        #                 sum_list.append(sum_value)
-        #             except ValueError:
-        #                 pass
-                
-        #         if ts not in outputDict:
-        #             outputDict[ts] = {tag_id: sum_list}
-        #         else:
-        #             if tag_id not in outputDict[ts]:
-        #                 outputDict[ts][tag_id] = sum_list
-        #             else:
-        #                 outputDict[ts][tag_id].append(sum_list)
-
         for data in output:
-            if "_id" in data:
-                ts = data["_id"]["ts"]
-                tag_id = data["_id"]["tagid"]
-                sum_list = [float(item) for item in data.get('data', []) if item]
-
-                if ts not in outputDict:
-                    outputDict[ts] = {tag_id: sum_list}
-                else:
-                    if tag_id not in outputDict[ts]:
-                        outputDict[ts][tag_id] = sum_list
-                    else:
-                        outputDict[ts][tag_id] = sum_list
+            ts = data["_id"]["ts"]
+            tag_id = data["_id"]["tagid"]
+            sum_list = [float(item) for item in data.get('data', []) if item]
+            if sum_list:
+                outputDict.setdefault(ts, {}).setdefault(tag_id, []).extend(sum_list)
 
         modified_labels = [i for i in range(0, 24)]
 
         for index, label in enumerate(result["data"]["labels"]):
-        #     if type == "Week":
-        #         modified_labels = [
-        #             (
-        #                 basePipeline[0]["$match"]["created_date"]["$gte"]
-        #                 + datetime.timedelta(days=i + 1)
-        #             ).strftime("%d-%m-%Y,%a")
-        #             for i in range(1, 8)
-        #         ]
+
+            if type == "Week":
+                modified_labels = [
+                    (
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
+                        + datetime.timedelta(days=i + 1)
+                    ).strftime("%d-%m-%Y,%a")
+                    for i in range(1, 8)
+                ]
             
-        #     elif type == "Month":
-        #         modified_labels = [
-        #             (
-        #                 basePipeline[0]["$match"]["created_date"]["$gte"]
-        #                 + datetime.timedelta(days=i + 1)
-        #             ).strftime("%d/%m")
-        #             for i in range(-1, (int(end_label))-1)
-        #         ]
+            elif type == "Month":
+                modified_labels = [
+                    (
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
+                        + datetime.timedelta(days=i + 1)
+                    ).strftime("%d/%m")
+                    for i in range(-1, (int(end_label))-1)
+                ]
 
-        #     elif type == "Year":
-        #         modified_labels = [
-        #             (
-        #                 basePipeline[0]["$match"]["created_date"]["$gte"]
-        #                 + relativedelta(months=i)
-        #             ).strftime("%b %y")
-        #             for i in range(0, 12)
-        #         ]
+            elif type == "Year":
+                modified_labels = [
+                    (
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
+                        + relativedelta(months=i)
+                    ).strftime("%b %y")
+                    for i in range(0, 12)
+                ]
 
-            if int(label) in outputDict:
-                for key, val in outputDict[int(label)].items():
-                    total_sum = sum(val)
-                    if key == 2:
-                        result["data"]["datasets"][0]["data"][index] = total_sum
-                    if key == 3536:
-                        result["data"]["datasets"][1]["data"][index] = total_sum
+
+            if int(label.split("-")[0]) in outputDict:
+                for tag, values in outputDict[int(label.split("-")[0])].items():
+                    if type in ["Week", "Month", "Year"]:
+                        avg_val = sum(values) / len(values)
+                        dataset_index = 0 if tag == 2 else 1 if tag == 3536 else None
+                        if dataset_index is not None:
+                            result["data"]["datasets"][dataset_index]["data"][index] = round(avg_val, 2)
+                    elif type == "Daily":
+                        total_sum = sum(values)
+                        dataset_index = 0 if tag == 2 else 1 if tag == 3536 else None
+                        if dataset_index is not None:
+                            result["data"]["datasets"][dataset_index]["data"][index] = round(total_sum, 2)
 
         result["data"]["labels"] = copy.deepcopy(modified_labels)
-        console_logger.debug(f"-------- Coal Generation Graph Response -------- {result}")
         return result
-    
+
     except Exception as e:
         response.status_code = 400
         console_logger.debug(e)
@@ -1629,6 +1595,7 @@ def coal_generation_analysis(response:Response, type: Optional[str] = "Daily",
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
+
 
 
 @router.get("/coal_consumption_graph", tags=["Coal Consumption"])
@@ -1639,37 +1606,6 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
         data={}
         UTC_OFFSET_TIMEDELTA = datetime.datetime.utcnow() - datetime.datetime.now()
 
-        # basePipeline = [
-        #     {
-        #         "$match": {
-        #             "created_date": {
-        #                 "$gte": None,
-        #             },
-        #         },
-        #     },
-        #     {
-        #         "$project": {
-        #             "ts": {
-        #                 "$hour": {"date": "$created_date"},
-        #             },
-        #             "tagid": "$tagid",
-        #             "sum": "$sum",
-        #             "_id": 0
-        #         },
-        #     },
-        #     {
-        #         "$group": {
-        #             "_id": {
-        #                 "ts": "$ts",
-        #                 "tagid": "$tagid"
-        #             },
-        #             "data": {
-        #                 "$push": "$sum"
-        #             }
-        #         }
-        #     },
-        # ]
-
         basePipeline = [
             {
                 "$match": {
@@ -1715,196 +1651,161 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
         ]
 
         if type == "Daily":
+            date = Daily
+            start_date = datetime.datetime.strptime(f"{date} 00:00:00", "%Y-%m-%d %H:%M:%S")
+            end_date = datetime.datetime.strptime(f"{date} 23:59:59", "%Y-%m-%d %H:%M:%S")
+            basePipeline[0]["$match"]["created_date"].update({"$gte": start_date, "$lte": end_date})
+            basePipeline[2]["$group"]["_id"]["ts"] = {"$hour": "$created_date"}
+            result = {
+                "data": {
+                    "labels": [str(i) for i in range(24)],
+                    "datasets": [
+                        {"label": "Unit 1", "data": [0 for _ in range(24)]},  # tagid 2
+                        {"label": "Unit 2", "data": [0 for _ in range(24)]}   # tagid 3536
+                    ]
+                }
+            }
 
-            date=Daily
-            end_date =f'{date} 23:59:59'
-            start_date = f'{date} 00:00:00'
+        elif type == "Week":
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (
+                datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                + UTC_OFFSET_TIMEDELTA
+                - datetime.timedelta(days=7)
+            )
+            basePipeline[2]["$group"]["_id"]["ts"] = {"$dayOfMonth": "$created_date"}
+            result = {
+                "data": {
+                    "labels": [
+                        (
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
+                            + datetime.timedelta(days=i + 1)
+                        ).strftime("%d")
+                        for i in range(1, 8)
+                    ],
+                    "datasets": [
+                        {"label": "Unit 1", "data": [0 for i in range(1, 8)]},              # unit 1 = tagid_16
+                        {"label": "Unit 2", "data": [0 for i in range(1, 8)]},              # unit 2 = tagid_3538
+                    ],
+                }
+            }
+
+
+        elif type == "Month":
+
+            date=Month
+            format_data = "%Y - %m-%d"
+
+            start_date = f'{date}-01'
+            startd_date=datetime.datetime.strptime(start_date,format_data)
+            
+            end_date = startd_date + relativedelta( day=31)
+            end_label = (end_date).strftime("%d")
+
+            basePipeline[0]["$match"]["created_date"]["$lte"] = (end_date)
+            basePipeline[0]["$match"]["created_date"]["$gte"] = (startd_date)
+            basePipeline[2]["$group"]["_id"]["ts"] = {"$dayOfMonth": "$created_date"}
+            result = {
+                "data": {
+                    "labels": [
+                        (
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
+                            + datetime.timedelta(days=i + 1)
+                        ).strftime("%d")
+                        for i in range(-1, (int(end_label))-1)
+                    ],
+                    "datasets": [
+                        {"label": "Unit 1", "data": [0 for i in range(-1, (int(end_label))-1)]},        # unit 1 = tagid_16
+                        {"label": "Unit 2", "data": [0 for i in range(-1, (int(end_label))-1)]},        # unit 2 = tagid_3538
+                    ],
+                }
+            }
+
+        elif type == "Year":
+
+            date=Year
+            end_date =f'{date}-12-31 23:59:59'
+            start_date = f'{date}-01-01 00:00:00'
             format_data = "%Y-%m-%d %H:%M:%S"
             endd_date=datetime.datetime.strptime(end_date,format_data)
             startd_date=datetime.datetime.strptime(start_date,format_data)
 
             basePipeline[0]["$match"]["created_date"]["$lte"] = (endd_date)
             basePipeline[0]["$match"]["created_date"]["$gte"] = (startd_date)
-            
 
+            basePipeline[2]["$group"]["_id"]["ts"] = {"$month": "$created_date"}
             result = {
                 "data": {
-                    "labels": [str(i) for i in range(0, 24)],
+                    "labels": [
+                        (
+                            basePipeline[0]["$match"]["created_date"]["$gte"]
+                            + relativedelta(months=i)
+                        ).strftime("%m")
+                        for i in range(0, 12)
+                    ],
                     "datasets": [
-                        {"label": "Unit 1", "data": [0 for i in range(0, 24)]},             # unit 1 = tagid_16
-                        {"label": "Unit 2", "data": [0 for i in range(0, 24)]},             # unit 2 = tagid_3538
+                        {"label": "Unit 1", "data": [0 for i in range(0, 12)]},                     # unit 1 = tagid_16
+                        {"label": "Unit 2", "data": [0 for i in range(0, 12)]},                     # unit 2 = tagid_3538
                     ],
                 }
             }
 
-        # elif type == "Week":
-        #     basePipeline[0]["$match"]["created_date"]["$gte"] = (
-        #         datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        #         + UTC_OFFSET_TIMEDELTA
-        #         - datetime.timedelta(days=7)
-        #     )
-        #     basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$created_date"}
-        #     result = {
-        #         "data": {
-        #             "labels": [
-        #                 (
-        #                     basePipeline[0]["$match"]["created_date"]["$gte"]
-        #                     + datetime.timedelta(days=i + 1)
-        #                 ).strftime("%d")
-        #                 for i in range(1, 8)
-        #             ],
-        #             "datasets": [
-        #                 {"label": "Unit 1", "data": [0 for i in range(1, 8)]},              # unit 1 = tagid_16
-        #                 {"label": "Unit 2", "data": [0 for i in range(1, 8)]},              # unit 2 = tagid_3538
-        #             ],
-        #         }
-        #     }
-
-        # elif type == "Month":
-
-        #     date=Month
-        #     format_data = "%Y - %m-%d"
-
-        #     start_date = f'{date}-01'
-        #     startd_date=datetime.datetime.strptime(start_date,format_data)
-            
-        #     end_date = startd_date + relativedelta( day=31)
-        #     end_label = (end_date).strftime("%d")
-
-        #     basePipeline[0]["$match"]["created_date"]["$lte"] = (end_date)
-        #     basePipeline[0]["$match"]["created_date"]["$gte"] = (startd_date)
-        #     basePipeline[1]["$project"]["ts"] = {"$dayOfMonth": "$created_date"}
-        #     result = {
-        #         "data": {
-        #             "labels": [
-        #                 (
-        #                     basePipeline[0]["$match"]["created_date"]["$gte"]
-        #                     + datetime.timedelta(days=i + 1)
-        #                 ).strftime("%d")
-        #                 for i in range(-1, (int(end_label))-1)
-        #             ],
-        #             "datasets": [
-        #                 {"label": "Unit 1", "data": [0 for i in range(-1, (int(end_label))-1)]},        # unit 1 = tagid_16
-        #                 {"label": "Unit 2", "data": [0 for i in range(-1, (int(end_label))-1)]},        # unit 2 = tagid_3538
-        #             ],
-        #         }
-        #     }
-
-        # elif type == "Year":
-
-        #     date=Year
-        #     end_date =f'{date}-12-31 23:59:59'
-        #     start_date = f'{date}-01-01 00:00:00'
-        #     format_data = "%Y-%m-%d %H:%M:%S"
-        #     endd_date=datetime.datetime.strptime(end_date,format_data)
-        #     startd_date=datetime.datetime.strptime(start_date,format_data)
-
-        #     basePipeline[0]["$match"]["created_date"]["$lte"] = (
-        #         endd_date
-        #     )
-        #     basePipeline[0]["$match"]["created_date"]["$gte"] = (
-        #         startd_date          
-        #     )
-
-        #     basePipeline[1]["$project"]["ts"] = {"$month": "$created_date"}
-        #     result = {
-        #         "data": {
-        #             "labels": [
-        #                 (
-        #                     basePipeline[0]["$match"]["created_date"]["$gte"]
-        #                     + relativedelta(months=i)
-        #                 ).strftime("%m")
-        #                 for i in range(0, 12)
-        #             ],
-        #             "datasets": [
-        #                 {"label": "Unit 1", "data": [0 for i in range(0, 12)]},                     # unit 1 = tagid_16
-        #                 {"label": "Unit 2", "data": [0 for i in range(0, 12)]},                     # unit 2 = tagid_3538
-        #             ],
-        #         }
-        #     }
 
         output = Historian.objects().aggregate(basePipeline)
         outputDict = {}
-
-        # for data in output:
-        #     if "_id" in data:
-        #         ts = data["_id"]["ts"]
-        #         tag_id = data["_id"]["tagid"]
-
-        #         data_list = data.get('data', [])
-        #         sum_list = []
-        #         for item in data_list:
-        #             try:
-        #                 sum_value = float(item)
-        #                 sum_list.append(sum_value)
-        #             except ValueError:
-        #                 pass
-                
-        #         if ts not in outputDict:
-        #             outputDict[ts] = {tag_id: sum_list}
-        #         else:
-        #             if tag_id not in outputDict[ts]:
-        #                 outputDict[ts][tag_id] = sum_list
-        #             else:
-        #                 outputDict[ts][tag_id].append(sum_list)
-
         for data in output:
-            if "_id" in data:
-                ts = data["_id"]["ts"]
-                tag_id = data["_id"]["tagid"]
-                sum_list = [float(item) for item in data.get('data', []) if item]
-
-                if ts not in outputDict:
-                    outputDict[ts] = {tag_id: sum_list}
-                else:
-                    if tag_id not in outputDict[ts]:
-                        outputDict[ts][tag_id] = sum_list
-                    else:
-                        outputDict[ts][tag_id] = sum_list
-
+            ts = data["_id"]["ts"]
+            tag_id = data["_id"]["tagid"]
+            sum_list = [float(item) for item in data.get('data', []) if item]
+            if sum_list:
+                outputDict.setdefault(ts, {}).setdefault(tag_id, []).extend(sum_list)
 
         modified_labels = [i for i in range(0, 24)]
 
         for index, label in enumerate(result["data"]["labels"]):
-            # if type == "Week":
-            #     modified_labels = [
-            #         (
-            #             basePipeline[0]["$match"]["created_date"]["$gte"]
-            #             + datetime.timedelta(days=i + 1)
-            #         ).strftime("%d-%m-%Y,%a")
-            #         for i in range(1, 8)
-            #     ]
+
+            if type == "Week":
+                modified_labels = [
+                    (
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
+                        + datetime.timedelta(days=i + 1)
+                    ).strftime("%d-%m-%Y,%a")
+                    for i in range(1, 8)
+                ]
             
-            # elif type == "Month":
-            #     modified_labels = [
-            #         (
-            #             basePipeline[0]["$match"]["created_date"]["$gte"]
-            #             + datetime.timedelta(days=i + 1)
-            #         ).strftime("%d/%m")
-            #         for i in range(-1, (int(end_label))-1)
-            #     ]
+            elif type == "Month":
+                modified_labels = [
+                    (
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
+                        + datetime.timedelta(days=i + 1)
+                    ).strftime("%d/%m")
+                    for i in range(-1, (int(end_label))-1)
+                ]
 
-            # elif type == "Year":
-            #     modified_labels = [
-            #         (
-            #             basePipeline[0]["$match"]["created_date"]["$gte"]
-            #             + relativedelta(months=i)
-            #         ).strftime("%b %y")
-            #         for i in range(0, 12)
-            #     ]
+            elif type == "Year":
+                modified_labels = [
+                    (
+                        basePipeline[0]["$match"]["created_date"]["$gte"]
+                        + relativedelta(months=i)
+                    ).strftime("%b %y")
+                    for i in range(0, 12)
+                ]
 
-            if int(label) in outputDict:
-                for key, val in outputDict[int(label)].items():
-                    total_sum = sum(val)
-                    if key == 16:
-                        result["data"]["datasets"][0]["data"][index] = total_sum
-                    if key == 3538:
-                        result["data"]["datasets"][1]["data"][index] = total_sum
+            if int(label.split("-")[0]) in outputDict:
+                for tag, values in outputDict[int(label.split("-")[0])].items():
+                    if type in ["Week", "Month", "Year"]:
+                        avg_val = sum(values) / len(values)
+                        dataset_index = 0 if tag == 16 else 1 if tag == 3538 else None
+                        if dataset_index is not None:
+                            result["data"]["datasets"][dataset_index]["data"][index] = round(avg_val, 2)
+                    elif type == "Daily":
+                        total_sum = sum(values)
+                        dataset_index = 0 if tag == 16 else 1 if tag == 3538 else None
+                        if dataset_index is not None:
+                            result["data"]["datasets"][dataset_index]["data"][index] = round(total_sum, 2)
 
         result["data"]["labels"] = copy.deepcopy(modified_labels)
-        console_logger.debug(f"-------- Coal Consumption Graph Response -------- {result}")
         return result
-    
+
     except Exception as e:
         response.status_code = 400
         console_logger.debug(e)
@@ -1913,6 +1814,7 @@ def coal_consumption_analysis(response:Response,type: Optional[str] = "Daily",
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
+
 
 
 #  x------------------------------    Coal Quality Testing Api's    ------------------------------------x
@@ -2157,11 +2059,269 @@ def SchedulerResponse(job_id, status):
 
 
 
+# @router.get("/extract_coal_test", tags=["Coal Testing"])
+# def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
+#     success = False
+#     try:
+#         console_logger.debug("hitted data")
+#         global proxies
+#         # entry = UsecaseParameters.objects.filter(Parameters__gmr_api__exists=True).first()
+#         entry = UsecaseParameters.objects.first()
+#         testing_ip = entry.Parameters.get("gmr_api", {}).get("roi1", {}).get("Coal Testing IP") if entry else None
+#         testing_timer = entry.Parameters.get("gmr_api", {}).get("roi1", {}).get("Coal Testing Duration") if entry else None
+
+#         console_logger.debug(f"---- Coal Testing IP ----            {testing_ip}")
+#         console_logger.debug(f"---- Coal Testing Duration ----      {testing_timer}")
+
+#         payload = {}
+#         headers = {}
+#         current_time = datetime.datetime.now(IST)
+#         current_date = current_time.date()
+#         if not end_date:
+#             end_date = current_date.__str__()  #  end_date will always be the current date
+
+#         if not start_date:
+#             no_of_day = testing_timer.split(":")[0]
+#             start_date = (current_date - timedelta(int(no_of_day))).__str__()
+
+#         console_logger.debug(f" --- Test Start Date --- {start_date}")
+#         console_logger.debug(f" --- Test End Date --- {end_date}")
+#         console_logger.debug(ip)
+#         coal_testing_url = f"http://{ip}/api/v1/host/coal_extract_data?start_date={start_date}&end_date={end_date}"
+#         # coal_testing_url = f"http://{ip}/api/v1/host/coal_extract_data?start_date=2024-07-09&end_date=2024-08-09"
+#         # coal_testing_url = f"http://{testing_ip}/limsapi/api/SampleDetails/GetSampleRecord/GetSampleRecord?Fromdate={start_date}&todate={end_date}"
+#         # coal_testing_url = f"http://172.21.96.145/limsapi/api/SampleDetails/GetSampleRecord/GetSampleRecord?Fromdate={start_date}&todate={end_date}"
+#         try:
+#             response = requests.request("GET", url=coal_testing_url, headers=headers, data=payload, proxies=proxies)
+#             testing_data = response.json()
+#             wcl_extracted_data = []
+#             secl_extracted_data = []
+#             # console_logger.debug(testing_data)
+#             if testing_data.get("statusCode") == 200:
+#                 for entry in testing_data["responseData"]:
+#                     if entry.get("supplier") == "WCL" and entry.get("rrNo") != "" and entry.get("rrNo") != "NA":
+#                         data = {
+#                             "sample_Desc": entry.get("sample_Desc"),
+#                             "rrNo": entry.get("rrNo"),
+#                             "rR_Qty": entry.get("rR_Qty"),
+#                             "rake_No": entry.get("rake_No"),
+#                             "supplier": entry.get("supplier"),
+#                             "receive_date": entry.get("sample_Received_Date"),
+#                             "parameters": [],
+#                         }
+
+#                         for param in entry.get("sample_Parameters"):
+#                             param_info = {
+#                                 "parameter_Name": param.get("parameter_Name")
+#                                 .title()
+#                                 .replace(" ", "_"),
+#                                 "unit_Val": param.get("unit_Val").title().replace(" ",""),
+#                                 "test_Method": param.get("test_Method"),
+#                                 "val1": param.get("val1"),
+#                             }
+
+#                             if param.get("parameter_Name").title() == "Gross Calorific Value (Adb)":
+#                                 if param.get("val1"):
+#                                     fetchCoalGrades = CoalGrades.objects()
+#                                     for single_coal_grades in fetchCoalGrades:
+#                                         if (
+#                                             single_coal_grades["start_value"]
+#                                             <= param.get("val1")
+#                                             <= single_coal_grades["end_value"]
+#                                             and single_coal_grades["start_value"] != ""
+#                                             and single_coal_grades["end_value"] != ""
+#                                         ):
+#                                             param_info["grade"] = single_coal_grades["grade"]
+#                                         elif param.get("val1") > "7001":
+#                                             param_info["grade"] = "G-1"
+#                                             break
+#                             #uncomment below and comment upper for using bombcalorimeter                     
+#                             # if param.get("parameter_Name").title() == "Gross Calorific Value (Adb)":
+#                             #     param_info = {
+#                             #         "parameter_Name": param.get("parameter_Name")
+#                             #         .title()
+#                             #         .replace(" ", "_"),
+#                             #         "unit_Val": param.get("unit_Val").title().replace(" ",""),
+#                             #         "test_Method": param.get("test_Method"),
+#                             #         "val1": "0",
+#                             #     }
+#                             #     if param.get("val1"):
+#                             #         fetchCoalGrades = CoalGrades.objects()
+#                             #         for single_coal_grades in fetchCoalGrades:
+#                             #             if (
+#                             #                 single_coal_grades["start_value"]
+#                             #                 <= param.get("val1")
+#                             #                 <= single_coal_grades["end_value"]
+#                             #                 and single_coal_grades["start_value"] != ""
+#                             #                 and single_coal_grades["end_value"] != ""
+#                             #             ):
+#                             #                 param_info["grade"] = single_coal_grades["grade"]
+#                             #             elif param.get("val1") > "7001":
+#                             #                 param_info["grade"] = "G-1"
+#                             #                 break
+#                             # else:
+#                             #     param_info = {
+#                             #         "parameter_Name": param.get("parameter_Name")
+#                             #         .title()
+#                             #         .replace(" ", "_"),
+#                             #         "unit_Val": param.get("unit_Val").title().replace(" ",""),
+#                             #         "test_Method": param.get("test_Method"),
+#                             #         "val1": param.get("val1"),
+#                             #     }
+
+#                             data["parameters"].append(param_info)
+#                         wcl_extracted_data.append(data)
+
+#                 if (
+#                     entry["supplier"] == "SECL"
+#                     and entry["rrNo"] != ""
+#                     and entry["rrNo"] != "NA"
+#                 ):
+
+#                     secl_data = {
+#                         "sample_Desc": entry.get("sample_Desc"),
+#                         "rrNo": entry.get("rrNo"),
+#                         "rR_Qty": entry.get("rR_Qty"),
+#                         "rake_No": entry.get("rake_No"),
+#                         "supplier": entry.get("supplier"),
+#                         "receive_date": entry.get("sample_Received_Date"),
+#                         "parameters": [],
+#                     }
+
+#                     for secl_param in entry["sample_Parameters"]:
+#                         param_info = {
+#                             "parameter_Name": secl_param.get("parameter_Name")
+#                             .title()
+#                             .replace(" ", "_"),
+#                             "unit_Val": secl_param.get("unit_Val").title().replace(" ",""),
+#                             "test_Method": secl_param.get("test_Method"),
+#                             "val1": secl_param.get("val1"),
+#                         }
+#                         secl_data["parameters"].append(param_info)
+#                     secl_extracted_data.append(secl_data)
+
+#                     #uncomment below and comment upper for using bombcalorimeter
+#                     # for secl_param in entry["sample_Parameters"]:
+#                     #     if secl_param.get("parameter_Name").title() == "Gross Calorific Value (Adb)":
+#                     #         param_info = {
+#                     #             "parameter_Name": secl_param.get("parameter_Name")
+#                     #             .title()
+#                     #             .replace(" ", "_"),
+#                     #             "unit_Val": secl_param.get("unit_Val").title().replace(" ",""),
+#                     #             "test_Method": secl_param.get("test_Method"),
+#                     #             "val1": "0",
+#                     #         }
+#                     #     else:
+#                     #         param_info = {
+#                     #             "parameter_Name": secl_param.get("parameter_Name")
+#                     #             .title()
+#                     #             .replace(" ", "_"),
+#                     #             "unit_Val": secl_param.get("unit_Val").title().replace(" ",""),
+#                     #             "test_Method": secl_param.get("test_Method"),
+#                     #             "val1": secl_param.get("val1"),
+#                     #         }
+#                     #     secl_data["parameters"].append(param_info)
+#                     # secl_extracted_data.append(secl_data)
+
+#             for entry in wcl_extracted_data:
+#                 if re.sub(r'\t', '', entry.get("sample_Desc")) != "":
+#                     try:
+#                         coalTestRoadData = CoalTesting.objects.get(rrNo=entry.get("rrNo").strip(), rake_no=entry.get("rake_No").upper().strip())
+#                     except DoesNotExist as e:
+#                         # first re removes \t from string and second re will remove multiple space and will keep only single space
+#                         CoalTesting(
+#                             location=re.sub(r'\t', '', re.sub(' +', ' ', entry.get("sample_Desc").upper().strip())),
+#                             rrNo=entry.get("rrNo").strip(),
+#                             rR_Qty=entry.get("rR_Qty").strip(),
+#                             rake_no=entry.get("rake_No").upper().strip(),
+#                             supplier=entry.get("supplier").strip(),
+#                             receive_date=entry.get("receive_date"),
+#                             parameters=entry.get("parameters"),
+#                             ID=CoalTesting.objects.count() + 1,
+#                         ).save()
+
+#             for secl_entry in secl_extracted_data:
+#                 if re.sub(r'\t', '', secl_entry.get("sample_Desc")) != "":
+#                     if "Rake" in secl_entry.get("rake_No").strip() or "RAKE" in secl_entry.get("rake_No").strip():
+#                         rake_no = secl_entry.get("rake_No").strip()
+#                     else:
+#                         no_data = '{:02d}'.format(int(secl_entry.get("rake_No").strip()))
+#                         # rake_no = f"Rake-{str(no_data)}"
+#                         rake_no = f"{str(no_data)}"
+#                     try:
+#                         coalTestRailData = CoalTestingTrain.objects.get(rrNo=secl_entry.get("rrNo").strip(), rake_no=rake_no)
+#                     except DoesNotExist as e:
+#                         CoalTestingTrain(
+#                             location=re.sub(r'\t', '', re.sub(' +', ' ', secl_entry.get("sample_Desc").strip())),
+#                             rrNo=secl_entry.get("rrNo").strip(),
+#                             rR_Qty=secl_entry.get("rR_Qty").strip(),
+#                             # rake_no=secl_entry.get("rake_No").strip(),
+#                             rake_no=rake_no,
+#                             supplier=secl_entry.get("supplier").strip(),
+#                             receive_date=secl_entry.get("receive_date"),
+#                             parameters=secl_entry.get("parameters"),
+#                             ID=CoalTestingTrain.objects.count() + 1,
+#                         ).save()
+#             success = "completed"
+#         except requests.exceptions.Timeout:
+#             console_logger.debug("Request timed out!")
+#         except requests.exceptions.ConnectionError:
+#             console_logger.debug("Connection error")
+        
+#     except Exception as e:
+#         success = False
+#         console_logger.debug("----- Coal Testing Error -----",e)
+#         exc_type, exc_obj, exc_tb = sys.exc_info()
+#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#         success = e
+#     finally:
+#         SchedulerResponse("save testing data", f"{success}")
+#         return {"message": "Successful"}
+
+
+def get_val_from_sample_params(params, param_type):
+        try:
+            for param in params:
+                if param['parameter_Name'] == param_type:
+                    return float(param['val1'])
+            return None
+        except Exception as e:
+            success = False
+            console_logger.debug("----- Coal Testing Error -----",e)
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+            console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            success = e
+
+def get_mine_name_from_sap_records(do_no, data_type):
+        try:
+            try:
+                fetchMineNameSapRecords = SapRecords.objects.get(do_no=do_no)
+                if data_type == "mine_name":
+                    # console_logger.debug(fetchMineNameSapRecords.mine_name)
+                    return fetchMineNameSapRecords.mine_name
+                elif data_type == "grade":
+                    # console_logger.debug(fetchMineNameSapRecords.grade)
+                    return fetchMineNameSapRecords.grade.split("-")[0] if fetchMineNameSapRecords.grade else None
+            except DoesNotExist as e:
+                return None
+        except Exception as e:
+            success = False
+            console_logger.debug("----- Coal Testing Error -----",e)
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+            console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            success = e
+
+#new as per tabl
 @router.get("/extract_coal_test", tags=["Coal Testing"])
 def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
     success = False
     try:
-        console_logger.debug("hitted data")
         global proxies
         # entry = UsecaseParameters.objects.filter(Parameters__gmr_api__exists=True).first()
         entry = UsecaseParameters.objects.first()
@@ -2192,174 +2352,465 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
         try:
             response = requests.request("GET", url=coal_testing_url, headers=headers, data=payload, proxies=proxies)
             testing_data = response.json()
-            wcl_extracted_data = []
-            secl_extracted_data = []
-            # console_logger.debug(testing_data)
             if testing_data.get("statusCode") == 200:
                 for entry in testing_data["responseData"]:
                     if entry.get("supplier") == "WCL" and entry.get("rrNo") != "" and entry.get("rrNo") != "NA":
-                        data = {
-                            "sample_Desc": entry.get("sample_Desc"),
-                            "rrNo": entry.get("rrNo"),
-                            "rR_Qty": entry.get("rR_Qty"),
-                            "rake_No": entry.get("rake_No"),
-                            "supplier": entry.get("supplier"),
-                            "receive_date": entry.get("sample_Received_Date"),
-                            "parameters": [],
-                        }
+                        gcv_value = get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)")
+                        # console_logger.debug(entry.get("rake_No"))
+                        # Fetch grade directly while inserting the RecieptCoalQualityAnalysis object
+                        if gcv_value:
+                            gcv_value_float = float(gcv_value)  # Ensure gcv_value is a float for comparison
 
-                        for param in entry.get("sample_Parameters"):
-                            param_info = {
-                                "parameter_Name": param.get("parameter_Name")
-                                .title()
-                                .replace(" ", "_"),
-                                "unit_Val": param.get("unit_Val").title().replace(" ",""),
-                                "test_Method": param.get("test_Method"),
-                                "val1": param.get("val1"),
-                            }
+                            # Find the appropriate grade from CoalGrades or default to G-1 for values above 7001
+                            grade = next(
+                                (
+                                    single_coal_grades["grade"]
+                                    for single_coal_grades in CoalGrades.objects()
+                                    if int(single_coal_grades["start_value"]) <= int(gcv_value_float) <= int(single_coal_grades["end_value"])
+                                    and single_coal_grades["start_value"] != ""
+                                    and single_coal_grades["end_value"] != ""
+                                ),
+                                "G-1" if gcv_value_float > 7001 else None
+                            )
+                        else:
+                            grade = None
 
-                            if param.get("parameter_Name").title() == "Gross Calorific Value (Adb)":
-                                if param.get("val1"):
-                                    fetchCoalGrades = CoalGrades.objects()
-                                    for single_coal_grades in fetchCoalGrades:
-                                        if (
-                                            single_coal_grades["start_value"]
-                                            <= param.get("val1")
-                                            <= single_coal_grades["end_value"]
-                                            and single_coal_grades["start_value"] != ""
-                                            and single_coal_grades["end_value"] != ""
-                                        ):
-                                            param_info["grade"] = single_coal_grades["grade"]
-                                        elif param.get("val1") > "7001":
-                                            param_info["grade"] = "G-1"
-                                            break
-                            #uncomment below and comment upper for using bombcalorimeter                     
-                            # if param.get("parameter_Name").title() == "Gross Calorific Value (Adb)":
-                            #     param_info = {
-                            #         "parameter_Name": param.get("parameter_Name")
-                            #         .title()
-                            #         .replace(" ", "_"),
-                            #         "unit_Val": param.get("unit_Val").title().replace(" ",""),
-                            #         "test_Method": param.get("test_Method"),
-                            #         "val1": "0",
-                            #     }
-                            #     if param.get("val1"):
-                            #         fetchCoalGrades = CoalGrades.objects()
-                            #         for single_coal_grades in fetchCoalGrades:
-                            #             if (
-                            #                 single_coal_grades["start_value"]
-                            #                 <= param.get("val1")
-                            #                 <= single_coal_grades["end_value"]
-                            #                 and single_coal_grades["start_value"] != ""
-                            #                 and single_coal_grades["end_value"] != ""
-                            #             ):
-                            #                 param_info["grade"] = single_coal_grades["grade"]
-                            #             elif param.get("val1") > "7001":
-                            #                 param_info["grade"] = "G-1"
-                            #                 break
-                            # else:
-                            #     param_info = {
-                            #         "parameter_Name": param.get("parameter_Name")
-                            #         .title()
-                            #         .replace(" ", "_"),
-                            #         "unit_Val": param.get("unit_Val").title().replace(" ",""),
-                            #         "test_Method": param.get("test_Method"),
-                            #         "val1": param.get("val1"),
-                            #     }
+                        fetchMineName = get_mine_name_from_sap_records(entry.get("rrNo"), "mine_name")
+                        fetchMineGrade = get_mine_name_from_sap_records(entry.get("rrNo"), "grade")
+                        
+                        try:
+                            # console_logger.debug(entry.get("rrNo"))
+                            # console_logger.debug(entry.get("test_Report_No"))
+                            # fetchReceiptCoalQualityAnalysis = RecieptCoalQualityAnalysis.objects.get(sample_id=entry.get("rrNo"), plant_certificate_id=entry.get("test_Report_No"))
+                            # fetchReceiptCoalQualityAnalysis = RecieptCoalQualityAnalysis.objects.get(plant_sample_id=entry.get("sample_Id_No"))
+                            receipt = RecieptCoalQualityAnalysis.objects.get(
+                                plant_sample_id=entry.get("sample_Id_No")
+                            )
+                            receipt.update(
+                                plant_sample_id=entry.get("sample_Id_No"),
+                                sample_no=str(int(entry.get("rake_No").split("-")[1])),
+                                plant_sample_date=entry.get("sample_Date"),
+                                plant_preperation_date=entry.get("sample_Received_Date"),
+                                plant_analysis_date=entry.get("analysis_Date"),
+                                sample_qty=float(entry.get("rR_Qty")),
+                                mine=fetchMineName or entry.get("supplier"),
+                                mine_grade=fetchMineGrade.replace(" ", "") if fetchMineGrade else None,
+                                mode="Road",
+                                plant_lab_temp=float(entry.get("test_Temp")),
+                                plant_lab_rh=float(entry.get("humidity")),
+                                plant_adb_im=get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)"),
+                                plant_adb_vm=get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ADB)"),
+                                plant_adb_ash=get_val_from_sample_params(entry['sample_Parameters'], "ASH (ADB)"),
+                                plant_adb_fc=0,
+                                plant_adb_gcv=get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)"),
+                                plant_arb_tm=get_val_from_sample_params(entry['sample_Parameters'], "Total Moisture"),
+                                plant_arb_vm=get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ARB)"),
+                                plant_arb_ash=get_val_from_sample_params(entry['sample_Parameters'], "ASH (ARB)"),
+                                plant_arb_fc=get_val_from_sample_params(entry['sample_Parameters'], "Fixed Carbon (ARB)"),
+                                plant_arb_gcv=get_val_from_sample_params(entry['sample_Parameters'], "Gross Calorific Value (ARB)"),
+                                plant_ulr_id=entry.get("ulrNo"),
+                                plant_gcv_grade=grade
+                            )
+                        except DoesNotExist as e:
+                            insertRoadReceipt = RecieptCoalQualityAnalysis(
+                                plant_certificate_id = entry.get("test_Report_No"),
+                                plant_sample_id = entry.get("sample_Id_No"),
+                                sample_no = str(int(entry.get("rake_No").split("-")[1])),
+                                sample_id = entry.get("rrNo"),
+                                plant_sample_date = entry.get("sample_Date"),
+                                plant_preperation_date = entry.get("sample_Received_Date"),
+                                plant_analysis_date = entry.get("analysis_Date"),
+                                sample_qty = float(entry.get("rR_Qty")),
+                                mine = fetchMineName if fetchMineName else entry.get("supplier"),
+                                mine_grade = fetchMineGrade.replace(" ", "") if fetchMineGrade else None,
+                                mode = "Road",
+                                plant_lab_temp = float(entry.get("test_Temp")),
+                                plant_lab_rh = float(entry.get("humidity")),
+                                plant_adb_im = get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)"),
+                                plant_adb_vm = get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ADB)"),
+                                plant_adb_ash = get_val_from_sample_params(entry['sample_Parameters'], "ASH (ADB)"),
+                                plant_adb_fc = 0,
+                                plant_adb_gcv = get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)"),
+                                plant_arb_tm = get_val_from_sample_params(entry['sample_Parameters'], "Total Moisture"),
+                                plant_arb_vm = get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ARB)"),
+                                plant_arb_ash = get_val_from_sample_params(entry['sample_Parameters'], "ASH (ARB)"),
+                                plant_arb_fc = get_val_from_sample_params(entry['sample_Parameters'], "Fixed Carbon (ARB)"),
+                                plant_arb_gcv = get_val_from_sample_params(entry['sample_Parameters'], "Gross Calorific Value (ARB)"),
+                                plant_ulr_id = entry.get("ulrNo"),
+                                plant_gcv_grade = grade
+                            )
+                            insertRoadReceipt.save()
 
-                            data["parameters"].append(param_info)
-                        wcl_extracted_data.append(data)
+                    if (
+                        entry["supplier"] == "SECL"
+                        and entry["rrNo"] != ""
+                        and entry["rrNo"] != "NA"
+                    ):
+                        console_logger.debug(entry.get("rake_No"))
+                        gcv_value = get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)")
 
-                if (
-                    entry["supplier"] == "SECL"
-                    and entry["rrNo"] != ""
-                    and entry["rrNo"] != "NA"
-                ):
+                        # Fetch grade directly while inserting the RecieptCoalQualityAnalysis object
+                        if gcv_value:
+                            gcv_value_float = float(gcv_value)  # Ensure gcv_value is a float for comparison
 
-                    secl_data = {
-                        "sample_Desc": entry.get("sample_Desc"),
-                        "rrNo": entry.get("rrNo"),
-                        "rR_Qty": entry.get("rR_Qty"),
-                        "rake_No": entry.get("rake_No"),
-                        "supplier": entry.get("supplier"),
-                        "receive_date": entry.get("sample_Received_Date"),
-                        "parameters": [],
-                    }
+                            # Find the appropriate grade from CoalGrades or default to G-1 for values above 7001
+                            grade = next(
+                                (
+                                    single_coal_grades["grade"]
+                                    for single_coal_grades in CoalGrades.objects()
+                                    if int(single_coal_grades["start_value"]) <= int(gcv_value_float) <= int(single_coal_grades["end_value"])
+                                    and single_coal_grades["start_value"] != ""
+                                    and single_coal_grades["end_value"] != ""
+                                ),
+                                "G-1" if gcv_value_float > 7001 else None
+                            )
+                        else:
+                            grade = None
+                        fetchMineName = get_mine_name_from_sap_records(entry.get("rrNo"), "mine_name")
+                        fetchMineGrade = get_mine_name_from_sap_records(entry.get("rrNo"), "grade")
+                        try:
+                            # RecieptCoalQualityAnalysis.objects.get(sample_id=entry.get("rrNo"), plant_certificate_id=entry.get("test_Report_No"))
 
-                    for secl_param in entry["sample_Parameters"]:
-                        param_info = {
-                            "parameter_Name": secl_param.get("parameter_Name")
-                            .title()
-                            .replace(" ", "_"),
-                            "unit_Val": secl_param.get("unit_Val").title().replace(" ",""),
-                            "test_Method": secl_param.get("test_Method"),
-                            "val1": secl_param.get("val1"),
-                        }
-                        secl_data["parameters"].append(param_info)
-                    secl_extracted_data.append(secl_data)
+                            # fetchReceiptCoalQualityAnalysisRail = RecieptCoalQualityAnalysis.objects.get(plant_sample_id=entry.get("sample_Id_No"))
+                            # fetchReceiptCoalQualityAnalysisRail.plant_certificate_id = entry.get("test_Report_No")
+                            # fetchReceiptCoalQualityAnalysisRail.sample_no = str(int(entry.get("rake_No").split("-")[1]))
+                            # fetchReceiptCoalQualityAnalysisRail.sample_id = entry.get("rrNo")
+                            # fetchReceiptCoalQualityAnalysisRail.plant_sample_date = entry.get("sample_Date")
+                            # fetchReceiptCoalQualityAnalysisRail.plant_preperation_date = entry.get("sample_Received_Date")
+                            # fetchReceiptCoalQualityAnalysisRail.plant_analysis_date = entry.get("analysis_Date")
+                            # fetchReceiptCoalQualityAnalysisRail.sample_qty = float(entry.get("rR_Qty"))
+                            # fetchReceiptCoalQualityAnalysisRail.mine = fetchMineName if fetchMineName else entry.get("supplier")
+                            # fetchReceiptCoalQualityAnalysisRail.mine_grade = fetchMineGrade.replace(" ", "") if fetchMineGrade else None
+                            # fetchReceiptCoalQualityAnalysisRail.mode = "Rail"
+                            # fetchReceiptCoalQualityAnalysisRail.plant_lab_temp = float(entry.get("test_Temp"))
+                            # fetchReceiptCoalQualityAnalysisRail.plant_lab_rh = float(entry.get("humidity"))
+                            # fetchReceiptCoalQualityAnalysisRail.plant_adb_im = get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)")
+                            # fetchReceiptCoalQualityAnalysisRail.plant_adb_vm = get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ADB)")
+                            # fetchReceiptCoalQualityAnalysisRail.plant_adb_ash = get_val_from_sample_params(entry['sample_Parameters'], "ASH (ADB)")
+                            # fetchReceiptCoalQualityAnalysisRail.plant_adb_fc = 0
+                            # fetchReceiptCoalQualityAnalysisRail.plant_adb_gcv = get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)")
+                            # fetchReceiptCoalQualityAnalysisRail.plant_arb_tm = get_val_from_sample_params(entry['sample_Parameters'], "Total Moisture")
+                            # fetchReceiptCoalQualityAnalysisRail.plant_arb_vm = get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ARB)")
+                            # fetchReceiptCoalQualityAnalysisRail.plant_arb_ash = get_val_from_sample_params(entry['sample_Parameters'], "ASH (ARB)")
+                            # fetchReceiptCoalQualityAnalysisRail.plant_arb_fc = get_val_from_sample_params(entry['sample_Parameters'], "Fixed Carbon (ARB)")
+                            # fetchReceiptCoalQualityAnalysisRail.plant_arb_gcv = get_val_from_sample_params(entry['sample_Parameters'], "Gross Calorific Value (ARB)")
+                            # fetchReceiptCoalQualityAnalysisRail.plant_ulr_id = entry.get("ulrNo")
+                            # fetchReceiptCoalQualityAnalysisRail.plant_gcv_grade = grade
+                            # fetchReceiptCoalQualityAnalysisRail.save()
 
-                    #uncomment below and comment upper for using bombcalorimeter
-                    # for secl_param in entry["sample_Parameters"]:
-                    #     if secl_param.get("parameter_Name").title() == "Gross Calorific Value (Adb)":
-                    #         param_info = {
-                    #             "parameter_Name": secl_param.get("parameter_Name")
-                    #             .title()
-                    #             .replace(" ", "_"),
-                    #             "unit_Val": secl_param.get("unit_Val").title().replace(" ",""),
-                    #             "test_Method": secl_param.get("test_Method"),
-                    #             "val1": "0",
-                    #         }
-                    #     else:
-                    #         param_info = {
-                    #             "parameter_Name": secl_param.get("parameter_Name")
-                    #             .title()
-                    #             .replace(" ", "_"),
-                    #             "unit_Val": secl_param.get("unit_Val").title().replace(" ",""),
-                    #             "test_Method": secl_param.get("test_Method"),
-                    #             "val1": secl_param.get("val1"),
-                    #         }
-                    #     secl_data["parameters"].append(param_info)
-                    # secl_extracted_data.append(secl_data)
+                            receipt = RecieptCoalQualityAnalysis.objects.get(
+                                plant_sample_id=entry.get("sample_Id_No")
+                            )
+                            receipt.update(
+                                plant_sample_id=entry.get("sample_Id_No"),
+                                sample_no=str(int(entry.get("rake_No").split("-")[1])),
+                                plant_sample_date=entry.get("sample_Date"),
+                                plant_preperation_date=entry.get("sample_Received_Date"),
+                                plant_analysis_date=entry.get("analysis_Date"),
+                                sample_qty=float(entry.get("rR_Qty")),
+                                mine=fetchMineName or entry.get("supplier"),
+                                mine_grade=fetchMineGrade.replace(" ", "") if fetchMineGrade else None,
+                                mode="Rail",
+                                plant_lab_temp=float(entry.get("test_Temp")),
+                                plant_lab_rh=float(entry.get("humidity")),
+                                plant_adb_im=get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)"),
+                                plant_adb_vm=get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ADB)"),
+                                plant_adb_ash=get_val_from_sample_params(entry['sample_Parameters'], "ASH (ADB)"),
+                                plant_adb_fc=0,
+                                plant_adb_gcv=get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)"),
+                                plant_arb_tm=get_val_from_sample_params(entry['sample_Parameters'], "Total Moisture"),
+                                plant_arb_vm=get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ARB)"),
+                                plant_arb_ash=get_val_from_sample_params(entry['sample_Parameters'], "ASH (ARB)"),
+                                plant_arb_fc=get_val_from_sample_params(entry['sample_Parameters'], "Fixed Carbon (ARB)"),
+                                plant_arb_gcv=get_val_from_sample_params(entry['sample_Parameters'], "Gross Calorific Value (ARB)"),
+                                plant_ulr_id=entry.get("ulrNo"),
+                                plant_gcv_grade=grade
+                            )
 
-            for entry in wcl_extracted_data:
-                if re.sub(r'\t', '', entry.get("sample_Desc")) != "":
-                    try:
-                        coalTestRoadData = CoalTesting.objects.get(rrNo=entry.get("rrNo").strip(), rake_no=entry.get("rake_No").upper().strip())
-                    except DoesNotExist as e:
-                        # first re removes \t from string and second re will remove multiple space and will keep only single space
-                        CoalTesting(
-                            location=re.sub(r'\t', '', re.sub(' +', ' ', entry.get("sample_Desc").upper().strip())),
-                            rrNo=entry.get("rrNo").strip(),
-                            rR_Qty=entry.get("rR_Qty").strip(),
-                            rake_no=entry.get("rake_No").upper().strip(),
-                            supplier=entry.get("supplier").strip(),
-                            receive_date=entry.get("receive_date"),
-                            parameters=entry.get("parameters"),
-                            ID=CoalTesting.objects.count() + 1,
-                        ).save()
+                        except DoesNotExist as e:
+                            insertRailReceipt = RecieptCoalQualityAnalysis(
+                                plant_certificate_id = entry.get("test_Report_No"),
+                                plant_sample_id = entry.get("sample_Id_No"),
+                                sample_no = str(int(entry.get("rake_No").split("-")[1])),
+                                sample_id = entry.get("rrNo"),
+                                plant_sample_date = entry.get("sample_Date"),
+                                plant_preperation_date = entry.get("sample_Received_Date"),
+                                plant_analysis_date = entry.get("analysis_Date"),
+                                sample_qty = float(entry.get("rR_Qty")),
+                                mine = fetchMineName if fetchMineName else entry.get("supplier"),
+                                mine_grade = fetchMineGrade.replace(" ", "") if fetchMineGrade else None,
+                                mode = "Rail",
+                                plant_lab_temp = float(entry.get("test_Temp")),
+                                plant_lab_rh = float(entry.get("humidity")),
+                                plant_adb_im = get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)"),
+                                plant_adb_vm = get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ADB)"),
+                                plant_adb_ash = get_val_from_sample_params(entry['sample_Parameters'], "ASH (ADB)"),
+                                plant_adb_fc = 0,
+                                plant_adb_gcv = get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)"),
+                                plant_arb_tm = get_val_from_sample_params(entry['sample_Parameters'], "Total Moisture"),
+                                plant_arb_vm = get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ARB)"),
+                                plant_arb_ash = get_val_from_sample_params(entry['sample_Parameters'], "ASH (ARB)"),
+                                plant_arb_fc = get_val_from_sample_params(entry['sample_Parameters'], "Fixed Carbon (ARB)"),
+                                plant_arb_gcv = get_val_from_sample_params(entry['sample_Parameters'], "Gross Calorific Value (ARB)"),
+                                plant_ulr_id = entry.get("ulrNo"),
+                                plant_gcv_grade = grade,
+                            )
+                            insertRailReceipt.save()
+            success = "completed"
+        except requests.exceptions.Timeout:
+            console_logger.debug("Request timed out!")
+        except requests.exceptions.ConnectionError:
+            console_logger.debug("Connection error")
+        
+    except Exception as e:
+        success = False
+        console_logger.debug("----- Coal Testing Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e
+    finally:
+        SchedulerResponse("save testing data", f"{success}")
+        return {"message": "Successful"}
 
-            for secl_entry in secl_extracted_data:
-                if re.sub(r'\t', '', secl_entry.get("sample_Desc")) != "":
-                    if "Rake" in secl_entry.get("rake_No").strip() or "RAKE" in secl_entry.get("rake_No").strip():
-                        rake_no = secl_entry.get("rake_No").strip()
-                    else:
-                        no_data = '{:02d}'.format(int(secl_entry.get("rake_No").strip()))
-                        # rake_no = f"Rake-{str(no_data)}"
-                        rake_no = f"{str(no_data)}"
-                    try:
-                        coalTestRailData = CoalTestingTrain.objects.get(rrNo=secl_entry.get("rrNo").strip(), rake_no=rake_no)
-                    except DoesNotExist as e:
-                        CoalTestingTrain(
-                            location=re.sub(r'\t', '', re.sub(' +', ' ', secl_entry.get("sample_Desc").strip())),
-                            rrNo=secl_entry.get("rrNo").strip(),
-                            rR_Qty=secl_entry.get("rR_Qty").strip(),
-                            # rake_no=secl_entry.get("rake_No").strip(),
-                            rake_no=rake_no,
-                            supplier=secl_entry.get("supplier").strip(),
-                            receive_date=secl_entry.get("receive_date"),
-                            parameters=secl_entry.get("parameters"),
-                            ID=CoalTestingTrain.objects.count() + 1,
-                        ).save()
+
+@router.get("/extract_coal_test_old", tags=["Coal Testing"])
+def coal_test_old(start_date: Optional[str] = None, end_date: Optional[str] = None):
+    success = False
+    try:
+        global proxies
+        # entry = UsecaseParameters.objects.filter(Parameters__gmr_api__exists=True).first()
+        entry = UsecaseParameters.objects.first()
+        testing_ip = entry.Parameters.get("gmr_api", {}).get("roi1", {}).get("Coal Testing IP") if entry else None
+        testing_timer = entry.Parameters.get("gmr_api", {}).get("roi1", {}).get("Coal Testing Duration") if entry else None
+
+        console_logger.debug(f"---- Coal Testing IP ----            {testing_ip}")
+        console_logger.debug(f"---- Coal Testing Duration ----      {testing_timer}")
+
+        payload = {}
+        headers = {}
+        current_time = datetime.datetime.now(IST)
+        current_date = current_time.date()
+        if not end_date:
+            end_date = current_date.__str__()  #  end_date will always be the current date
+
+        if not start_date:
+            no_of_day = testing_timer.split(":")[0]
+            start_date = (current_date - timedelta(int(no_of_day))).__str__()
+
+        console_logger.debug(f" --- Test Start Date --- {start_date}")
+        console_logger.debug(f" --- Test End Date --- {end_date}")
+        console_logger.debug(ip)
+        coal_testing_url = f"http://{ip}/api/v1/host/coal_extract_data?start_date={start_date}&end_date={end_date}"
+        # coal_testing_url = f"http://{ip}/api/v1/host/coal_extract_data?start_date=2024-07-09&end_date=2024-08-09"
+        # coal_testing_url = f"http://{testing_ip}/limsapi/api/SampleDetails/GetSampleRecord/GetSampleRecord?Fromdate={start_date}&todate={end_date}"
+        # coal_testing_url = f"http://172.21.96.145/limsapi/api/SampleDetails/GetSampleRecord/GetSampleRecord?Fromdate={start_date}&todate={end_date}"
+        try:
+            response = requests.request("GET", url=coal_testing_url, headers=headers, data=payload, proxies=proxies)
+            testing_data = response.json()
+            if testing_data.get("statusCode") == 200:
+                for entry in testing_data["responseData"]:
+                    console_logger.debug(entry)
+                    if entry.get("supplier") == "WCL" and entry.get("rrNo") != "" and entry.get("rrNo") != "NA":
+                        gcv_value = get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)")
+                        # console_logger.debug(entry.get("rake_No"))
+                        # Fetch grade directly while inserting the RecieptCoalQualityAnalysis object
+                        if gcv_value:
+                            gcv_value_float = float(gcv_value)  # Ensure gcv_value is a float for comparison
+
+                            # Find the appropriate grade from CoalGrades or default to G-1 for values above 7001
+                            grade = next(
+                                (
+                                    single_coal_grades["grade"]
+                                    for single_coal_grades in CoalGrades.objects()
+                                    if int(single_coal_grades["start_value"]) <= int(gcv_value_float) <= int(single_coal_grades["end_value"])
+                                    and single_coal_grades["start_value"] != ""
+                                    and single_coal_grades["end_value"] != ""
+                                ),
+                                "G-1" if gcv_value_float > 7001 else None
+                            )
+                        else:
+                            grade = None
+                        fetchMineName = get_mine_name_from_sap_records(entry.get("rrNo"), "mine_name")
+                        fetchMineGrade = get_mine_name_from_sap_records(entry.get("rrNo"), "grade")
+                        try:
+                            # console_logger.debug(entry.get("rrNo"))
+                            # console_logger.debug(entry.get("test_Report_No"))
+                            # fetchReceiptCoalQualityAnalysis = RecieptCoalQualityAnalysis.objects.get(sample_id=entry.get("rrNo"), plant_certificate_id=entry.get("test_Report_No"))
+                            # # fetchReceiptCoalQualityAnalysis.plant_certificate_id = entry.get("test_Report_No")
+                            # fetchReceiptCoalQualityAnalysis.plant_sample_id=entry.get("sample_Id_No")
+                            # fetchReceiptCoalQualityAnalysis.sample_no = str(int(entry.get("rake_No").split("-")[1]))
+                            # fetchReceiptCoalQualityAnalysis.sample_id = entry.get("rrNo")
+                            # fetchReceiptCoalQualityAnalysis.plant_sample_date = entry.get("sample_Date")
+                            # fetchReceiptCoalQualityAnalysis.plant_preperation_date = entry.get("sample_Received_Date")
+                            # fetchReceiptCoalQualityAnalysis.plant_analysis_date = entry.get("analysis_Date")
+                            # fetchReceiptCoalQualityAnalysis.sample_qty = float(entry.get("rR_Qty"))
+                            # fetchReceiptCoalQualityAnalysis.mine = fetchMineName if fetchMineName else entry.get("supplier")
+                            # fetchReceiptCoalQualityAnalysis.mine_grade = fetchMineGrade.replace(" ", "") if fetchMineGrade else None
+                            # fetchReceiptCoalQualityAnalysis.mode = "Road"
+                            # fetchReceiptCoalQualityAnalysis.plant_lab_temp = float(entry.get("test_Temp"))
+                            # fetchReceiptCoalQualityAnalysis.plant_lab_rh = float(entry.get("humidity"))
+                            # fetchReceiptCoalQualityAnalysis.plant_adb_im = get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)")
+                            # fetchReceiptCoalQualityAnalysis.plant_adb_vm = get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ADB)")
+                            # fetchReceiptCoalQualityAnalysis.plant_adb_ash = get_val_from_sample_params(entry['sample_Parameters'], "ASH (ADB)")
+                            # fetchReceiptCoalQualityAnalysis.plant_adb_fc = 0
+                            # fetchReceiptCoalQualityAnalysis.plant_adb_gcv = get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)")
+                            # fetchReceiptCoalQualityAnalysis.plant_arb_tm = get_val_from_sample_params(entry['sample_Parameters'], "Total Moisture")
+                            # fetchReceiptCoalQualityAnalysis.plant_arb_vm = get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ARB)")
+                            # fetchReceiptCoalQualityAnalysis.plant_arb_ash = get_val_from_sample_params(entry['sample_Parameters'], "ASH (ARB)")
+                            # fetchReceiptCoalQualityAnalysis.plant_arb_fc = get_val_from_sample_params(entry['sample_Parameters'], "Fixed Carbon (ARB)")
+                            # fetchReceiptCoalQualityAnalysis.plant_arb_gcv = get_val_from_sample_params(entry['sample_Parameters'], "Gross Calorific Value (ARB)")
+                            # fetchReceiptCoalQualityAnalysis.plant_ulr_id = entry.get("ulrNo")
+                            # fetchReceiptCoalQualityAnalysis.plant_gcv_grade = grade
+                            # fetchReceiptCoalQualityAnalysis.save()
+                            receipt = RecieptCoalQualityAnalysis.objects.get(
+                                sample_id=entry.get("rrNo"),
+                                plant_certificate_id=entry.get("test_Report_No"),
+                                sample_no=str(int(entry.get("rake_No").split("-")[1]))
+                            )
+                            receipt.update(
+                                plant_sample_id=entry.get("sample_Id_No"),
+                                sample_no=str(int(entry.get("rake_No").split("-")[1])),
+                                plant_sample_date=entry.get("sample_Date"),
+                                plant_preperation_date=entry.get("sample_Received_Date"),
+                                plant_analysis_date=entry.get("analysis_Date"),
+                                sample_qty=float(entry.get("rR_Qty")),
+                                mine=fetchMineName or entry.get("supplier"),
+                                mine_grade=fetchMineGrade.replace(" ", "") if fetchMineGrade else None,
+                                mode="Road",
+                                plant_lab_temp=float(entry.get("test_Temp")),
+                                plant_lab_rh=float(entry.get("humidity")),
+                                plant_adb_im=get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)"),
+                                plant_adb_vm=get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ADB)"),
+                                plant_adb_ash=get_val_from_sample_params(entry['sample_Parameters'], "ASH (ADB)"),
+                                plant_adb_fc=0,
+                                plant_adb_gcv=get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)"),
+                                plant_arb_tm=get_val_from_sample_params(entry['sample_Parameters'], "Total Moisture"),
+                                plant_arb_vm=get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ARB)"),
+                                plant_arb_ash=get_val_from_sample_params(entry['sample_Parameters'], "ASH (ARB)"),
+                                plant_arb_fc=get_val_from_sample_params(entry['sample_Parameters'], "Fixed Carbon (ARB)"),
+                                plant_arb_gcv=get_val_from_sample_params(entry['sample_Parameters'], "Gross Calorific Value (ARB)"),
+                                plant_ulr_id=entry.get("ulrNo"),
+                                plant_gcv_grade=grade
+                            )
+                        except DoesNotExist as e:
+                            insertRoadReceipt = RecieptCoalQualityAnalysis(
+                                plant_certificate_id = entry.get("test_Report_No"),
+                                plant_sample_id = entry.get("sample_Id_No"),
+                                sample_no = str(int(entry.get("rake_No").split("-")[1])),
+                                sample_id = entry.get("rrNo"),
+                                plant_sample_date = entry.get("sample_Date"),
+                                plant_preperation_date = entry.get("sample_Received_Date"),
+                                plant_analysis_date = entry.get("analysis_Date"),
+                                sample_qty = entry.get("rR_Qty"),
+                                mine = fetchMineName if fetchMineName else entry.get("supplier"),
+                                mine_grade = fetchMineGrade.replace(" ", "") if fetchMineGrade else None,
+                                mode = "Road",
+                                plant_lab_temp = entry.get("test_Temp"),
+                                plant_lab_rh = entry.get("humidity"),
+                                plant_adb_im = get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)"),
+                                plant_adb_vm = get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ADB)"),
+                                plant_adb_ash = get_val_from_sample_params(entry['sample_Parameters'], "ASH (ADB)"),
+                                plant_adb_fc = 0,
+                                plant_adb_gcv = get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)"),
+                                plant_arb_tm = get_val_from_sample_params(entry['sample_Parameters'], "Total Moisture"),
+                                plant_arb_vm = get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ARB)"),
+                                plant_arb_ash = get_val_from_sample_params(entry['sample_Parameters'], "ASH (ARB)"),
+                                plant_arb_fc = get_val_from_sample_params(entry['sample_Parameters'], "Fixed Carbon (ARB)"),
+                                plant_arb_gcv = get_val_from_sample_params(entry['sample_Parameters'], "Gross Calorific Value (ARB)"),
+                                plant_ulr_id = entry.get("ulrNo"),
+                                plant_gcv_grade = grade
+                            )
+                            insertRoadReceipt.save()
+
+                    if (
+                        entry["supplier"] == "SECL"
+                        and entry["rrNo"] != ""
+                        and entry["rrNo"] != "NA"
+                    ):
+                        console_logger.debug(entry.get("rake_No"))
+                        gcv_value = get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)")
+
+                        # Fetch grade directly while inserting the RecieptCoalQualityAnalysis object
+                        if gcv_value:
+                            gcv_value_float = float(gcv_value)  # Ensure gcv_value is a float for comparison
+
+                            # Find the appropriate grade from CoalGrades or default to G-1 for values above 7001
+                            grade = next(
+                                (
+                                    single_coal_grades["grade"]
+                                    for single_coal_grades in CoalGrades.objects()
+                                    if int(single_coal_grades["start_value"]) <= int(gcv_value_float) <= int(single_coal_grades["end_value"])
+                                    and single_coal_grades["start_value"] != ""
+                                    and single_coal_grades["end_value"] != ""
+                                ),
+                                "G-1" if gcv_value_float > 7001 else None
+                            )
+                        else:
+                            grade = None
+                        fetchMineName = get_mine_name_from_sap_records(entry.get("rrNo"), "mine_name")
+                        fetchMineGrade = get_mine_name_from_sap_records(entry.get("rrNo"), "grade")
+                        try:
+                            receiptRail = RecieptCoalQualityAnalysis.objects.get(
+                                sample_id=entry.get("rrNo"),
+                                plant_certificate_id=entry.get("test_Report_No"),
+                                sample_no=str(int(entry.get("rake_No").split("-")[1]))
+                            )
+                            receiptRail.update(
+                                plant_sample_id=entry.get("sample_Id_No"),
+                                sample_no=str(int(entry.get("rake_No").split("-")[1])),
+                                plant_sample_date=entry.get("sample_Date"),
+                                plant_preperation_date=entry.get("sample_Received_Date"),
+                                plant_analysis_date=entry.get("analysis_Date"),
+                                sample_qty=float(entry.get("rR_Qty")),
+                                mine=fetchMineName or entry.get("supplier"),
+                                mine_grade=fetchMineGrade.replace(" ", "") if fetchMineGrade else None,
+                                mode="Rail",
+                                plant_lab_temp=float(entry.get("test_Temp")),
+                                plant_lab_rh=float(entry.get("humidity")),
+                                plant_adb_im=get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)"),
+                                plant_adb_vm=get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ADB)"),
+                                plant_adb_ash=get_val_from_sample_params(entry['sample_Parameters'], "ASH (ADB)"),
+                                plant_adb_fc=0,
+                                plant_adb_gcv=get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)"),
+                                plant_arb_tm=get_val_from_sample_params(entry['sample_Parameters'], "Total Moisture"),
+                                plant_arb_vm=get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ARB)"),
+                                plant_arb_ash=get_val_from_sample_params(entry['sample_Parameters'], "ASH (ARB)"),
+                                plant_arb_fc=get_val_from_sample_params(entry['sample_Parameters'], "Fixed Carbon (ARB)"),
+                                plant_arb_gcv=get_val_from_sample_params(entry['sample_Parameters'], "Gross Calorific Value (ARB)"),
+                                plant_ulr_id=entry.get("ulrNo"),
+                                plant_gcv_grade=grade
+                            )
+                        except DoesNotExist as e:
+                            insertRailReceipt = RecieptCoalQualityAnalysis(
+                                plant_certificate_id = entry.get("test_Report_No"),
+                                plant_sample_id = entry.get("sample_Id_No"),
+                                sample_no = str(int(entry.get("rake_No").split("-")[1])),
+                                sample_id = entry.get("rrNo"),
+                                plant_sample_date = entry.get("sample_Date"),
+                                plant_preperation_date = entry.get("sample_Received_Date"),
+                                plant_analysis_date = entry.get("analysis_Date"),
+                                sample_qty = entry.get("rR_Qty"),
+                                mine = fetchMineName if fetchMineName else entry.get("supplier"),
+                                mine_grade = fetchMineGrade.replace(" ", "") if fetchMineGrade else None,
+                                mode = "Rail",
+                                plant_lab_temp = entry.get("test_Temp"),
+                                plant_lab_rh = entry.get("humidity"),
+                                plant_adb_im = get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)"),
+                                plant_adb_vm = get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ADB)"),
+                                plant_adb_ash = get_val_from_sample_params(entry['sample_Parameters'], "ASH (ADB)"),
+                                plant_adb_fc = 0,
+                                plant_adb_gcv = get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)"),
+                                plant_arb_tm = get_val_from_sample_params(entry['sample_Parameters'], "Total Moisture"),
+                                plant_arb_vm = get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ARB)"),
+                                plant_arb_ash = get_val_from_sample_params(entry['sample_Parameters'], "ASH (ARB)"),
+                                plant_arb_fc = get_val_from_sample_params(entry['sample_Parameters'], "Fixed Carbon (ARB)"),
+                                plant_arb_gcv = get_val_from_sample_params(entry['sample_Parameters'], "Gross Calorific Value (ARB)"),
+                                plant_ulr_id = entry.get("ulrNo"),
+                                plant_gcv_grade = grade,
+                            )
+                            insertRailReceipt.save()
             success = "completed"
         except requests.exceptions.Timeout:
             console_logger.debug("Request timed out!")
@@ -2380,7 +2831,1474 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
 
 
 
+# as per RecieptCoalQualityAnalysis wise
 @router.get("/coal_gcv_table", tags=["Coal Testing"])
+def coal_wcl_gcv_table(
+    response: Response,
+    currentPage: Optional[int] = None,
+    perPage: Optional[int] = None,
+    search_text: Optional[str] = None,
+    start_timestamp: Optional[str] = None,
+    end_timestamp: Optional[str] = None,
+    month_date: Optional[str] = None,
+    type: Optional[str] = "display"):
+    try:
+        result = {"labels": [], "datasets": [], "total": 0, "page_size": 15}
+
+        if type and type == "display":
+            page_no = 1
+            page_len = result["page_size"]
+
+            if currentPage:
+                page_no = currentPage
+
+            if perPage:
+                page_len = perPage
+                result["page_size"] = perPage
+
+            data = Q()
+
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(plant_analysis_date__gte = start_date)
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(plant_analysis_date__lte = end_date)
+
+            if search_text:
+                if search_text.isdigit():
+                    data &= (Q(sample_id__icontains=search_text))
+                else:
+                    data &= (Q(mine__icontains=search_text))
+
+            offset = (page_no - 1) * page_len
+            # logs = CoalTesting.objects(data).order_by("-ID").skip(offset).limit(page_len)
+            logs = RecieptCoalQualityAnalysis.objects(data, mode="Road")
+
+            if any(logs):
+                aggregated_data = defaultdict(lambda: defaultdict(lambda: {"DO_Qty": 0, "Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)_count": 0, "count": 0}))
+
+                for log in logs:
+                    month = log.plant_analysis_date.strftime("%Y-%m")
+                    payload = log.payload()
+                    mine = payload["mine"]
+                    if payload.get("sample_qty"):
+                        aggregated_data[month][mine]["DO_Qty"] += float(payload["sample_qty"])
+                        # if payload.get("DO_Qty").count('.') > 1:
+                        #     aggregated_data[month][mine]["DO_Qty"] += float(payload.get("DO_Qty")[:5])
+                        # else:
+                        #     if "," in payload["DO_Qty"]:
+                        #         aggregated_data[month][mine]["DO_Qty"] += float(payload["DO_Qty"].replace(",", ""))
+                        #     else:
+                        #         aggregated_data[month][mine]["DO_Qty"] += float(payload["DO_Qty"])
+                    if payload.get("GWEL_ADB_GCV"):
+                        aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["GWEL_ADB_GCV"])
+                    if payload.get("THIRDPARTY_ADB_GCV"):
+                        aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)"] += float(payload["THIRDPARTY_ADB_GCV"])
+                        aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)_count"] += 1
+                    aggregated_data[month][mine]["count"] += 1
+
+                dataList = [
+                    {"month": month, "data": {
+                        mine: {
+                            # first it was average then we have changed to total on 08-11-2024 11:31 am
+                            # "average_DO_Qty": data["DO_Qty"] / data["count"],
+                            "average_DO_Qty": data["DO_Qty"],
+                            "average_Gross_Calorific_Value_(Adb)": data["Gross_Calorific_Value_(Adb)"] / data["count"],
+                            "average_Third_Party_Gross_Calorific_Value_(Adb)": data["Third_Party_Gross_Calorific_Value_(Adb)"] / data["Third_Party_Gross_Calorific_Value_(Adb)_count"] if data["Third_Party_Gross_Calorific_Value_(Adb)"] != 0 else "",
+                        } for mine, data in aggregated_data[month].items()
+                    }} for month in aggregated_data
+                ]
+                coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
+
+                # Iterate through each month's data
+                for month_data in dataList:
+                    for key, mine_data in month_data["data"].items():
+                        if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
+                            for single_coal_grades in coal_grades:
+                                if single_coal_grades["end_value"] != "":
+                                    if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                                        mine_data["average_GCV_Grade"] = single_coal_grades["grade"]
+                                    elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                        mine_data["average_GCV_Grade"] = "G-1"
+                                        break
+
+                        if mine_data["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                            for single_coal_grades in coal_grades:
+                                if single_coal_grades["end_value"] != "":
+                                    if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Third_Party_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                                        mine_data["average_Third_Party_GCV_Grade"] = single_coal_grades["grade"]
+                                    elif int(mine_data["average_Third_Party_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                        mine_data["average_Third_Party_GCV_Grade"] = "G-1"
+                                        break
+
+                final_data = []
+                if month_date:
+                    filtered_data = [entry for entry in dataList if entry["month"] == month_date]
+                    if filtered_data:
+                        data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                        for mine, values in data.items():
+                            dictData = {}
+                            dictData['Mine'] = mine
+                            dictData['DO_Qty'] = round(values['average_DO_Qty'], 2)
+                            dictData['GWEL_Gross_Calorific_Value_(Adb)'] = round(values['average_Gross_Calorific_Value_(Adb)'], 2)
+                            if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                if values.get('average_GCV_Grade'):
+                                    dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"], 2)
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["GWEL_Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'].replace('G-', '')) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))))
+                            final_data.append(dictData)
+                    else:
+                        console_logger.debug(
+                            f"No data available for the given month: {month_date}"
+                        )
+                        return result
+                else:
+                    console_logger.debug("inside else")
+                    filtered_data = [entry for entry in dataList]
+                    for single_data in filtered_data:
+                        for mine, values in single_data['data'].items():
+                            dictData = {}
+                            dictData['Mine'] = mine
+                            dictData['DO_Qty'] = round(values['average_DO_Qty'], 2)
+                            dictData['GWEL_Gross_Calorific_Value_(Adb)'] = round(values['average_Gross_Calorific_Value_(Adb)'], 2)
+                            if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"], 2)
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["GWEL_Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'].replace('G-', '')) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))))
+
+                            final_data.append(dictData)
+                # Perform pagination here using list slicing
+                start_index = (page_no - 1) * page_len
+                end_index = start_index + page_len
+                paginated_data = final_data[start_index:end_index]
+
+                unique_keys = OrderedDict()
+
+                for data in paginated_data:
+                    for key in data.keys():
+                        unique_keys[key] = None
+
+                result["labels"] = list(unique_keys.keys())
+
+                result["total"] = len(final_data)
+                result["datasets"] = paginated_data
+                return result
+            else:
+                return result
+        
+        elif type and type == "download":
+            del type
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+            
+            data = Q()
+
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(plant_analysis_date__gte = start_date)
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(plant_analysis_date__lte = end_date)
+            
+            if search_text:
+                if search_text.isdigit():
+                    data &= (Q(rrNo__icontains=search_text))
+                else:
+                    data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
+
+            # usecase_data = CoalTesting.objects(data).order_by("-receive_date")
+            usecase_data = RecieptCoalQualityAnalysis.objects(data, mode="Road")
+            count = len(usecase_data)
+            path = None
+            if usecase_data:
+                try:
+                    path = os.path.join(
+                        "static_server",
+                        "gmr_ai",
+                        file,
+                        "Roadwise_GCV_Grade_Comparision_Report_{}.xlsx".format(
+                            datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                        ),
+                    )
+                    filename = os.path.join(os.getcwd(), path)
+                    workbook = xlsxwriter.Workbook(filename)
+                    workbook.use_zip64()
+                    cell_format2 = workbook.add_format()
+                    cell_format2.set_bold()
+                    cell_format2.set_font_size(10)
+                    cell_format2.set_align("center")
+                    cell_format2.set_align("vjustify")
+
+                    worksheet = workbook.add_worksheet()
+                    worksheet.set_column("A:AZ", 20)
+                    worksheet.set_default_row(50)
+                    cell_format = workbook.add_format()
+                    cell_format.set_font_size(10)
+                    cell_format.set_align("center")
+                    cell_format.set_align("vcenter")
+
+                    headers = [
+                        "Sr.No",
+                        "Mine",
+                        "DO_Qty",
+                        "GWEL_Gross_Calorific_Value_(Adb)",
+                        "GWEL_Gross_Calorific_Value_Grade",
+                        "Third_Party_Gross_Calorific_Value_(Adb)",
+                        "Third_Party_Gross_Calorific_Value_(Adb)_grade",
+                        "Difference_Gross_Calorific_Value(Adb)",
+                        "Difference_Gross_Calorific_Value_Grade_(Adb)"
+                    ]
+
+                    for index, header in enumerate(headers):
+                        worksheet.write(0, index, header, cell_format2)
+
+
+                    if any(usecase_data):
+                        aggregated_data = defaultdict(lambda: defaultdict(lambda: {"DO_Qty": 0, "Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)_count": 0, "count": 0}))
+
+                        for log in usecase_data:
+                            month = log.plant_analysis_date.strftime("%Y-%m")
+                            payload = log.payload()
+                            mine = payload["mine"]
+                            if payload.get("sample_qty"):
+                                aggregated_data[month][mine]["DO_Qty"] += float(payload["sample_qty"])
+                                # if payload.get("DO_Qty").count('.') > 1:
+                                #     aggregated_data[month][mine]["DO_Qty"] += float(payload.get("DO_Qty")[:5])
+                                # else:
+                                #     aggregated_data[month][mine]["DO_Qty"] += float(payload["DO_Qty"])
+                            if payload.get("GWEL_ADB_GCV"):
+                                aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["GWEL_ADB_GCV"]) 
+                            if payload.get("THIRDPARTY_ADB_GCV"):
+                                aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)"] += float(payload["THIRDPARTY_ADB_GCV"])
+                                aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)_count"] += 1
+                
+                            aggregated_data[month][mine]["count"] += 1
+
+                        dataList = [
+                            {"month": month, "data": {
+                                mine: {
+                                    # first it was average then we have changed to total on 08-11-2024 11:31 am
+                                    # "average_DO_Qty": data["DO_Qty"] / data["count"],
+                                    "average_DO_Qty": data["DO_Qty"],
+                                    "average_Gross_Calorific_Value_(Adb)": data["Gross_Calorific_Value_(Adb)"] / data["count"],
+                                    "average_Third_Party_Gross_Calorific_Value_(Adb)": data["Third_Party_Gross_Calorific_Value_(Adb)"] / data["Third_Party_Gross_Calorific_Value_(Adb)_count"] if data["Third_Party_Gross_Calorific_Value_(Adb)"] != 0 else "",
+                                } for mine, data in aggregated_data[month].items()
+                            }} for month in aggregated_data
+                        ]
+                        coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
+
+                        for month_data in dataList:
+                            for key, mine_data in month_data["data"].items():
+                                if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
+                                    for single_coal_grades in coal_grades:
+                                        if single_coal_grades["end_value"] != "":
+                                            if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                                                mine_data["average_GCV_Grade"] = single_coal_grades["grade"]
+                                            elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                                mine_data["average_GCV_Grade"] = "G-1"
+                                                break
+
+                                if mine_data["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                    for single_coal_grades in coal_grades:
+                                        if single_coal_grades["end_value"] != "":
+                                            if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Third_Party_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                                                mine_data["average_Third_Party_GCV_Grade"] = single_coal_grades["grade"]
+                                            elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                                mine_data["average_Third_Party_GCV_Grade"] = "G-1"
+                                                break
+                    final_data = []
+                    if month_date:
+                        filtered_data = [entry for entry in dataList if entry["month"] == month_date]
+                        if filtered_data:
+                            data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                            for mine, values in data.items():
+                                dictData = {}
+                                dictData['Mine'] = mine
+                                dictData['DO_Qty'] = round(values['average_DO_Qty'], 2)
+                                dictData['GWEL_Gross_Calorific_Value_(Adb)'] = round(values['average_Gross_Calorific_Value_(Adb)'], 2)
+                                if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":    
+                                    dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"], 2)
+                                    if values.get("average_Third_Party_GCV_Grade"):
+                                        dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                    dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["GWEL_Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                    if values.get("average_Third_Party_GCV_Grade"):
+                                        dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['GWEL_Gross_Calorific_Value_(Adb)'].replace('G-', '')) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))))
+                                final_data.append(dictData)
+                        else:
+                            console_logger.debug(
+                                f"No data available for the given month: {month_date}"
+                            )
+                            return {"message": f"No data available for the given month: {month_date}"}
+                    else:
+                        filtered_data = [entry for entry in dataList]
+                        # data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                        for single_data in filtered_data:
+                            for mine, values in single_data['data'].items():
+                                dictData = {}
+                                dictData['Mine'] = mine
+                                dictData['DO_Qty'] = round(values['average_DO_Qty'], 2)
+                                dictData['GWEL_Gross_Calorific_Value_(Adb)'] = round(values['average_Gross_Calorific_Value_(Adb)'], 2)
+                                if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                    dictData['Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"],2)
+                                    if values.get("average_Third_Party_GCV_Grade"):
+                                        dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                    dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["GWEL_Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                    if values.get("average_Third_Party_GCV_Grade"):
+                                        dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['GWEL_Gross_Calorific_Value_(Adb)'].replace('G-', '')) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))))
+                                final_data.append(dictData)
+                    result["labels"] = list(final_data[0].keys())
+                    result["total"] = len(final_data)
+                    result["datasets"] = final_data
+
+                    row = 1
+                    for single_data in result["datasets"]:
+                        worksheet.write(row, 0, count, cell_format)
+                        worksheet.write(row, 1, single_data["Mine"])
+                        worksheet.write(row, 2, single_data["DO_Qty"])
+                        worksheet.write(row, 3, single_data["GWEL_Gross_Calorific_Value_(Adb)"])
+                        if single_data.get("Gross_Calorific_Value_Grade_(Adb)") != "" and single_data.get("Gross_Calorific_Value_Grade_(Adb)") != None:
+                            worksheet.write(row, 4, str(single_data["Gross_Calorific_Value_Grade_(Adb)"]), cell_format)
+                        if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != None:
+                            worksheet.write(row, 5, str(single_data["Third_Party_Gross_Calorific_Value_(Adb)"]), cell_format)
+                        if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != None:
+                            worksheet.write(row, 6, str(single_data["Third_Party_Gross_Calorific_Value_(Adb)_grade"]), cell_format)
+                        if single_data.get("Difference_Gross_Calorific_Value_(Adb)") != "" and single_data.get("Difference_Gross_Calorific_Value_(Adb)") != None:
+                            worksheet.write(row, 7, str(single_data["Difference_Gross_Calorific_Value_(Adb)"]), cell_format)
+                        if single_data.get("Difference_Gross_Calorific_Value_Grade_(Adb)") != "" and single_data.get("Difference_Gross_Calorific_Value_Grade_(Adb)") != None:
+                            worksheet.write(row, 8, str(single_data["Difference_Gross_Calorific_Value_Grade_(Adb)"]), cell_format)
+                        count -= 1
+                        row += 1
+                    workbook.close()
+
+                    # console_logger.debug("Successfully {} report generated".format(service_id))
+                    # console_logger.debug("sent data {}".format(path))
+                    return {
+                            "Type": "coal_test_download_event",
+                            "Datatype": "Report",
+                            "File_Path": path,
+                        }
+                except Exception as e:
+                    console_logger.debug(e)
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+                    console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            else:
+                console_logger.error("No data found")
+                return {
+                            "Type": "coal_test_download_event",
+                            "Datatype": "Report",
+                            "File_Path": path,
+                        }
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+
+@router.get("/coal_gcv_table_aggregation", tags=["Coal Testing"])
+def coal_wcl_gcv_table_update(
+    response: Response,
+    currentPage: Optional[int] = None,
+    perPage: Optional[int] = None,
+    search_text: Optional[str] = None,
+    start_timestamp: Optional[str] = None,
+    end_timestamp: Optional[str] = None,
+    month_date: Optional[str] = None,
+    type: Optional[str] = "display"):
+    try:
+        result = {"labels": [], "datasets": [], "total": 0, "page_size": 15}
+        if type and type == "display":
+
+            page_no = 1
+            page_len = result["page_size"]
+
+            if currentPage:
+                page_no = currentPage
+
+            if perPage:
+                page_len = perPage
+                result["page_size"] = perPage
+            
+            skip_value = (page_no - 1) * page_len
+            
+            if search_text:
+                if search_text.isdigit():
+                    search_filter = {'$match': {'sample_id': {'$regex': f'{search_text}', '$options': 'i'}}}
+                else:
+                    search_filter = {'$match': {'mine': {'$regex': f'{search_text}', '$options': 'i'}}}
+            else:
+                search_filter = {}
+
+            basePipeline = [
+                {
+                    '$match': {
+                        'plant_analysis_date': {
+                            '$ne': None
+                        }, 
+                        'mode': 'Road'
+                    }
+                },
+                {
+                    '$addFields': {
+                        'month': {
+                            '$dateToString': {
+                                'format': '%Y-%m', 
+                                'date': '$plant_analysis_date'
+                            }
+                        }
+                    }
+                }
+            ]
+
+            # Conditionally add `search_filter` if it is defined and not empty
+            if search_filter:
+                basePipeline.append(search_filter)
+
+            # Conditionally add `month_filter` only if month_date is provided
+            if month_date:
+                month_filter = {
+                    '$match': {
+                        'month': month_date
+                    }
+                }
+                basePipeline.append(month_filter)
+
+            # Add the remaining stages
+            basePipeline.extend([
+                {
+                    '$group': {
+                        '_id': {
+                            'month': '$month', 
+                            'mine': '$mine'
+                        }, 
+                        'DO_Qty_Total': {
+                            '$sum': {
+                                '$cond': [
+                                    {
+                                        '$and': [
+                                            { '$ifNull': ['$sample_qty', False] },
+                                            { '$lte': [ { '$strLenCP': { '$toString': '$sample_qty' } }, 5 ] }
+                                        ]
+                                    },
+                                    { '$toDouble': { '$substrCP': [{ '$toString': '$sample_qty' }, 0, 5] } },
+                                    {
+                                        '$cond': [
+                                            { '$regexMatch': { 'input': { '$toString': '$sample_qty' }, 'regex': "," } },
+                                            {
+                                                '$toDouble': {
+                                                    '$replaceAll': {
+                                                        'input': { '$toString': '$sample_qty' },
+                                                        'find': ',', 
+                                                        'replacement': ''
+                                                    }
+                                                }
+                                            },
+                                            { '$toDouble': '$sample_qty' }
+                                        ]
+                                    }
+                                ]
+                            }
+                        }, 
+                        'Gross_Calorific_Value_Adb_Total': {
+                            '$sum': { '$ifNull': ['$plant_adb_gcv', 0] }
+                        }, 
+                        'Third_Party_Gross_Calorific_Value_Adb_Total': {
+                            '$sum': { '$ifNull': ['$thirdparty_adb_gcv', 0] }
+                        }, 
+                        'count': { '$sum': 1 }
+                    }
+                },
+                {
+                    '$project': {
+                        'month': '$_id.month', 
+                        'mine': '$_id.mine', 
+                        'Avg_DO_Qty': {
+                            '$divide': ['$DO_Qty_Total', '$count']
+                        }, 
+                        'Avg_Gross_Calorific_Value_Adb': {
+                            '$divide': ['$Gross_Calorific_Value_Adb_Total', '$count']
+                        }, 
+                        'Avg_Third_Party_Gross_Calorific_Value_Adb': {
+                            '$divide': ['$Third_Party_Gross_Calorific_Value_Adb_Total', '$count']
+                        }, 
+                        '_id': 0
+                    }
+                }
+            ])
+            
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                basePipeline[0]["$match"]["plant_analysis_date"]["$gte"] = start_date
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
+                basePipeline[0]["$match"]["plant_analysis_date"]["$lte"] = end_date
+            
+            console_logger.debug(basePipeline)
+
+            fetchGmrData = RecieptCoalQualityAnalysis.objects.aggregate(basePipeline)
+            coal_grades = CoalGrades.objects()
+            final_data = []
+            for single_data in fetchGmrData:
+                dictData = {}
+                dictData["Mine"] = single_data.get("mine")
+                dictData["DO_Qty"] = round(single_data.get("Avg_DO_Qty"), 2)
+                dictData["GWEL_Gross_Calorific_Value_(Adb)"] = round(single_data.get("Avg_Gross_Calorific_Value_Adb"), 2)
+                
+                # Determine GWEL GCV Grade
+                if single_data.get("Avg_Gross_Calorific_Value_Adb") is not None:
+                    for single_coal_grade in coal_grades:
+                        start_value = single_coal_grade["start_value"]
+                        end_value = single_coal_grade["end_value"]
+                        if end_value != "":
+                            if start_value and end_value and int(start_value) <= int(single_data["Avg_Gross_Calorific_Value_Adb"]) <= int(end_value):
+                                dictData["average_GCV_Grade"] = single_coal_grade["grade"]
+                                break
+                            elif single_data["Avg_Gross_Calorific_Value_Adb"] > 7001:
+                                dictData["average_GCV_Grade"] = "G-1"
+                                break
+                
+                # Determine Third Party GCV Grade
+                if single_data.get("Avg_Third_Party_Gross_Calorific_Value_Adb") is not None:
+                    for single_coal_grade in coal_grades:
+                        start_value = single_coal_grade["start_value"]
+                        end_value = single_coal_grade["end_value"]
+                        if end_value != "":
+                            if start_value and end_value and int(start_value) <= int(single_data["Avg_Third_Party_Gross_Calorific_Value_Adb"]) <= int(end_value):
+                                console_logger.debug(single_coal_grade["grade"])
+                                dictData["average_Third_Party_GCV_Grade"] = single_coal_grade["grade"]
+                                break
+                            elif single_data["Avg_Third_Party_Gross_Calorific_Value_Adb"] > 7001:
+                                dictData["average_Third_Party_GCV_Grade"] = "G-1"
+                                break
+                
+                # console_logger.debug(dictData.get("average_Third_Party_GCV_Grade"))
+                # Final Calculations and formatting
+                if dictData.get("average_GCV_Grade"):
+                    dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'] = dictData.get('average_GCV_Grade')
+                else:
+                    dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'] = 0
+                if single_data.get("Avg_Third_Party_Gross_Calorific_Value_Adb"):
+                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(single_data.get("Avg_Third_Party_Gross_Calorific_Value_Adb", 0), 2)
+                else:
+                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = 0
+                if dictData.get("average_Third_Party_GCV_Grade"):
+                    dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = dictData.get("average_Third_Party_GCV_Grade")
+                else:
+                    dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = 0
+                # Difference Calculations
+                if dictData.get("GWEL_Gross_Calorific_Value_(Adb)") and dictData.get("Third_Party_Gross_Calorific_Value_(Adb)"):
+                    dictData["Difference_Gross_Calorific_Value_(Adb)"] = abs(
+                        int(float(dictData["GWEL_Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))
+                    )
+                if dictData.get("GWEL_Gross_Calorific_Value_Grade_(Adb)") and dictData.get("Third_Party_Gross_Calorific_Value_(Adb)_grade"):
+                    dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = abs(
+                        int(dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'].replace('G-', '')) - 
+                        int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))
+                    )
+
+                # console_logger.debug(dictData)
+                final_data.append(dictData)
+            start_index = (page_no - 1) * page_len
+            end_index = start_index + page_len
+            paginated_data = final_data[start_index:end_index]
+
+            unique_keys = OrderedDict()
+
+            for data in paginated_data:
+                for key in data.keys():
+                    unique_keys[key] = 0
+
+            result["labels"] = list(unique_keys.keys())
+            # result["labels"] = [
+            #             "Mine",
+            #             "DO_Qty",
+            #             "GWEL_Gross_Calorific_Value_(Adb)",
+            #             "GWEL_Gross_Calorific_Value_Grade_(Adb)",
+            #             "Third_Party_Gross_Calorific_Value_(Adb)",
+            #             "Third_Party_Gross_Calorific_Value_(Adb)_grade",
+            #             "Difference_Gross_Calorific_Value_(Adb)",
+            #             "Difference_Gross_Calorific_Value_Grade_(Adb)"
+            #         ]
+            result["total"] = len(final_data)
+            result["datasets"] = paginated_data
+            return result
+        elif type and type == "download":
+            del type
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+            
+            try:
+                path = os.path.join(
+                    "static_server",
+                    "gmr_ai",
+                    file,
+                    "Roadwise_GCV_Grade_Comparision_Report_{}.xlsx".format(
+                        datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                    ),
+                )
+                filename = os.path.join(os.getcwd(), path)
+                workbook = xlsxwriter.Workbook(filename)
+                workbook.use_zip64()
+                cell_format2 = workbook.add_format()
+                cell_format2.set_bold()
+                cell_format2.set_font_size(10)
+                cell_format2.set_align("center")
+                cell_format2.set_align("vjustify")
+
+                worksheet = workbook.add_worksheet()
+                worksheet.set_column("A:AZ", 20)
+                worksheet.set_default_row(50)
+                cell_format = workbook.add_format()
+                cell_format.set_font_size(10)
+                cell_format.set_align("center")
+                cell_format.set_align("vcenter")
+
+                headers = [
+                    "Sr.No",
+                    "Mine",
+                    "DO_Qty",
+                    "GWEL_Gross_Calorific_Value_(Adb)",
+                    "GWEL_Gross_Calorific_Value_Grade",
+                    "Third_Party_Gross_Calorific_Value_(Adb)",
+                    "Third_Party_Gross_Calorific_Value_(Adb)_grade",
+                    "Difference_Gross_Calorific_Value(Adb)",
+                    "Difference_Gross_Calorific_Value_Grade_(Adb)"
+                ]
+
+                for index, header in enumerate(headers):
+                    worksheet.write(0, index, header, cell_format2)
+
+                # basePipeline = [
+                #     {
+                #         '$match': {
+                #             'plant_analysis_date': {
+                #                 '$ne': None, 
+                #                 '$gte': start_date, 
+                #                 '$lte': end_date
+                #             }, 
+                #             'mode': 'Road'
+                #         }
+                #     },
+                #     {
+                #         '$addFields': {
+                #             'month': {
+                #                 '$dateToString': {
+                #                     'format': '%Y-%m', 
+                #                     'date': '$plant_analysis_date'
+                #                 }
+                #             }
+                #         }
+                #     },
+                #     {
+                #         '$group': {
+                #             '_id': {
+                #                 'month': '$month', 
+                #                 'mine': '$mine'
+                #             }, 
+                #             'DO_Qty_Total': {
+                #                 '$sum': {
+                #                     '$cond': [
+                #                         {
+                #                             '$and': [
+                #                                 {
+                #                                     '$ifNull': ['$sample_qty', False]
+                #                                 }, 
+                #                                 {
+                #                                     '$lte': [
+                #                                         { '$strLenCP': { '$toString': '$sample_qty' } }, 5
+                #                                     ]
+                #                                 }
+                #                             ]
+                #                         },
+                #                         {
+                #                             '$toDouble': {
+                #                                 '$substrCP': [{ '$toString': '$sample_qty' }, 0, 5]
+                #                             }
+                #                         },
+                #                         {
+                #                             '$cond': [
+                #                                 {
+                #                                     '$regexMatch': {
+                #                                         'input': { '$toString': '$sample_qty' },
+                #                                         'regex': ","
+                #                                     }
+                #                                 },
+                #                                 {
+                #                                     '$toDouble': {
+                #                                         '$replaceAll': {
+                #                                             'input': { '$toString': '$sample_qty' },
+                #                                             'find': ',', 
+                #                                             'replacement': ''
+                #                                         }
+                #                                     }
+                #                                 },
+                #                                 { '$toDouble': '$sample_qty' }
+                #                             ]
+                #                         }
+                #                     ]
+                #                 }
+                #             }, 
+                #             'Gross_Calorific_Value_Adb_Total': {
+                #                 '$sum': { '$ifNull': ['$plant_adb_gcv', 0] }
+                #             }, 
+                #             'Third_Party_Gross_Calorific_Value_Adb_Total': {
+                #                 '$sum': { '$ifNull': ['$thirdparty_adb_gcv', 0] }
+                #             }, 
+                #             'count': { '$sum': 1 }
+                #         }
+                #     },
+                #     {
+                #         '$project': {
+                #             'month': '$_id.month', 
+                #             'mine': '$_id.mine', 
+                #             'Avg_DO_Qty': {
+                #                 '$divide': ['$DO_Qty_Total', '$count']
+                #             }, 
+                #             'Avg_Gross_Calorific_Value_Adb': {
+                #                 '$divide': ['$Gross_Calorific_Value_Adb_Total', '$count']
+                #             }, 
+                #             'Avg_Third_Party_Gross_Calorific_Value_Adb': {
+                #                 '$divide': ['$Third_Party_Gross_Calorific_Value_Adb_Total', '$count']
+                #             }, 
+                #             '_id': 0
+                #         }
+                #     }
+                # ]
+
+                basePipeline = [
+                    {
+                        '$match': {
+                            'plant_analysis_date': {
+                                '$ne': None
+                            }, 
+                            'mode': 'Road'
+                        }
+                    },
+                    {
+                        '$addFields': {
+                            'month': {
+                                '$dateToString': {
+                                    'format': '%Y-%m', 
+                                    'date': '$plant_analysis_date'
+                                }
+                            }
+                        }
+                    }
+                ]
+
+                # Conditionally add `search_filter` if it is defined and not empty
+                # if search_filter:
+                #     basePipeline.append(search_filter)
+
+                # Conditionally add `month_filter` only if month_date is provided
+                if month_date:
+                    month_filter = {
+                        '$match': {
+                            'month': month_date
+                        }
+                    }
+                    basePipeline.append(month_filter)
+
+                # Add the remaining stages
+                basePipeline.extend([
+                    {
+                        '$group': {
+                            '_id': {
+                                'month': '$month', 
+                                'mine': '$mine'
+                            }, 
+                            'DO_Qty_Total': {
+                                '$sum': {
+                                    '$cond': [
+                                        {
+                                            '$and': [
+                                                { '$ifNull': ['$sample_qty', False] },
+                                                { '$lte': [ { '$strLenCP': { '$toString': '$sample_qty' } }, 5 ] }
+                                            ]
+                                        },
+                                        { '$toDouble': { '$substrCP': [{ '$toString': '$sample_qty' }, 0, 5] } },
+                                        {
+                                            '$cond': [
+                                                { '$regexMatch': { 'input': { '$toString': '$sample_qty' }, 'regex': "," } },
+                                                {
+                                                    '$toDouble': {
+                                                        '$replaceAll': {
+                                                            'input': { '$toString': '$sample_qty' },
+                                                            'find': ',', 
+                                                            'replacement': ''
+                                                        }
+                                                    }
+                                                },
+                                                { '$toDouble': '$sample_qty' }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }, 
+                            'Gross_Calorific_Value_Adb_Total': {
+                                '$sum': { '$ifNull': ['$plant_adb_gcv', 0] }
+                            }, 
+                            'Third_Party_Gross_Calorific_Value_Adb_Total': {
+                                '$sum': { '$ifNull': ['$thirdparty_adb_gcv', 0] }
+                            }, 
+                            'count': { '$sum': 1 }
+                        }
+                    },
+                    {
+                        '$project': {
+                            'month': '$_id.month', 
+                            'mine': '$_id.mine', 
+                            'Avg_DO_Qty': {
+                                '$divide': ['$DO_Qty_Total', '$count']
+                            }, 
+                            'Avg_Gross_Calorific_Value_Adb': {
+                                '$divide': ['$Gross_Calorific_Value_Adb_Total', '$count']
+                            }, 
+                            'Avg_Third_Party_Gross_Calorific_Value_Adb': {
+                                '$divide': ['$Third_Party_Gross_Calorific_Value_Adb_Total', '$count']
+                            }, 
+                            '_id': 0
+                        }
+                    }
+                ])
+
+                if start_timestamp:
+                    start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                    basePipeline[0]["$match"]["plant_analysis_date"]["$gte"] = start_date
+                if end_timestamp:
+                    end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
+                    basePipeline[0]["$match"]["plant_analysis_date"]["$lte"] = end_date
+
+                fetchGmrData = RecieptCoalQualityAnalysis.objects.aggregate(basePipeline)
+                coal_grades = CoalGrades.objects()
+                final_data = []
+                for single_data in fetchGmrData:
+                    dictData = {}
+                    dictData["Mine"] = single_data.get("mine")
+                    dictData["DO_Qty"] = single_data.get("Avg_DO_Qty")
+                    dictData["GWEL_Gross_Calorific_Value_(Adb)"] = single_data.get("Avg_Gross_Calorific_Value_Adb")
+                    
+                    # Determine GWEL GCV Grade
+                    if single_data.get("Avg_Gross_Calorific_Value_Adb") is not None:
+                        for single_coal_grade in coal_grades:
+                            start_value = single_coal_grade["start_value"]
+                            end_value = single_coal_grade["end_value"]
+                            if end_value != "":
+                                if start_value and end_value and int(start_value) <= int(single_data["Avg_Gross_Calorific_Value_Adb"]) <= int(end_value):
+                                    dictData["average_GCV_Grade"] = single_coal_grade["grade"]
+                                    break
+                                elif single_data["Avg_Gross_Calorific_Value_Adb"] > 7001:
+                                    dictData["average_GCV_Grade"] = "G-1"
+                                    break
+                    
+                    # Determine Third Party GCV Grade
+                    if single_data.get("Avg_Third_Party_Gross_Calorific_Value_Adb") is not None:
+                        for single_coal_grade in coal_grades:
+                            start_value = single_coal_grade["start_value"]
+                            end_value = single_coal_grade["end_value"]
+                            if end_value != "":
+                                if start_value and end_value and int(start_value) <= int(single_data["Avg_Third_Party_Gross_Calorific_Value_Adb"]) <= int(end_value):
+                                    dictData["average_Third_Party_GCV_Grade"] = single_coal_grade["grade"]
+                                    break
+                                elif single_data["Avg_Third_Party_Gross_Calorific_Value_Adb"] > 7001:
+                                    dictData["average_Third_Party_GCV_Grade"] = "G-1"
+                                    break
+                    
+                    console_logger.debug(dictData.get("average_Third_Party_GCV_Grade"))
+                    # Final Calculations and formatting
+                    dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'] = dictData.get('average_GCV_Grade')
+                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(single_data.get("Avg_Third_Party_Gross_Calorific_Value_Adb", 0), 2)
+                    dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = dictData.get("average_Third_Party_GCV_Grade")
+                    
+                    # Difference Calculations
+                    if dictData.get("GWEL_Gross_Calorific_Value_(Adb)") and dictData.get("Third_Party_Gross_Calorific_Value_(Adb)"):
+                        dictData["Difference_Gross_Calorific_Value_(Adb)"] = abs(
+                            int(float(dictData["GWEL_Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))
+                        )
+                    if dictData.get("GWEL_Gross_Calorific_Value_Grade_(Adb)") and dictData.get("Third_Party_Gross_Calorific_Value_(Adb)_grade"):
+                        dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = abs(
+                            int(dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'].replace('G-', '')) - 
+                            int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))
+                        )
+
+                    # console_logger.debug(dictData)
+                    final_data.append(dictData)
+                result["labels"] = list(final_data[0].keys())
+                result["total"] = len(final_data)
+                result["datasets"] = final_data
+                count = len(final_data)
+                row = 1 
+                for single_data in result["datasets"]:
+                    worksheet.write(row, 0, count, cell_format)
+                    worksheet.write(row, 1, single_data["Mine"], cell_format)
+                    worksheet.write(row, 2, round(single_data["DO_Qty"], 2), cell_format)
+                    worksheet.write(row, 3, round(single_data["GWEL_Gross_Calorific_Value_(Adb)"], 2), cell_format)
+                    if single_data.get("Gross_Calorific_Value_Grade_(Adb)") != "" and single_data.get("Gross_Calorific_Value_Grade_(Adb)") != None:
+                        worksheet.write(row, 4, str(single_data["Gross_Calorific_Value_Grade_(Adb)"]), cell_format)
+                    else:
+                        worksheet.write(row, 4, 0, cell_format)
+                    if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != None:
+                        worksheet.write(row, 5, str(single_data["Third_Party_Gross_Calorific_Value_(Adb)"]), cell_format)
+                    else:
+                        worksheet.write(row, 5, 0, cell_format)
+                    if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != None:
+                        worksheet.write(row, 6, str(single_data["Third_Party_Gross_Calorific_Value_(Adb)_grade"]), cell_format)
+                    else:
+                        worksheet.write(row, 6, 0, cell_format)
+                    if single_data.get("Difference_Gross_Calorific_Value_(Adb)") != "" and single_data.get("Difference_Gross_Calorific_Value_(Adb)") != None:
+                        worksheet.write(row, 7, str(single_data["Difference_Gross_Calorific_Value_(Adb)"]), cell_format)
+                    else:
+                        worksheet.write(row, 7, 0, cell_format)
+                    if single_data.get("Difference_Gross_Calorific_Value_Grade_(Adb)") != "" and single_data.get("Difference_Gross_Calorific_Value_Grade_(Adb)") != None:
+                        worksheet.write(row, 8, str(single_data["Difference_Gross_Calorific_Value_Grade_(Adb)"]), cell_format)
+                    else:
+                        worksheet.write(row, 8, 0, cell_format)
+                    count -= 1
+                    row += 1
+                workbook.close()
+
+                # console_logger.debug("Successfully {} report generated".format(service_id))
+                # console_logger.debug("sent data {}".format(path))
+                return {
+                        "Type": "coal_test_download_event",
+                        "Datatype": "Report",
+                        "File_Path": path,
+                    }
+            except Exception as e:
+                console_logger.debug(e)
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+                console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.get("/coal_gcv_table_train_aggregation", tags=["Coal Testing"])
+def coal_wcl_gcv_table_update_aggregation(
+    response: Response,
+    currentPage: Optional[int] = None,
+    perPage: Optional[int] = None,
+    search_text: Optional[str] = None,
+    start_timestamp: Optional[str] = None,
+    end_timestamp: Optional[str] = None,
+    month_date: Optional[str] = None,
+    type: Optional[str] = "display"):
+    try:
+        result = {"labels": [], "datasets": [], "total": 0, "page_size": 15}
+        if type and type == "display":
+
+            page_no = 1
+            page_len = result["page_size"]
+
+            if currentPage:
+                page_no = currentPage
+
+            if perPage:
+                page_len = perPage
+                result["page_size"] = perPage
+            
+            skip_value = (page_no - 1) * page_len
+            
+            if search_text:
+                if search_text.isdigit():
+                    search_filter = {'$match': {'sample_id': {'$regex': f'{search_text}', '$options': 'i'}}}
+                else:
+                    search_filter = {'$match': {'mine': {'$regex': f'{search_text}', '$options': 'i'}}}
+            else:
+                search_filter = {}
+
+            basePipeline = [
+                {
+                    '$match': {
+                        'plant_analysis_date': {
+                            '$ne': None
+                        }, 
+                        'mode': 'Rail'
+                    }
+                },
+                {
+                    '$addFields': {
+                        'month': {
+                            '$dateToString': {
+                                'format': '%Y-%m', 
+                                'date': '$plant_analysis_date'
+                            }
+                        }
+                    }
+                }
+            ]
+
+            # Conditionally add `search_filter` if it is defined and not empty
+            if search_filter:
+                basePipeline.append(search_filter)
+
+            # Conditionally add `month_filter` only if month_date is provided
+            if month_date:
+                month_filter = {
+                    '$match': {
+                        'month': month_date
+                    }
+                }
+                basePipeline.append(month_filter)
+
+            # Add the remaining stages
+            basePipeline.extend([
+                {
+                    '$group': {
+                        '_id': {
+                            'month': '$month', 
+                            'mine': '$mine'
+                        }, 
+                        'DO_Qty_Total': {
+                            '$sum': {
+                                '$cond': [
+                                    {
+                                        '$and': [
+                                            { '$ifNull': ['$sample_qty', False] },
+                                            { '$lte': [ { '$strLenCP': { '$toString': '$sample_qty' } }, 5 ] }
+                                        ]
+                                    },
+                                    { '$toDouble': { '$substrCP': [{ '$toString': '$sample_qty' }, 0, 5] } },
+                                    {
+                                        '$cond': [
+                                            { '$regexMatch': { 'input': { '$toString': '$sample_qty' }, 'regex': "," } },
+                                            {
+                                                '$toDouble': {
+                                                    '$replaceAll': {
+                                                        'input': { '$toString': '$sample_qty' },
+                                                        'find': ',', 
+                                                        'replacement': ''
+                                                    }
+                                                }
+                                            },
+                                            { '$toDouble': '$sample_qty' }
+                                        ]
+                                    }
+                                ]
+                            }
+                        }, 
+                        'Gross_Calorific_Value_Adb_Total': {
+                            '$sum': { '$ifNull': ['$plant_adb_gcv', 0] }
+                        }, 
+                        'Third_Party_Gross_Calorific_Value_Adb_Total': {
+                            '$sum': { '$ifNull': ['$thirdparty_adb_gcv', 0] }
+                        }, 
+                        'count': { '$sum': 1 }
+                    }
+                },
+                {
+                    '$project': {
+                        'month': '$_id.month', 
+                        'mine': '$_id.mine', 
+                        'Avg_DO_Qty': {
+                            '$divide': ['$DO_Qty_Total', '$count']
+                        }, 
+                        'Avg_Gross_Calorific_Value_Adb': {
+                            '$divide': ['$Gross_Calorific_Value_Adb_Total', '$count']
+                        }, 
+                        'Avg_Third_Party_Gross_Calorific_Value_Adb': {
+                            '$divide': ['$Third_Party_Gross_Calorific_Value_Adb_Total', '$count']
+                        }, 
+                        '_id': 0
+                    }
+                }
+            ])
+            
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                basePipeline[0]["$match"]["plant_analysis_date"]["$gte"] = start_date
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
+                basePipeline[0]["$match"]["plant_analysis_date"]["$lte"] = end_date
+            
+            console_logger.debug(basePipeline)
+
+            fetchGmrData = RecieptCoalQualityAnalysis.objects.aggregate(basePipeline)
+            coal_grades = CoalGrades.objects()
+            final_data = []
+            for single_data in fetchGmrData:
+                dictData = {}
+                dictData["Mine"] = single_data.get("mine")
+                dictData["DO_Qty"] = single_data.get("Avg_DO_Qty")
+                dictData["GWEL_Gross_Calorific_Value_(Adb)"] = single_data.get("Avg_Gross_Calorific_Value_Adb")
+                
+                # Determine GWEL GCV Grade
+                if single_data.get("Avg_Gross_Calorific_Value_Adb") is not None:
+                    for single_coal_grade in coal_grades:
+                        start_value = single_coal_grade["start_value"]
+                        end_value = single_coal_grade["end_value"]
+                        if end_value != "":
+                            if start_value and end_value and int(start_value) <= int(single_data["Avg_Gross_Calorific_Value_Adb"]) <= int(end_value):
+                                dictData["average_GCV_Grade"] = single_coal_grade["grade"]
+                                break
+                            elif single_data["Avg_Gross_Calorific_Value_Adb"] > 7001:
+                                dictData["average_GCV_Grade"] = "G-1"
+                                break
+                
+                # Determine Third Party GCV Grade
+                if single_data.get("Avg_Third_Party_Gross_Calorific_Value_Adb") is not None:
+                    for single_coal_grade in coal_grades:
+                        start_value = single_coal_grade["start_value"]
+                        end_value = single_coal_grade["end_value"]
+                        if end_value != "":
+                            if start_value and end_value and int(start_value) <= int(single_data["Avg_Third_Party_Gross_Calorific_Value_Adb"]) <= int(end_value):
+                                console_logger.debug(single_coal_grade["grade"])
+                                dictData["average_Third_Party_GCV_Grade"] = single_coal_grade["grade"]
+                                break
+                            elif single_data["Avg_Third_Party_Gross_Calorific_Value_Adb"] > 7001:
+                                dictData["average_Third_Party_GCV_Grade"] = "G-1"
+                                break
+                
+                # console_logger.debug(dictData.get("average_Third_Party_GCV_Grade"))
+                # Final Calculations and formatting
+                if dictData.get("average_GCV_Grade"):
+                    dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'] = dictData.get('average_GCV_Grade')
+                else:
+                    dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'] = 0
+                if single_data.get("Avg_Third_Party_Gross_Calorific_Value_Adb"):
+                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(single_data.get("Avg_Third_Party_Gross_Calorific_Value_Adb", 0), 2)
+                else:
+                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = 0
+                if dictData.get("average_Third_Party_GCV_Grade"):
+                    dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = dictData.get("average_Third_Party_GCV_Grade")
+                else:
+                    dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = 0
+                
+                # Difference Calculations
+                if dictData.get("GWEL_Gross_Calorific_Value_(Adb)") and dictData.get("Third_Party_Gross_Calorific_Value_(Adb)"):
+                    dictData["Difference_Gross_Calorific_Value_(Adb)"] = abs(
+                        int(float(dictData["GWEL_Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))
+                    )
+                if dictData.get("GWEL_Gross_Calorific_Value_Grade_(Adb)") and dictData.get("Third_Party_Gross_Calorific_Value_(Adb)_grade"):
+                    dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = abs(
+                        int(dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'].replace('G-', '')) - 
+                        int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))
+                    )
+
+                # console_logger.debug(dictData)
+                final_data.append(dictData)
+            start_index = (page_no - 1) * page_len
+            end_index = start_index + page_len
+            paginated_data = final_data[start_index:end_index]
+
+            unique_keys = OrderedDict()
+
+            for data in paginated_data:
+                for key in data.keys():
+                    unique_keys[key] = 0
+
+            result["labels"] = list(unique_keys.keys())
+            # result["labels"] = [
+            #             "Mine",
+            #             "DO_Qty",
+            #             "GWEL_Gross_Calorific_Value_(Adb)",
+            #             "GWEL_Gross_Calorific_Value_Grade_(Adb)",
+            #             "Third_Party_Gross_Calorific_Value_(Adb)",
+            #             "Third_Party_Gross_Calorific_Value_(Adb)_grade",
+            #             "Difference_Gross_Calorific_Value_(Adb)",
+            #             "Difference_Gross_Calorific_Value_Grade_(Adb)"
+            #         ]
+            result["total"] = len(final_data)
+            result["datasets"] = paginated_data
+            return result
+        elif type and type == "download":
+            del type
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+            
+            try:
+                path = os.path.join(
+                    "static_server",
+                    "gmr_ai",
+                    file,
+                    "Roadwise_GCV_Grade_Comparision_Report_{}.xlsx".format(
+                        datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                    ),
+                )
+                filename = os.path.join(os.getcwd(), path)
+                workbook = xlsxwriter.Workbook(filename)
+                workbook.use_zip64()
+                cell_format2 = workbook.add_format()
+                cell_format2.set_bold()
+                cell_format2.set_font_size(10)
+                cell_format2.set_align("center")
+                cell_format2.set_align("vjustify")
+
+                worksheet = workbook.add_worksheet()
+                worksheet.set_column("A:AZ", 20)
+                worksheet.set_default_row(50)
+                cell_format = workbook.add_format()
+                cell_format.set_font_size(10)
+                cell_format.set_align("center")
+                cell_format.set_align("vcenter")
+
+                headers = [
+                    "Sr.No",
+                    "Mine",
+                    "DO_Qty",
+                    "GWEL_Gross_Calorific_Value_(Adb)",
+                    "GWEL_Gross_Calorific_Value_Grade",
+                    "Third_Party_Gross_Calorific_Value_(Adb)",
+                    "Third_Party_Gross_Calorific_Value_(Adb)_grade",
+                    "Difference_Gross_Calorific_Value(Adb)",
+                    "Difference_Gross_Calorific_Value_Grade_(Adb)"
+                ]
+
+                for index, header in enumerate(headers):
+                    worksheet.write(0, index, header, cell_format2)
+
+                basePipeline = [
+                    {
+                        '$match': {
+                            'plant_analysis_date': {
+                                '$ne': None
+                            }, 
+                            'mode': 'Rail'
+                        }
+                    },
+                    {
+                        '$addFields': {
+                            'month': {
+                                '$dateToString': {
+                                    'format': '%Y-%m', 
+                                    'date': '$plant_analysis_date'
+                                }
+                            }
+                        }
+                    }
+                ]
+
+                # Conditionally add `search_filter` if it is defined and not empty
+                # if search_filter:
+                #     basePipeline.append(search_filter)
+
+                # Conditionally add `month_filter` only if month_date is provided
+                if month_date:
+                    month_filter = {
+                        '$match': {
+                            'month': month_date
+                        }
+                    }
+                    basePipeline.append(month_filter)
+
+                # Add the remaining stages
+                basePipeline.extend([
+                    {
+                        '$group': {
+                            '_id': {
+                                'month': '$month', 
+                                'mine': '$mine'
+                            }, 
+                            'DO_Qty_Total': {
+                                '$sum': {
+                                    '$cond': [
+                                        {
+                                            '$and': [
+                                                { '$ifNull': ['$sample_qty', False] },
+                                                { '$lte': [ { '$strLenCP': { '$toString': '$sample_qty' } }, 5 ] }
+                                            ]
+                                        },
+                                        { '$toDouble': { '$substrCP': [{ '$toString': '$sample_qty' }, 0, 5] } },
+                                        {
+                                            '$cond': [
+                                                { '$regexMatch': { 'input': { '$toString': '$sample_qty' }, 'regex': "," } },
+                                                {
+                                                    '$toDouble': {
+                                                        '$replaceAll': {
+                                                            'input': { '$toString': '$sample_qty' },
+                                                            'find': ',', 
+                                                            'replacement': ''
+                                                        }
+                                                    }
+                                                },
+                                                { '$toDouble': '$sample_qty' }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }, 
+                            'Gross_Calorific_Value_Adb_Total': {
+                                '$sum': { '$ifNull': ['$plant_adb_gcv', 0] }
+                            }, 
+                            'Third_Party_Gross_Calorific_Value_Adb_Total': {
+                                '$sum': { '$ifNull': ['$thirdparty_adb_gcv', 0] }
+                            }, 
+                            'count': { '$sum': 1 }
+                        }
+                    },
+                    {
+                        '$project': {
+                            'month': '$_id.month', 
+                            'mine': '$_id.mine', 
+                            'Avg_DO_Qty': {
+                                '$divide': ['$DO_Qty_Total', '$count']
+                            }, 
+                            'Avg_Gross_Calorific_Value_Adb': {
+                                '$divide': ['$Gross_Calorific_Value_Adb_Total', '$count']
+                            }, 
+                            'Avg_Third_Party_Gross_Calorific_Value_Adb': {
+                                '$divide': ['$Third_Party_Gross_Calorific_Value_Adb_Total', '$count']
+                            }, 
+                            '_id': 0
+                        }
+                    }
+                ])
+
+                if start_timestamp:
+                    start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                    basePipeline[0]["$match"]["plant_analysis_date"]["$gte"] = start_date
+                if end_timestamp:
+                    end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
+                    basePipeline[0]["$match"]["plant_analysis_date"]["$lte"] = end_date
+
+                fetchGmrData = RecieptCoalQualityAnalysis.objects.aggregate(basePipeline)
+                coal_grades = CoalGrades.objects()
+                final_data = []
+                for single_data in fetchGmrData:
+                    dictData = {}
+                    dictData["Mine"] = single_data.get("mine")
+                    dictData["DO_Qty"] = single_data.get("Avg_DO_Qty")
+                    dictData["GWEL_Gross_Calorific_Value_(Adb)"] = single_data.get("Avg_Gross_Calorific_Value_Adb")
+                    
+                    # Determine GWEL GCV Grade
+                    if single_data.get("Avg_Gross_Calorific_Value_Adb") is not None:
+                        for single_coal_grade in coal_grades:
+                            start_value = single_coal_grade["start_value"]
+                            end_value = single_coal_grade["end_value"]
+                            if end_value != "":
+                                if start_value and end_value and int(start_value) <= int(single_data["Avg_Gross_Calorific_Value_Adb"]) <= int(end_value):
+                                    dictData["average_GCV_Grade"] = single_coal_grade["grade"]
+                                    break
+                                elif single_data["Avg_Gross_Calorific_Value_Adb"] > 7001:
+                                    dictData["average_GCV_Grade"] = "G-1"
+                                    break
+                    
+                    # Determine Third Party GCV Grade
+                    if single_data.get("Avg_Third_Party_Gross_Calorific_Value_Adb") is not None:
+                        for single_coal_grade in coal_grades:
+                            start_value = single_coal_grade["start_value"]
+                            end_value = single_coal_grade["end_value"]
+                            if end_value != "":
+                                if start_value and end_value and int(start_value) <= int(single_data["Avg_Third_Party_Gross_Calorific_Value_Adb"]) <= int(end_value):
+                                    console_logger.debug(single_coal_grade["grade"])
+                                    dictData["average_Third_Party_GCV_Grade"] = single_coal_grade["grade"]
+                                    break
+                                elif single_data["Avg_Third_Party_Gross_Calorific_Value_Adb"] > 7001:
+                                    dictData["average_Third_Party_GCV_Grade"] = "G-1"
+                                    break
+                    
+                    console_logger.debug(dictData.get("average_Third_Party_GCV_Grade"))
+                    # Final Calculations and formatting
+                    dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'] = dictData.get('average_GCV_Grade')
+                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(single_data.get("Avg_Third_Party_Gross_Calorific_Value_Adb", 0), 2)
+                    dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = dictData.get("average_Third_Party_GCV_Grade")
+                    
+                    # Difference Calculations
+                    if dictData.get("GWEL_Gross_Calorific_Value_(Adb)") and dictData.get("Third_Party_Gross_Calorific_Value_(Adb)"):
+                        dictData["Difference_Gross_Calorific_Value_(Adb)"] = abs(
+                            int(float(dictData["GWEL_Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))
+                        )
+                    if dictData.get("GWEL_Gross_Calorific_Value_Grade_(Adb)") and dictData.get("Third_Party_Gross_Calorific_Value_(Adb)_grade"):
+                        dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = abs(
+                            int(dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'].replace('G-', '')) - 
+                            int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))
+                        )
+
+                    # console_logger.debug(dictData)
+                    final_data.append(dictData)
+                result["labels"] = list(final_data[0].keys())
+                result["total"] = len(final_data)
+                result["datasets"] = final_data
+                count = len(final_data)
+                row = 1
+                for single_data in result["datasets"]:
+                    worksheet.write(row, 0, count, cell_format)
+                    worksheet.write(row, 1, single_data["Mine"], cell_format)
+                    worksheet.write(row, 2, single_data["DO_Qty"], cell_format)
+                    worksheet.write(row, 3, round(single_data["GWEL_Gross_Calorific_Value_(Adb)"], 2), cell_format)
+                    if single_data.get("Gross_Calorific_Value_Grade_(Adb)") != "" and single_data.get("Gross_Calorific_Value_Grade_(Adb)") != None:
+                        worksheet.write(row, 4, str(single_data["Gross_Calorific_Value_Grade_(Adb)"]), cell_format)
+                    else:
+                        worksheet.write(row, 4, 0, cell_format)
+                    if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != None:
+                        worksheet.write(row, 5, str(single_data["Third_Party_Gross_Calorific_Value_(Adb)"]), cell_format)
+                    else:
+                        worksheet.write(row, 5, 0, cell_format)
+                    if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != None:
+                        worksheet.write(row, 6, str(single_data["Third_Party_Gross_Calorific_Value_(Adb)_grade"]), cell_format)
+                    else:
+                        worksheet.write(row, 6, 0, cell_format)
+                    if single_data.get("Difference_Gross_Calorific_Value_(Adb)") != "" and single_data.get("Difference_Gross_Calorific_Value_(Adb)") != None:
+                        worksheet.write(row, 7, str(single_data["Difference_Gross_Calorific_Value_(Adb)"]), cell_format)
+                    else:
+                        worksheet.write(row, 7, 0, cell_format)
+                    if single_data.get("Difference_Gross_Calorific_Value_Grade_(Adb)") != "" and single_data.get("Difference_Gross_Calorific_Value_Grade_(Adb)") != None:
+                        worksheet.write(row, 8, str(single_data["Difference_Gross_Calorific_Value_Grade_(Adb)"]), cell_format)
+                    else:
+                        worksheet.write(row, 8, 0, cell_format)
+                    count -= 1
+                    row += 1
+                workbook.close()
+
+                # console_logger.debug("Successfully {} report generated".format(service_id))
+                # console_logger.debug("sent data {}".format(path))
+                return {
+                        "Type": "coal_test_download_event",
+                        "Datatype": "Report",
+                        "File_Path": path,
+                    }
+            except Exception as e:
+                console_logger.debug(e)
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+                console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+    
+
+
+@router.get("/coal_gcv_table_old", tags=["Coal Testing"])
 def coal_wcl_gcv_table(
     response: Response,
     currentPage: Optional[int] = None,
@@ -2474,7 +4392,7 @@ def coal_wcl_gcv_table(
                                 if single_coal_grades["end_value"] != "":
                                     if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Third_Party_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
                                         mine_data["average_Third_Party_GCV_Grade"] = single_coal_grades["grade"]
-                                    elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                    elif int(mine_data["average_Third_Party_Gross_Calorific_Value_(Adb)"]) > 7001:
                                         mine_data["average_Third_Party_GCV_Grade"] = "G-1"
                                         break
 
@@ -2567,6 +4485,7 @@ def coal_wcl_gcv_table(
             usecase_data = CoalTesting.objects(data).order_by("-receive_date")
             count = len(usecase_data)
             path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             if usecase_data:
                 try:
                     path = os.path.join(
@@ -2584,7 +4503,21 @@ def coal_wcl_gcv_table(
                     cell_format2.set_bold()
                     cell_format2.set_font_size(10)
                     cell_format2.set_align("center")
-                    cell_format2.set_align("vjustify")
+                    cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+                    cell_format2.set_border(1)
+
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+                    # report_name_format.set_text_wrap(True)
+
+                    header_format.set_align("vcenter")
+                    date_format.set_align("vcenter")
+                    report_name_format.set_align("vcenter")
+                    header_format.set_border(1)
+                    date_format.set_border(1)
+                    report_name_format.set_border(1)
 
                     worksheet = workbook.add_worksheet()
                     worksheet.set_column("A:AZ", 20)
@@ -2593,6 +4526,19 @@ def coal_wcl_gcv_table(
                     cell_format.set_font_size(10)
                     cell_format.set_align("center")
                     cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+                    cell_format.set_border(1)
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range("A1:I1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    
+                    # Write the current date on the left side (A2)
+                    # worksheet.write("A2", f"Date: {datetime.datetime.now().strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range("A2:B2", f"Date: {datetime.datetime.now().strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range("C2:I2", f"Road - GCV Wise Comparision Report", report_name_format)
 
                     headers = [
                         "Sr.No",
@@ -2607,7 +4553,7 @@ def coal_wcl_gcv_table(
                     ]
 
                     for index, header in enumerate(headers):
-                        worksheet.write(0, index, header, cell_format2)
+                        worksheet.write(2, index, header, cell_format2)
 
 
                     if any(usecase_data):
@@ -2706,7 +4652,7 @@ def coal_wcl_gcv_table(
                     result["total"] = len(final_data)
                     result["datasets"] = final_data
 
-                    row = 1
+                    row = 3
                     for single_data in result["datasets"]:
                         worksheet.write(row, 0, count, cell_format)
                         worksheet.write(row, 1, single_data["Mine"])
@@ -2756,8 +4702,420 @@ def coal_wcl_gcv_table(
         return e
 
 
+# as per RecieptCoalQualityAnalysis wise
 @router.get("/coal_gcv_table_train", tags=["Coal Testing"])
-def coal_wcl_gcv_table(
+def coal_wcl_gcv_table_train(
+    response: Response,
+    currentPage: Optional[int] = None,
+    perPage: Optional[int] = None,
+    search_text: Optional[str] = None,
+    start_timestamp: Optional[str] = None,
+    end_timestamp: Optional[str] = None,
+    month_date: Optional[str] = None,
+    type: Optional[str] = "display"):
+    try:
+        result = {"labels": [], "datasets": [], "total": 0, "page_size": 15}
+
+        if type and type == "display":
+            page_no = 1
+            page_len = result["page_size"]
+
+            if currentPage:
+                page_no = currentPage
+
+            if perPage:
+                page_len = perPage
+                result["page_size"] = perPage
+
+            data = Q()
+
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(plant_analysis_date__gte = start_date)
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(plant_analysis_date__lte = end_date)
+
+            if search_text:
+                if search_text.isdigit():
+                    data &= (Q(sample_id__icontains=search_text))
+                else:
+                    data &= (Q(mine__icontains=search_text))
+
+            offset = (page_no - 1) * page_len
+            # logs = CoalTesting.objects(data).order_by("-ID").skip(offset).limit(page_len)
+            logs = RecieptCoalQualityAnalysis.objects(data, mode="Rail")
+
+            if any(logs):
+                aggregated_data = defaultdict(lambda: defaultdict(lambda: {"DO_Qty": 0, "Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)_count": 0, "count": 0}))
+
+                for log in logs:
+                    month = log.plant_analysis_date.strftime("%Y-%m")
+                    payload = log.payload()
+                    mine = payload["mine"]
+                    if payload.get("sample_qty"):
+                        aggregated_data[month][mine]["DO_Qty"] += float(payload["sample_qty"])
+                        # if payload.get("DO_Qty").count('.') > 1:
+                        #     aggregated_data[month][mine]["DO_Qty"] += float(payload.get("DO_Qty")[:5])
+                        # else:
+                        #     if "," in payload["DO_Qty"]:
+                        #         aggregated_data[month][mine]["DO_Qty"] += float(payload["DO_Qty"].replace(",", ""))
+                        #     else:
+                        #         aggregated_data[month][mine]["DO_Qty"] += float(payload["DO_Qty"])
+                    if payload.get("GWEL_ADB_GCV"):
+                        aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["GWEL_ADB_GCV"])
+                    if payload.get("THIRDPARTY_ADB_GCV"):
+                        aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)"] += float(payload["THIRDPARTY_ADB_GCV"])
+                        aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)_count"] += 1
+                    aggregated_data[month][mine]["count"] += 1
+
+                dataList = [
+                    {"month": month, "data": {
+                        mine: {
+                            # first it was average then we have changed to total on 08-11-2024 11:31 am
+                            # "average_DO_Qty": data["DO_Qty"] / data["count"],
+                            "average_DO_Qty": data["DO_Qty"],
+                            "average_Gross_Calorific_Value_(Adb)": data["Gross_Calorific_Value_(Adb)"] / data["count"],
+                            "average_Third_Party_Gross_Calorific_Value_(Adb)": data["Third_Party_Gross_Calorific_Value_(Adb)"] / data["Third_Party_Gross_Calorific_Value_(Adb)_count"] if data["Third_Party_Gross_Calorific_Value_(Adb)"] != 0 else "",
+                        } for mine, data in aggregated_data[month].items()
+                    }} for month in aggregated_data
+                ]
+                coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
+
+                # Iterate through each month's data
+                for month_data in dataList:
+                    for key, mine_data in month_data["data"].items():
+                        if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
+                            for single_coal_grades in coal_grades:
+                                if single_coal_grades["end_value"] != "":
+                                    if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                                        mine_data["average_GCV_Grade"] = single_coal_grades["grade"]
+                                    elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                        mine_data["average_GCV_Grade"] = "G-1"
+                                        break
+
+                        if mine_data["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                            for single_coal_grades in coal_grades:
+                                if single_coal_grades["end_value"] != "":
+                                    if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Third_Party_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                                        mine_data["average_Third_Party_GCV_Grade"] = single_coal_grades["grade"]
+                                    elif int(mine_data["average_Third_Party_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                        mine_data["average_Third_Party_GCV_Grade"] = "G-1"
+                                        break
+
+                final_data = []
+                if month_date:
+                    filtered_data = [entry for entry in dataList if entry["month"] == month_date]
+                    if filtered_data:
+                        data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                        for mine, values in data.items():
+                            dictData = {}
+                            dictData['Mine'] = mine
+                            dictData['DO_Qty'] = round(values['average_DO_Qty'], 2)
+                            dictData['GWEL_Gross_Calorific_Value_(Adb)'] = round(values['average_Gross_Calorific_Value_(Adb)'], 2)
+                            if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                if values.get('average_GCV_Grade'):
+                                    dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"], 2)
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["GWEL_Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'].replace('G-', '')) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))))
+                            final_data.append(dictData)
+                    else:
+                        console_logger.debug(
+                            f"No data available for the given month: {month_date}"
+                        )
+                        return result
+                else:
+                    console_logger.debug("inside else")
+                    filtered_data = [entry for entry in dataList]
+                    for single_data in filtered_data:
+                        for mine, values in single_data['data'].items():
+                            dictData = {}
+                            dictData['Mine'] = mine
+                            dictData['DO_Qty'] = round(values['average_DO_Qty'], 2)
+                            dictData['GWEL_Gross_Calorific_Value_(Adb)'] = round(values['average_Gross_Calorific_Value_(Adb)'], 2)
+                            if values.get('average_GCV_Grade'):
+                                dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                            if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"], 2)
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["GWEL_Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                if values.get("average_Third_Party_GCV_Grade"):
+                                    dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'].replace('G-', '')) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))))
+
+                            final_data.append(dictData)
+                # Perform pagination here using list slicing
+                start_index = (page_no - 1) * page_len
+                end_index = start_index + page_len
+                paginated_data = final_data[start_index:end_index]
+
+                unique_keys = OrderedDict()
+
+                for data in paginated_data:
+                    for key in data.keys():
+                        unique_keys[key] = None
+
+                result["labels"] = list(unique_keys.keys())
+
+                result["total"] = len(final_data)
+                result["datasets"] = paginated_data
+                return result
+            else:
+                return result
+        
+        elif type and type == "download":
+            del type
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+            
+            data = Q()
+
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(plant_analysis_date__gte = start_date)
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(plant_analysis_date__lte = end_date)
+            
+            if search_text:
+                if search_text.isdigit():
+                    data &= (Q(rrNo__icontains=search_text))
+                else:
+                    data &= Q(mine__icontains=search_text)
+
+            # usecase_data = CoalTesting.objects(data).order_by("-receive_date")
+            usecase_data = RecieptCoalQualityAnalysis.objects(data, mode="Rail")
+            count = len(usecase_data)
+            path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
+            if usecase_data:
+                try:
+                    path = os.path.join(
+                        "static_server",
+                        "gmr_ai",
+                        file,
+                        "Railwise_GCV_Grade_Comparision_Report_{}.xlsx".format(
+                            datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                        ),
+                    )
+                    filename = os.path.join(os.getcwd(), path)
+                    workbook = xlsxwriter.Workbook(filename)
+                    workbook.use_zip64()
+                    cell_format2 = workbook.add_format()
+                    cell_format2.set_bold()
+                    cell_format2.set_font_size(10)
+                    cell_format2.set_align("center")
+                    cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+                    cell_format2.set_border(1)
+
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+                    # report_name_format.set_text_wrap(True)
+
+                    header_format.set_align("vcenter")
+                    date_format.set_align("vcenter")
+                    report_name_format.set_align("vcenter")
+                    header_format.set_border(1)
+                    date_format.set_border(1)
+                    report_name_format.set_border(1)
+
+                    worksheet = workbook.add_worksheet()
+                    worksheet.set_column("A:AZ", 20)
+                    worksheet.set_default_row(50)
+                    cell_format = workbook.add_format()
+                    cell_format.set_font_size(10)
+                    cell_format.set_align("center")
+                    cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+                    cell_format.set_border(1)
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range("A1:I1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    
+                    # Write the current date on the left side (A2)
+                    # worksheet.write("A2", f"Date: {datetime.datetime.now().strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range("A2:B2", f"Date: {datetime.datetime.now().strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range("C2:I2", f"Rail - GCV Wise Comparision Report", report_name_format)
+
+                    headers = [
+                        "Sr.No",
+                        "Mine",
+                        "DO_Qty",
+                        "GWEL_Gross_Calorific_Value_(Adb)",
+                        "GWEL_Gross_Calorific_Value_Grade",
+                        "Third_Party_Gross_Calorific_Value_(Adb)",
+                        "Third_Party_Gross_Calorific_Value_(Adb)_grade",
+                        "Difference_Gross_Calorific_Value(Adb)",
+                        "Difference_Gross_Calorific_Value_Grade_(Adb)"
+                    ]
+
+                    for index, header in enumerate(headers):
+                        worksheet.write(2, index, header, cell_format2)
+
+
+                    if any(usecase_data):
+                        aggregated_data = defaultdict(lambda: defaultdict(lambda: {"DO_Qty": 0, "Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)": 0, "Third_Party_Gross_Calorific_Value_(Adb)_count": 0, "count": 0}))
+
+                        for log in usecase_data:
+                            month = log.plant_analysis_date.strftime("%Y-%m")
+                            payload = log.payload()
+                            mine = payload["mine"]
+                            if payload.get("sample_qty"):
+                                aggregated_data[month][mine]["DO_Qty"] += float(payload["sample_qty"])
+                            if payload.get("GWEL_ADB_GCV"):
+                                aggregated_data[month][mine]["Gross_Calorific_Value_(Adb)"] += float(payload["GWEL_ADB_GCV"]) 
+                            if payload.get("THIRDPARTY_ADB_GCV"):
+                                aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)"] += float(payload["THIRDPARTY_ADB_GCV"])
+                                aggregated_data[month][mine]["Third_Party_Gross_Calorific_Value_(Adb)_count"] += 1
+                
+                            aggregated_data[month][mine]["count"] += 1
+
+                        dataList = [
+                            {"month": month, "data": {
+                                mine: {
+                                    # first it was average then we have changed to total on 08-11-2024 11:31 am
+                                    # "average_DO_Qty": data["DO_Qty"] / data["count"],
+                                    "average_DO_Qty": data["DO_Qty"],
+                                    "average_Gross_Calorific_Value_(Adb)": data["Gross_Calorific_Value_(Adb)"] / data["count"],
+                                    "average_Third_Party_Gross_Calorific_Value_(Adb)": data["Third_Party_Gross_Calorific_Value_(Adb)"] / data["Third_Party_Gross_Calorific_Value_(Adb)_count"] if data["Third_Party_Gross_Calorific_Value_(Adb)"] != 0 else "",
+                                } for mine, data in aggregated_data[month].items()
+                            }} for month in aggregated_data
+                        ]
+                        coal_grades = CoalGrades.objects()  # Fetch all coal grades from the database
+
+                        for month_data in dataList:
+                            for key, mine_data in month_data["data"].items():
+                                if mine_data["average_Gross_Calorific_Value_(Adb)"] is not None:
+                                    for single_coal_grades in coal_grades:
+                                        if single_coal_grades["end_value"] != "":
+                                            if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                                                mine_data["average_GCV_Grade"] = single_coal_grades["grade"]
+                                            elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                                mine_data["average_GCV_Grade"] = "G-1"
+                                                break
+
+                                if mine_data["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                    for single_coal_grades in coal_grades:
+                                        if single_coal_grades["end_value"] != "":
+                                            if (int(single_coal_grades["start_value"]) <= int(float(mine_data.get("average_Third_Party_Gross_Calorific_Value_(Adb)"))) <= int(single_coal_grades["end_value"]) and single_coal_grades["start_value"] != "" and single_coal_grades["end_value"] != ""):
+                                                mine_data["average_Third_Party_GCV_Grade"] = single_coal_grades["grade"]
+                                            elif int(mine_data["average_Gross_Calorific_Value_(Adb)"]) > 7001:
+                                                mine_data["average_Third_Party_GCV_Grade"] = "G-1"
+                                                break
+                    final_data = []
+                    if month_date:
+                        filtered_data = [entry for entry in dataList if entry["month"] == month_date]
+                        if filtered_data:
+                            data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                            for mine, values in data.items():
+                                dictData = {}
+                                dictData['Mine'] = mine
+                                dictData['DO_Qty'] = round(values['average_DO_Qty'], 2)
+                                dictData['GWEL_Gross_Calorific_Value_(Adb)'] = round(values['average_Gross_Calorific_Value_(Adb)'], 2)
+                                if values.get('average_GCV_Grade'):
+                                    dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                                if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":    
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"], 2)
+                                    if values.get("average_Third_Party_GCV_Grade"):
+                                        dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                    dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["GWEL_Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                    if values.get("average_Third_Party_GCV_Grade"):
+                                        dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'].replace('G-', '')) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))))
+                                final_data.append(dictData)
+                        else:
+                            console_logger.debug(
+                                f"No data available for the given month: {month_date}"
+                            )
+                            return {"message": f"No data available for the given month: {month_date}"}
+                    else:
+                        filtered_data = [entry for entry in dataList]
+                        # data = filtered_data[0]['data']  # Extracting the 'data' dictionary from the list
+                        for single_data in filtered_data:
+                            for mine, values in single_data['data'].items():
+                                dictData = {}
+                                dictData['Mine'] = mine
+                                dictData['DO_Qty'] = round(values['average_DO_Qty'], 2)
+                                dictData['GWEL_Gross_Calorific_Value_(Adb)'] = round(values['average_Gross_Calorific_Value_(Adb)'], 2)
+                                if values.get('average_GCV_Grade'):
+                                    dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'] = values['average_GCV_Grade']
+                                if values["average_Third_Party_Gross_Calorific_Value_(Adb)"] != "":
+                                    dictData["Third_Party_Gross_Calorific_Value_(Adb)"] = round(values["average_Third_Party_Gross_Calorific_Value_(Adb)"],2)
+                                    if values.get("average_Third_Party_GCV_Grade"):
+                                        dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"] = str(values["average_Third_Party_GCV_Grade"])
+                                    dictData["Difference_Gross_Calorific_Value_(Adb)"] = str(abs(int(float(dictData["GWEL_Gross_Calorific_Value_(Adb)"])) - int(float(dictData["Third_Party_Gross_Calorific_Value_(Adb)"]))))
+                                    if values.get("average_Third_Party_GCV_Grade"):
+                                        dictData["Difference_Gross_Calorific_Value_Grade_(Adb)"] = str(abs(int(dictData['GWEL_Gross_Calorific_Value_Grade_(Adb)'].replace('G-', '')) - int(dictData["Third_Party_Gross_Calorific_Value_(Adb)_grade"].replace('G-', ''))))
+                                final_data.append(dictData)
+                    result["labels"] = list(final_data[0].keys())
+                    result["total"] = len(final_data)
+                    result["datasets"] = final_data
+
+                    row = 3
+                    for single_data in result["datasets"]:
+                        worksheet.write(row, 0, count, cell_format)
+                        worksheet.write(row, 1, single_data["Mine"])
+                        worksheet.write(row, 2, single_data["DO_Qty"])
+                        worksheet.write(row, 3, single_data["GWEL_Gross_Calorific_Value_(Adb)"])
+                        if single_data.get("GWEL_Gross_Calorific_Value_Grade_(Adb)") != "" and single_data.get("GWEL_Gross_Calorific_Value_Grade_(Adb)") != None:
+                            worksheet.write(row, 4, str(single_data["GWEL_Gross_Calorific_Value_Grade_(Adb)"]), cell_format)
+                        if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)") != None:
+                            worksheet.write(row, 5, str(single_data["Third_Party_Gross_Calorific_Value_(Adb)"]), cell_format)
+                        if single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != "" and single_data.get("Third_Party_Gross_Calorific_Value_(Adb)_grade") != None:
+                            worksheet.write(row, 6, str(single_data["Third_Party_Gross_Calorific_Value_(Adb)_grade"]), cell_format)
+                        if single_data.get("Difference_Gross_Calorific_Value_(Adb)") != "" and single_data.get("Difference_Gross_Calorific_Value_(Adb)") != None:
+                            worksheet.write(row, 7, str(single_data["Difference_Gross_Calorific_Value_(Adb)"]), cell_format)
+                        if single_data.get("Difference_Gross_Calorific_Value_Grade_(Adb)") != "" and single_data.get("Difference_Gross_Calorific_Value_Grade_(Adb)") != None:
+                            worksheet.write(row, 8, str(single_data["Difference_Gross_Calorific_Value_Grade_(Adb)"]), cell_format)
+                        count -= 1
+                        row += 1
+                    workbook.close()
+
+                    # console_logger.debug("Successfully {} report generated".format(service_id))
+                    # console_logger.debug("sent data {}".format(path))
+                    return {
+                            "Type": "coal_test_download_event",
+                            "Datatype": "Report",
+                            "File_Path": path,
+                        }
+                except Exception as e:
+                    console_logger.debug(e)
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+                    console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            else:
+                console_logger.error("No data found")
+                return {
+                            "Type": "coal_test_download_event",
+                            "Datatype": "Report",
+                            "File_Path": path,
+                        }
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+
+@router.get("/coal_gcv_table_train_old", tags=["Coal Testing"])
+def coal_wcl_gcv_table_old(
     response: Response,
     currentPage: Optional[int] = None,
     perPage: Optional[int] = None,
@@ -2906,7 +5264,16 @@ def coal_wcl_gcv_table(
                     for key in data.keys():
                         unique_keys[key] = None
 
-                result["labels"] = list(unique_keys.keys())
+                result["labels"] = [
+                        "Mine",
+                        "RR_Qty",
+                        "GWEL_Gross_Calorific_Value_(Adb)",
+                        "GWEL_Gross_Calorific_Value_Grade_(Adb)",
+                        "Third_Party_Gross_Calorific_Value_(Adb)",
+                        "Third_Party_Gross_Calorific_Value_(Adb)_grade",
+                        "Difference_Gross_Calorific_Value_(Adb)",
+                        "Difference_Gross_Calorific_Value_Grade_(Adb)"
+                    ]
                 result["total"] = len(final_data)
                 result["datasets"] = paginated_data
 
@@ -3281,55 +5648,68 @@ def wcl_addon_data(response: Response, paydata: WCLtestMain):
     try:
         multyData = paydata.dict()
         for dataLoad in multyData["data"]:
-            fetchCoaltesting = CoalTestingTrain.objects.get(id=dataLoad.get("id"))
-            fetchCoaltesting.third_party_report_no = dataLoad.get("coal_data").get("Third_Party_Report_No")
-            fetchCoaltesting.third_party_upload_date = datetime.datetime.today()
+            # fetchCoaltesting = CoalTestingTrain.objects.get(id=dataLoad.get("id"))
+            fetchCoaltesting = RecieptCoalQualityAnalysis.objects.get(id=dataLoad.get("id"))
+            # fetchCoaltesting.thirdparty_reference_no = dataLoad.get("coal_data").get("Third_Party_Report_No")
+            # fetchCoaltesting.thirdparty_report_date = str(datetime.datetime.today())
+            fetchCoaltesting.thirdparty_created_date = str(datetime.datetime.today().strftime("%Y-%m-%d"))
             if fetchCoaltesting:
                 for param_name, param_value in dataLoad.get("coal_data").items():
                     # Check if the parameter exists already
-                    if not any(param['parameter_Name'] == param_name.rsplit('_', 1)[0] for param in fetchCoaltesting.parameters):
-                        # if param_name != "Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg":
-                        single_data = {
-                            "parameter_Name": param_name.rsplit('_', 1)[0],
-                            "unit_Val": param_name.rsplit('_', 1)[1],  # Add the unit value if available
-                            "test_Method": "",  # Add the test method if available
-                            "val1": param_value
-                        }
-                        fetchCoaltesting.parameters.append(single_data)
-
-                for single_data in fetchCoaltesting.parameters:
-                    param_name = f"{single_data.get('parameter_Name')}_{single_data.get('unit_Val').replace(' ', '')}"
-                    if dataLoad.get("coal_data").get(param_name) is not None:
-                        single_data["val1"] = dataLoad.get("coal_data").get(param_name)
+                    if param_name == "Third_Party_Total_Moisture_%":
+                        fetchCoaltesting.thirdparty_arb_tm = str(param_value)
+                    if param_name == "Third_Party_Inherent_Moisture_(Adb)_%":
+                        fetchCoaltesting.thirdparty_adb_im = str(param_value)
+                    if param_name == "Third_Party_Ash_(Adb)_%":
+                        fetchCoaltesting.thirdparty_adb_ash = str(param_value)
+                    if param_name == "Third_Party_Volatile_Matter_(Adb)_%":
+                        fetchCoaltesting.thirdparty_adb_vm = str(param_value)
+                    if param_name == "Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg":
+                        fetchCoaltesting.thirdparty_adb_gcv = str(param_value)
+                    if param_name == "Third_Party_Ash_(Arb)_%":
+                        fetchCoaltesting.thirdparty_arb_ash = str(param_value)
+                    if param_name == "Third_Party_Volatile_Matter_(Arb)_%":
+                        fetchCoaltesting.thirdparty_arb_vm = str(param_value)
+                    if param_name == "Third_Party_Fixed_Carbon_(Arb)_%":
+                        fetchCoaltesting.thirdparty_arb_fc = str(param_value)
+                    if param_name == "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg":
+                        fetchCoaltesting.thirdparty_arb_gcv = str(param_value)
+                    if param_name == "Third_Party_Report_No":
+                        fetchCoaltesting.thirdparty_reference_no = str(param_value)
                     
-                    if single_data["parameter_Name"] == "Gross_Calorific_Value_(Adb)":
-                        single_data["Third_Party_Gross_Calorific_Value_(Adb)"] = dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")
-                        if dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
-                            single_data["Gcv_Difference"] = str(abs(float(single_data["val1"]) - float(dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"))))
+                # for single_data in fetchCoaltesting.parameters:
+                #     param_name = f"{single_data.get('parameter_Name')}_{single_data.get('unit_Val').replace(' ', '')}"
+                #     if dataLoad.get("coal_data").get(param_name) is not None:
+                #         single_data["val1"] = dataLoad.get("coal_data").get(param_name)
+                    
+                #     if single_data["parameter_Name"] == "Gross_Calorific_Value_(Adb)":
+                #         single_data["Third_Party_Gross_Calorific_Value_(Adb)"] = dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")
+                #         if dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                #             single_data["Gcv_Difference"] = str(abs(float(single_data["val1"]) - float(dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"))))
 
 
-                            fetchCoalGrades = CoalGrades.objects()
-                            for single_coal_grades in fetchCoalGrades:
-                                if (
-                                    single_coal_grades["start_value"]
-                                    <= dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")
-                                    <= single_coal_grades["end_value"]
-                                    and single_coal_grades["start_value"] != ""
-                                    and single_coal_grades["end_value"] != ""
-                                ):
-                                    single_data["Third_Party_Grade"] = single_coal_grades["grade"]
-                                elif dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg") > "7001":
-                                    single_data["Third_Party_Grade"] = single_coal_grades["grade"]
-                                    break
-                            if single_data.get("grade"):
-                                grade_diff = str(abs(int(single_coal_grades["grade"].replace('G-', '')) - int(single_data["grade"].replace('G-', ''))))
-                                single_data["Grade_Diff"] = grade_diff
+                #             fetchCoalGrades = CoalGrades.objects()
+                #             for single_coal_grades in fetchCoalGrades:
+                #                 if (
+                #                     single_coal_grades["start_value"]
+                #                     <= dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")
+                #                     <= single_coal_grades["end_value"]
+                #                     and single_coal_grades["start_value"] != ""
+                #                     and single_coal_grades["end_value"] != ""
+                #                 ):
+                #                     single_data["Third_Party_Grade"] = single_coal_grades["grade"]
+                #                 elif dataLoad.get("coal_data").get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg") > "7001":
+                #                     single_data["Third_Party_Grade"] = single_coal_grades["grade"]
+                #                     break
+                #             if single_data.get("grade"):
+                #                 grade_diff = str(abs(int(single_coal_grades["grade"].replace('G-', '')) - int(single_data["grade"].replace('G-', ''))))
+                #                 single_data["Grade_Diff"] = grade_diff
 
-                    else:
-                        single_data["thrdgcv"] = None
-                        single_data["gcv_difference"] = None
-                        single_data["thrd_grade"] = None
-                        single_data["grade_diff"] = None
+                #     else:
+                #         single_data["thrdgcv"] = None
+                #         single_data["gcv_difference"] = None
+                #         single_data["thrd_grade"] = None
+                #         single_data["grade_diff"] = None
 
             fetchCoaltesting.save()
         return {"detail": "success"}
@@ -3344,6 +5724,405 @@ def wcl_addon_data(response: Response, paydata: WCLtestMain):
         return e
 
 
+# @router.get("/coal_test_table", tags=["Coal Testing"])
+# def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, perPage: Optional[int] = None,
+#                     search_text: Optional[str] = None,
+#                     start_timestamp: Optional[str] = None,
+#                     end_timestamp: Optional[str] = None,
+#                     month_date: Optional[str] = None,
+#                     filter_type: Optional[str] = None, 
+#                     type: Optional[str] = "display"):
+#     try:
+#         result = {        
+#                 "labels": [],
+#                 "datasets": [],
+#                 "total" : 0,
+#                 "page_size": 15
+#         }
+        
+#         if type and type == "display":
+
+#             data = Q()
+#             page_no = 1
+#             page_len = result["page_size"]
+
+#             if currentPage:
+#                 page_no = currentPage
+
+#             if perPage:
+#                 page_len = perPage
+#                 result["page_size"] = perPage
+
+#             offset = (page_no - 1) * page_len
+
+            
+#             if month_date:
+#                 start_date = f'{month_date}-01'
+#                 startd_date=datetime.datetime.strptime(start_date,"%Y-%m-%d")
+#                 end_date = startd_date + relativedelta(day=31)
+#                 data &= Q(receive_date__gte = startd_date)
+#                 data &= Q(receive_date__lte = end_date)
+
+#             if search_text:
+#                 if search_text.isdigit():
+#                     data &= (Q(rrNo__icontains=search_text))
+#                 else:
+#                     data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
+
+#             if start_timestamp:
+#                 start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+#                 data &= Q(receive_date__gte = start_date)
+#             # else:
+#             #     start_timestamp = (datetime.datetime.now() - datetime.timedelta(days=31)).strftime("%Y-%m-%d")
+#             #     data &= Q(receive_date__gte = convert_to_utc_format(start_timestamp,"%Y-%m-%d").strftime("%Y-%m-%d"))
+
+#             if end_timestamp:
+#                 end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
+#                 data &= Q(receive_date__lte = end_date)
+#             # else:
+#             #     end_timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
+#             #     data &= Q(receive_date__lte = convert_to_utc_format(end_timestamp,"%Y-%m-%d").strftime("%Y-%m-%d"))
+
+
+#             logs = (
+#                 CoalTesting.objects(data)
+#                 .order_by("-ID")
+#                 .skip(offset)
+#                 .limit(page_len)                  
+#             )        
+
+#             if any(logs):
+#                 for log in logs:
+#                     # result["labels"] = list(log.payload().keys())
+#                     result["labels"] = ["Sr.No","Mine","Lot_No","DO_No","DO_Qty", "Supplier", "Date", "Time","Id", "GWEL_Total_Moisture_%", 
+#                                         "GWEL_Inherent_Moisture_(Adb)_%", "GWEL_Ash_(Adb)_%", "GWEL_Volatile_Matter_(Adb)_%", "GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg", 
+#                                         "Ash_(Arb)_%", "GWEL_Volatile_Matter_(Arb)_%", "GWEL_Fixed_Carbon_(Arb)_%", "GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg",
+#                                         "Third_Party_Total_Moisture_%", "Third_Party_Inherent_Moisture_(Adb)_%", "Third_Party_Ash_(Adb)_%",
+#                                         "Third_Party_Volatile_Matter_(Adb)_%", "Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg",
+#                                         "Third_Party_Ash_(Arb)_%", "Third_Party_Volatile_Matter_(Arb)_%",
+#                                         "Third_Party_Fixed_Carbon_(Arb)_%", "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg", "Third_Party_Report_No"]
+#                     result["datasets"].append(log.payload())
+#             result["total"] = (len(CoalTesting.objects(data)))
+#             return result
+
+#         elif type and type == "download":
+#             del type
+
+#             file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+#             target_directory = f"static_server/gmr_ai/{file}"
+#             os.umask(0)
+#             os.makedirs(target_directory, exist_ok=True, mode=0o777)
+            
+#             data = Q()
+
+#             if start_timestamp:
+#                 start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+#                 data &= Q(receive_date__gte = start_date)
+           
+#             if end_timestamp:
+#                 end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
+#                 data &= Q(receive_date__lte = end_date)
+            
+#             if search_text:
+#                 if search_text.isdigit():
+#                     data &= (Q(rrNo__icontains=search_text))
+#                 else:
+#                     data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
+
+#             usecase_data = CoalTesting.objects(data).order_by("-receive_date")
+#             count = len(usecase_data)
+#             path = None
+#             if usecase_data:
+#                 try:
+#                     path = os.path.join(
+#                         "static_server",
+#                         "gmr_ai",
+#                         file,
+
+#                         "Roadwise_Coal_Lab_Test_Report_{}.xlsx".format(
+#                             datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+#                         ),
+#                     )
+#                     filename = os.path.join(os.getcwd(), path)
+#                     workbook = xlsxwriter.Workbook(filename)
+#                     workbook.use_zip64()
+#                     cell_format2 = workbook.add_format()
+#                     cell_format2.set_bold()
+#                     cell_format2.set_font_size(10)
+#                     cell_format2.set_align("center")
+#                     cell_format2.set_align("vjustify")
+
+#                     worksheet = workbook.add_worksheet()
+#                     worksheet.set_column("A:AZ", 20)
+#                     worksheet.set_default_row(50)
+#                     cell_format = workbook.add_format()
+#                     cell_format.set_font_size(10)
+#                     cell_format.set_align("center")
+#                     cell_format.set_align("vcenter")
+
+#                     if filter_type == "gwel":
+#                         headers = ["Sr.No",
+#                                    "Mine",
+#                                    "Lot No",
+#                                    "DO No",
+#                                    "DO Qty", 
+#                                    "Supplier",
+#                                    "Date", 
+#                                    "Time",
+#                                    "GWEL Total Moisture%", 
+#                                    "GWEL Inherent Moisture (Adb)%", 
+#                                    "GWEL Ash (Adb)%", 
+#                                    "GWEL Volatile Matter (Adb)%", 
+#                                    "GWEL Gross Calorific Value (Adb) Kcal/Kg", 
+#                                    "GWEL Ash (Arb)%", 
+#                                    "GWEL Volatile Matter (Arb)%", 
+#                                    "GWEL Fixed Carbon (Arb)%", 
+#                                    "GWEL Gross Calorific Value (Arb) Kcal/Kg",
+#                                    "GWEL Grade (Adb)",
+#                                    ]
+#                     elif filter_type == "third_party":
+#                         headers = ["Sr.No",
+#                                    "Mine",
+#                                    "Lot No",
+#                                    "DO No",
+#                                    "DO Qty", 
+#                                    "Supplier", 
+#                                    "Date", 
+#                                    "Time",
+#                                    "Third Party Report No", 
+#                                    "Third Party Total Moisture%", 
+#                                    "Third Party Inherent Moisture (Adb)%", 
+#                                    "Third Party Ash (Adb)%", 
+#                                    "Third Party Volatile Matter (Adb)%", 
+#                                    "Third Party Gross Calorific Value (Adb) Kcal/Kg",  
+#                                    "Third Party Ash (Arb)%", 
+#                                    "Third Party Volatile Matter (Arb)%", 
+#                                    "Third Party Fixed Carbon (Arb)%", 
+#                                    "Third Party Gross Calorific Value (Arb) Kcal/Kg", 
+#                                    "Third Party Grade (Adb)",
+#                                     ]
+#                     elif filter_type == "all":
+#                         headers = ["Sr.No",
+#                                     "Mine",
+#                                     "Lot No",
+#                                     "DO No",
+#                                     "DO Qty", 
+#                                     "Supplier",
+#                                     "Date", 
+#                                     "Time",
+#                                     "GWEL Total Moisture%", 
+#                                     "GWEL Inherent Moisture (Adb)%", 
+#                                     "GWEL Ash (Adb)%", 
+#                                     "GWEL Volatile Matter (Adb)%", 
+#                                     "GWEL Gross Calorific Value (Adb) Kcal/Kg", 
+#                                     "GWEL Ash (Arb)%", 
+#                                     "GWEL Volatile Matter (Arb)%", 
+#                                     "GWEL Fixed Carbon (Arb)%", 
+#                                     "GWEL Gross Calorific Value (Arb) Kcal/Kg",
+#                                     "GWEL Grade (Adb)",
+#                                     "Third Party Report No", 
+#                                     "Third Party Total Moisture%", 
+#                                     "Third Party Inherent Moisture (Adb)%", 
+#                                     "Third Party Ash (Adb)%", 
+#                                     "Third Party Volatile Matter (Adb)%", 
+#                                     "Third Party Gross Calorific Value (Adb) Kcal/Kg",  
+#                                     "Third Party Ash (Arb)%", 
+#                                     "Third Party Volatile Matter (Arb)%", 
+#                                     "Third Party Fixed Carbon (Arb)%", 
+#                                     "Third Party Gross Calorific Value (Arb) Kcal/Kg",
+#                                     "Third Party Grade (Adb)",
+#                                     ]
+#                     else:
+#                         headers = ["Sr.No",
+#                                 "Mine",
+#                                 "Lot No",
+#                                 "DO No",
+#                                 "DO Qty", 
+#                                 "Supplier", 
+#                                 "Date", 
+#                                 "Time"]
+
+#                     for index, header in enumerate(headers):
+#                         worksheet.write(0, index, header, cell_format2)
+
+#                     fetchCoalGrades = CoalGrades.objects()
+
+#                     for row, query in enumerate(usecase_data,start=1):
+#                         result = query.payload()
+#                         worksheet.write(row, 0, count, cell_format)
+#                         if filter_type == "gwel":
+#                             worksheet.write(row, 1, str(result["Mine"]), cell_format)
+#                             worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
+#                             worksheet.write(row, 3, str(result["DO_No"]), cell_format)
+#                             worksheet.write(row, 4, str(result["DO_Qty"]), cell_format)
+#                             worksheet.write(row, 5, str(result["Supplier"]), cell_format)
+#                             worksheet.write(row, 6, str(result["Date"]), cell_format)
+#                             worksheet.write(row, 7, str(result["Time"]), cell_format)
+#                             worksheet.write(row, 8, str(result["GWEL_Total_Moisture_%"]), cell_format)
+#                             worksheet.write(row, 9, str(result["GWEL_Inherent_Moisture_(Adb)_%"]), cell_format)
+#                             worksheet.write(row, 10, str(result["GWEL_Ash_(Adb)_%"]), cell_format)
+#                             worksheet.write(row, 11, str(result["GWEL_Volatile_Matter_(Adb)_%"]), cell_format)
+#                             worksheet.write(row, 12, str(result["GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
+#                             worksheet.write(row, 13, str(result["GWEL_Ash_(Arb)_%"]), cell_format)
+#                             worksheet.write(row, 14, str(result["GWEL_Volatile_Matter_(Arb)_%"]), cell_format)
+#                             worksheet.write(row, 15, str(result["GWEL_Fixed_Carbon_(Arb)_%"]), cell_format)
+#                             worksheet.write(row, 16, str(result["GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
+#                             if result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+#                                 for single_coal_grades in fetchCoalGrades:
+#                                     if (
+#                                         int(single_coal_grades["start_value"])
+#                                         <= int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+#                                         <= int(single_coal_grades["end_value"])
+#                                         and single_coal_grades["start_value"] != ""
+#                                         and single_coal_grades["end_value"] != ""
+#                                     ):
+#                                         worksheet.write(row, 17, str(single_coal_grades["grade"]), cell_format)
+#                                     elif int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
+#                                         worksheet.write(row, 17, "G-1", cell_format)
+
+#                         elif filter_type == "third_party":
+#                             worksheet.write(row, 1, str(result["Mine"]), cell_format)
+#                             worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
+#                             worksheet.write(row, 3, str(result["DO_No"]), cell_format)
+#                             worksheet.write(row, 4, str(result["DO_Qty"]), cell_format)
+#                             worksheet.write(row, 5, str(result["Supplier"]), cell_format)
+#                             worksheet.write(row, 6, str(result["Date"]), cell_format)
+#                             worksheet.write(row, 7, str(result["Time"]), cell_format)
+#                             if result.get("Third_Party_Report_No"):
+#                                 worksheet.write(row, 8, str(result["Third_Party_Report_No"]), cell_format)
+#                             if result.get("Third_Party_Total_Moisture_%"):
+#                                 worksheet.write(row, 9, str(result["Third_Party_Total_Moisture_%"]), cell_format)
+#                             if result.get("Third_Party_Inherent_Moisture_(Adb)_%"):
+#                                 worksheet.write(row, 10, str(result["Third_Party_Inherent_Moisture_(Adb)_%"]), cell_format)
+#                             if result.get("Third_Party_Ash_(Adb)_%"):
+#                                 worksheet.write(row, 11, str(result["Third_Party_Ash_(Adb)_%"]), cell_format)
+#                             if result.get("Third_Party_Volatile_Matter_(Adb)_%"):
+#                                 worksheet.write(row, 12, str(result["Third_Party_Volatile_Matter_(Adb)_%"]), cell_format)
+#                             if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+#                                 worksheet.write(row, 13, str(result["Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
+#                             if result.get("Third_Party_Ash_(Arb)_%"):
+#                                 worksheet.write(row, 14, str(result["Third_Party_Ash_(Arb)_%"]), cell_format)
+#                             if result.get("Third_Party_Volatile_Matter_(Arb)_%"):
+#                                 worksheet.write(row, 15, str(result["Third_Party_Volatile_Matter_(Arb)_%"]), cell_format)
+#                             if result.get("Third_Party_Fixed_Carbon_(Arb)_%"):
+#                                 worksheet.write(row, 16, str(result["Third_Party_Fixed_Carbon_(Arb)_%"]), cell_format)
+#                             if result.get("Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"):
+#                                 worksheet.write(row, 17, str(result["Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
+#                             if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+#                                 for single_coal_grades in fetchCoalGrades:
+#                                     if (
+#                                         int(single_coal_grades["start_value"])
+#                                         <= float(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+#                                         <= int(single_coal_grades["end_value"])
+#                                         and single_coal_grades["start_value"] != ""
+#                                         and single_coal_grades["end_value"] != ""
+#                                     ):
+#                                         worksheet.write(row, 18, str(single_coal_grades["grade"]), cell_format)
+#                                     elif float(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
+#                                         worksheet.write(row, 18, "G-1", cell_format)
+#                         elif filter_type == "all":
+#                             worksheet.write(row, 1, str(result["Mine"]), cell_format)
+#                             worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
+#                             worksheet.write(row, 3, str(result["DO_No"]), cell_format)
+#                             worksheet.write(row, 4, str(result["DO_Qty"]), cell_format)
+#                             worksheet.write(row, 5, str(result["Supplier"]), cell_format)
+#                             worksheet.write(row, 6, str(result["Date"]), cell_format)
+#                             worksheet.write(row, 7, str(result["Time"]), cell_format)
+#                             worksheet.write(row, 8, str(result["GWEL_Total_Moisture_%"]), cell_format)
+#                             worksheet.write(row, 9, str(result["GWEL_Inherent_Moisture_(Adb)_%"]), cell_format)
+#                             worksheet.write(row, 10, str(result["GWEL_Ash_(Adb)_%"]), cell_format)
+#                             worksheet.write(row, 11, str(result["GWEL_Volatile_Matter_(Adb)_%"]), cell_format)
+#                             worksheet.write(row, 12, str(result["GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
+#                             worksheet.write(row, 13, str(result["GWEL_Ash_(Arb)_%"]), cell_format)
+#                             worksheet.write(row, 14, str(result["GWEL_Volatile_Matter_(Arb)_%"]), cell_format)
+#                             worksheet.write(row, 15, str(result["GWEL_Fixed_Carbon_(Arb)_%"]), cell_format)
+#                             worksheet.write(row, 16, str(result["GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
+#                             if result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+#                                 for single_coal_grades in fetchCoalGrades:
+#                                     if (
+#                                         int(single_coal_grades["start_value"])
+#                                         <= float(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+#                                         <= int(single_coal_grades["end_value"])
+#                                         and single_coal_grades["start_value"] != ""
+#                                         and single_coal_grades["end_value"] != ""
+#                                     ):
+#                                         worksheet.write(row, 17, str(single_coal_grades["grade"]), cell_format)
+#                                     elif float(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
+#                                         worksheet.write(row, 17, "G-1", cell_format)
+#                             if result.get("Third_Party_Report_No"):
+#                                 worksheet.write(row, 17, str(result["Third_Party_Report_No"]), cell_format)
+#                             if result.get("Third_Party_Total_Moisture_%"):
+#                                 worksheet.write(row, 18, str(result["Third_Party_Total_Moisture_%"]), cell_format)
+#                             if result.get("Third_Party_Inherent_Moisture_(Adb)_%"):
+#                                 worksheet.write(row, 19, str(result["Third_Party_Inherent_Moisture_(Adb)_%"]), cell_format)
+#                             if result.get("Third_Party_Ash_(Adb)_%"):
+#                                 worksheet.write(row, 20, str(result["Third_Party_Ash_(Adb)_%"]), cell_format)
+#                             if result.get("Third_Party_Volatile_Matter_(Adb)_%"):
+#                                 worksheet.write(row, 21, str(result["Third_Party_Volatile_Matter_(Adb)_%"]), cell_format)
+#                             if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+#                                 worksheet.write(row, 22, str(result["Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
+#                             if result.get("Third_Party_Ash_(Arb)_%"):
+#                                 worksheet.write(row, 23, str(result["Third_Party_Ash_(Arb)_%"]), cell_format)
+#                             if result.get("Third_Party_Volatile_Matter_(Arb)_%"):
+#                                 worksheet.write(row, 24, str(result["Third_Party_Volatile_Matter_(Arb)_%"]), cell_format)
+#                             if result.get("Third_Party_Fixed_Carbon_(Arb)_%"):
+#                                 worksheet.write(row, 25, str(result["Third_Party_Fixed_Carbon_(Arb)_%"]), cell_format)
+#                             if result.get("Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"):
+#                                 worksheet.write(row, 26, str(result["Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
+#                             if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+#                                 for single_coal_grades in fetchCoalGrades:
+#                                     if (
+#                                         int(single_coal_grades["start_value"])
+#                                         <= float(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+#                                         <= int(single_coal_grades["end_value"])
+#                                         and single_coal_grades["start_value"] != ""
+#                                         and single_coal_grades["end_value"] != ""
+#                                     ):
+#                                         worksheet.write(row, 27, str(single_coal_grades["grade"]), cell_format)
+#                                     elif float(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
+#                                         worksheet.write(row, 27, "G-1", cell_format)
+#                         else:
+#                             worksheet.write(row, 1, str(result["Mine"]), cell_format)
+#                             worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
+#                             worksheet.write(row, 3, str(result["DO_No"]), cell_format)
+#                             worksheet.write(row, 4, str(result["DO_Qty"]), cell_format)
+#                             worksheet.write(row, 5, str(result["Supplier"]), cell_format)
+#                             worksheet.write(row, 6, str(result["Date"]), cell_format)
+#                             worksheet.write(row, 7, str(result["Time"]), cell_format)
+#                         count -= 1
+#                     workbook.close()
+
+#                     console_logger.debug("Successfully {} report generated".format(service_id))
+#                     console_logger.debug("sent data {}".format(path))
+#                     return {
+#                             "Type": "coal_test_download_event",
+#                             "Datatype": "Report",
+#                             "File_Path": path,
+#                         }
+#                 except Exception as e:
+#                     console_logger.debug(e)
+#                     exc_type, exc_obj, exc_tb = sys.exc_info()
+#                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#                     console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#                     console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#             else:
+#                 return {
+#                             "Type": "coal_test_download_event",
+#                             "Datatype": "Report",
+#                             "File_Path": path,
+#                         }
+
+#     except Exception as e:
+#         response.status_code = 400
+#         console_logger.debug(e)
+#         exc_type, exc_obj, exc_tb = sys.exc_info()
+#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#         return e
+
+
+# new table as per db
 @router.get("/coal_test_table", tags=["Coal Testing"])
 def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, perPage: Optional[int] = None,
                     search_text: Optional[str] = None,
@@ -3353,6 +6132,7 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
                     filter_type: Optional[str] = None, 
                     type: Optional[str] = "display"):
     try:
+        # pdf name starts with mahabal or REPORT-GMR-CO
         result = {        
                 "labels": [],
                 "datasets": [],
@@ -3380,49 +6160,49 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
                 start_date = f'{month_date}-01'
                 startd_date=datetime.datetime.strptime(start_date,"%Y-%m-%d")
                 end_date = startd_date + relativedelta(day=31)
-                data &= Q(receive_date__gte = startd_date)
-                data &= Q(receive_date__lte = end_date)
+                data &= Q(plant_analysis_date__gte = startd_date)
+                data &= Q(plant_analysis_date__lte = end_date)
 
             if search_text:
                 if search_text.isdigit():
-                    data &= (Q(rrNo__icontains=search_text))
+                    data &= (Q(sample_id__icontains=search_text))
                 else:
-                    data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
+                    data &= Q(mine__icontains=search_text) | Q(mode__icontains=search_text)
 
             if start_timestamp:
                 start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
-                data &= Q(receive_date__gte = start_date)
+                data &= Q(plant_analysis_date__gte = start_date)
             # else:
             #     start_timestamp = (datetime.datetime.now() - datetime.timedelta(days=31)).strftime("%Y-%m-%d")
-            #     data &= Q(receive_date__gte = convert_to_utc_format(start_timestamp,"%Y-%m-%d").strftime("%Y-%m-%d"))
+            #     data &= Q(plant_analysis_date__gte = convert_to_utc_format(start_timestamp,"%Y-%m-%d").strftime("%Y-%m-%d"))
 
             if end_timestamp:
                 end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
-                data &= Q(receive_date__lte = end_date)
+                data &= Q(plant_analysis_date__lte = end_date)
             # else:
             #     end_timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
             #     data &= Q(receive_date__lte = convert_to_utc_format(end_timestamp,"%Y-%m-%d").strftime("%Y-%m-%d"))
 
 
             logs = (
-                CoalTesting.objects(data)
-                .order_by("-ID")
+                RecieptCoalQualityAnalysis.objects(data, mode="Road")
+                .order_by("-plant_analysis_date")
                 .skip(offset)
                 .limit(page_len)                  
             )        
 
             if any(logs):
                 for log in logs:
-                    # result["labels"] = list(log.payload().keys())
-                    result["labels"] = ["Sr.No","Mine","Lot_No","DO_No","DO_Qty", "Supplier", "Date", "Time","Id", "GWEL_Total_Moisture_%", 
-                                        "GWEL_Inherent_Moisture_(Adb)_%", "GWEL_Ash_(Adb)_%", "GWEL_Volatile_Matter_(Adb)_%", "GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg", 
-                                        "Ash_(Arb)_%", "GWEL_Volatile_Matter_(Arb)_%", "GWEL_Fixed_Carbon_(Arb)_%", "GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg",
-                                        "Third_Party_Total_Moisture_%", "Third_Party_Inherent_Moisture_(Adb)_%", "Third_Party_Ash_(Adb)_%",
-                                        "Third_Party_Volatile_Matter_(Adb)_%", "Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg",
-                                        "Third_Party_Ash_(Arb)_%", "Third_Party_Volatile_Matter_(Arb)_%",
-                                        "Third_Party_Fixed_Carbon_(Arb)_%", "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg", "Third_Party_Report_No"]
+                    result["labels"] = list(log.payload().keys())
+                    # result["labels"] = ["Sr.No","Mine","Lot_No","DO_No","DO_Qty", "Supplier", "Date", "Time","Id", "GWEL_Total_Moisture_%", 
+                                        # "GWEL_Inherent_Moisture_(Adb)_%", "GWEL_Ash_(Adb)_%", "GWEL_Volatile_Matter_(Adb)_%", "GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg", 
+                                        # "Ash_(Arb)_%", "GWEL_Volatile_Matter_(Arb)_%", "GWEL_Fixed_Carbon_(Arb)_%", "GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg",
+                                        # "Third_Party_Total_Moisture_%", "Third_Party_Inherent_Moisture_(Adb)_%", "Third_Party_Ash_(Adb)_%",
+                                        # "Third_Party_Volatile_Matter_(Adb)_%", "Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg",
+                                        # "Third_Party_Ash_(Arb)_%", "Third_Party_Volatile_Matter_(Arb)_%",
+                                        # "Third_Party_Fixed_Carbon_(Arb)_%", "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg", "Third_Party_Report_No"]
                     result["datasets"].append(log.payload())
-            result["total"] = (len(CoalTesting.objects(data)))
+            result["total"] = (len(RecieptCoalQualityAnalysis.objects(data, mode="Road")))
             return result
 
         elif type and type == "download":
@@ -3437,11 +6217,11 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
 
             if start_timestamp:
                 start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
-                data &= Q(receive_date__gte = start_date)
+                data &= Q(plant_analysis_date__gte = start_date)
            
             if end_timestamp:
                 end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
-                data &= Q(receive_date__lte = end_date)
+                data &= Q(plant_analysis_date__lte = end_date)
             
             if search_text:
                 if search_text.isdigit():
@@ -3449,9 +6229,10 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
                 else:
                     data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
 
-            usecase_data = CoalTesting.objects(data).order_by("-receive_date")
+            usecase_data = RecieptCoalQualityAnalysis.objects(data, mode="Road").order_by("-plant_analysis_date")
             count = len(usecase_data)
             path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             if usecase_data:
                 try:
                     path = os.path.join(
@@ -3470,8 +6251,21 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
                     cell_format2.set_bold()
                     cell_format2.set_font_size(10)
                     cell_format2.set_align("center")
-                    cell_format2.set_align("vjustify")
+                    cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+                    cell_format2.set_border(1)
 
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+
+                    header_format.set_align("vcenter")
+                    date_format.set_align("vcenter")
+                    report_name_format.set_align("vcenter")
+                    header_format.set_border(1)
+                    date_format.set_border(1)
+                    report_name_format.set_border(1)
+                    
                     worksheet = workbook.add_worksheet()
                     worksheet.set_column("A:AZ", 20)
                     worksheet.set_default_row(50)
@@ -3479,236 +6273,317 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
                     cell_format.set_font_size(10)
                     cell_format.set_align("center")
                     cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    
+                    # Write the current date on the left side (A2)
+                    worksheet.write("A2", f"Date: {end_date.strftime('%d-%m-%Y')}", date_format)
+
 
                     if filter_type == "gwel":
-                        headers = ["Sr.No",
-                                   "Mine",
-                                   "Lot No",
-                                   "DO No",
-                                   "DO Qty", 
-                                   "Supplier",
-                                   "Date", 
-                                   "Time",
-                                   "GWEL Total Moisture%", 
-                                   "GWEL Inherent Moisture (Adb)%", 
-                                   "GWEL Ash (Adb)%", 
-                                   "GWEL Volatile Matter (Adb)%", 
-                                   "GWEL Gross Calorific Value (Adb) Kcal/Kg", 
-                                   "GWEL Ash (Arb)%", 
-                                   "GWEL Volatile Matter (Arb)%", 
-                                   "GWEL Fixed Carbon (Arb)%", 
-                                   "GWEL Gross Calorific Value (Arb) Kcal/Kg",
-                                   "GWEL Grade (Adb)",
-                                   ]
+                        worksheet.merge_range("A1:Y1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                        worksheet.merge_range("C2:Y2", f"GWEL Receipt Quality Analysis (Road)", report_name_format)
+                        headers = [
+                            "Sr.No.",
+                            "Plant Certificate ID",
+                            "Sample No",
+                            "Do No",
+                            "Plant Sample Date",
+                            "Plant Preparation Date",
+                            "Plant Analysis Date",
+                            "Sample Qty",
+                            "Mine",
+                            "Mine Grade",
+                            "Mode",
+                            "GWEL LAB TEMP",
+                            "GWEL LAB RH",
+                            "GWEL ARB TM",
+                            "GWEL ARB VM",
+                            "GWEL ARB ASH",
+                            "GWEL ARB FC",
+                            "GWEL ARB GCV",
+                            "GWEL ADB IM",
+                            "GWEL ADB VM",
+                            "GWEL ADB ASH",
+                            "GWEL ADB FC",
+                            "GWEL ADB GCV",
+                            "GWEL ULR ID",
+                            "GWEL GRADE"
+                        ]
                     elif filter_type == "third_party":
-                        headers = ["Sr.No",
-                                   "Mine",
-                                   "Lot No",
-                                   "DO No",
-                                   "DO Qty", 
-                                   "Supplier", 
-                                   "Date", 
-                                   "Time",
-                                   "Third Party Report No", 
-                                   "Third Party Total Moisture%", 
-                                   "Third Party Inherent Moisture (Adb)%", 
-                                   "Third Party Ash (Adb)%", 
-                                   "Third Party Volatile Matter (Adb)%", 
-                                   "Third Party Gross Calorific Value (Adb) Kcal/Kg",  
-                                   "Third Party Ash (Arb)%", 
-                                   "Third Party Volatile Matter (Arb)%", 
-                                   "Third Party Fixed Carbon (Arb)%", 
-                                   "Third Party Gross Calorific Value (Arb) Kcal/Kg", 
-                                   "Third Party Grade (Adb)",
-                                    ]
+                        worksheet.merge_range("A1:Y1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                        worksheet.merge_range("C2:Y2", f"ThirdParty Receipt Quality Analysis (Road)", report_name_format)
+                        headers = [
+                            "Sr.No.",
+                            "Plant Certificate ID",
+                            "Sample No",
+                            "Do No",
+                            "Plant Sample Date",
+                            "Plant Preparation Date",
+                            "Plant Analysis Date",
+                            "Sample Qty",
+                            "Mine",
+                            "Mine Grade",
+                            "Mode",
+                            "THIRDPARTY Report Date",
+                            "THIRDPARTY Reference No",
+                            "THIRDPARTY Sample Date",
+                            "THIRDPARTY ARB TM",
+                            "THIRDPARTY ARB VM",
+                            "THIRDPARTY ARB ASH",
+                            "THIRDPARTY ARB FC",
+                            "THIRDPARTY ARB GCV",
+                            "THIRDPARTY ADB IM",
+                            "THIRDPARTY ADB VM",
+                            "THIRDPARTY ADB ASH",
+                            "THIRDPARTY ADB FC",
+                            "THIRDPARTY ADB GCV",
+                            "THIRDPARTY GRADE"
+                        ]
                     elif filter_type == "all":
-                        headers = ["Sr.No",
-                                    "Mine",
-                                    "Lot No",
-                                    "DO No",
-                                    "DO Qty", 
-                                    "Supplier",
-                                    "Date", 
-                                    "Time",
-                                    "GWEL Total Moisture%", 
-                                    "GWEL Inherent Moisture (Adb)%", 
-                                    "GWEL Ash (Adb)%", 
-                                    "GWEL Volatile Matter (Adb)%", 
-                                    "GWEL Gross Calorific Value (Adb) Kcal/Kg", 
-                                    "GWEL Ash (Arb)%", 
-                                    "GWEL Volatile Matter (Arb)%", 
-                                    "GWEL Fixed Carbon (Arb)%", 
-                                    "GWEL Gross Calorific Value (Arb) Kcal/Kg",
-                                    "GWEL Grade (Adb)",
-                                    "Third Party Report No", 
-                                    "Third Party Total Moisture%", 
-                                    "Third Party Inherent Moisture (Adb)%", 
-                                    "Third Party Ash (Adb)%", 
-                                    "Third Party Volatile Matter (Adb)%", 
-                                    "Third Party Gross Calorific Value (Adb) Kcal/Kg",  
-                                    "Third Party Ash (Arb)%", 
-                                    "Third Party Volatile Matter (Arb)%", 
-                                    "Third Party Fixed Carbon (Arb)%", 
-                                    "Third Party Gross Calorific Value (Arb) Kcal/Kg",
-                                    "Third Party Grade (Adb)",
-                                    ]
+                        worksheet.merge_range("A1:AM1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                        worksheet.merge_range("C2:AM2", f"Receipt Quality Analysis (Road)", report_name_format)
+                        headers = [
+                            "Sr.No.",
+                            "Plant Certificate Id",
+                            "Sample No",
+                            "Do No",
+                            "Plant Sample Date",
+                            "Plant Preparation Date",
+                            "Plant Analysis Date",
+                            "Sample Qty",
+                            "Mine",
+                            "Mine Grade",
+                            "Mode",
+                            "GWEL Lab Temp",
+                            "GWEL Lab RH",
+                            "GWEL ARB TM",
+                            "GWEL ARB VM",
+                            "GWEL ARB ASH",
+                            "GWEL ARB FC",
+                            "GWEL ARB GCV",
+                            "GWEL ADB IM",
+                            "GWEL ADB VM",
+                            "GWEL ADB ASH",
+                            "GWEL ADB FC",
+                            "GWEL ADB GCV",
+                            "GWEL ULR ID",
+                            "GWEL GRADE",
+                            "THIRDPARTY REPORT DATE",
+                            "THIRDPARTY REFERENCE NO",
+                            "THIRDPARTY SAMPLE DATE",
+                            "THIRDPARTY ARB TM",
+                            "THIRDPARTY ARB VM",
+                            "THIRDPARTY ARB ASH",
+                            "THIRDPARTY ARB FC",
+                            "THIRDPARTY ARB GCV",
+                            "THIRDPARTY ADB IM",
+                            "THIRDPARTY ADB VM",
+                            "THIRDPARTY ADB Ash",
+                            "THIRDPARTY ADB FC",
+                            "THIRDPARTY ADB GCV",
+                            "THIRRDPARTY GRADE",
+                        ]
                     else:
-                        headers = ["Sr.No",
-                                "Mine",
-                                "Lot No",
-                                "DO No",
-                                "DO Qty", 
-                                "Supplier", 
-                                "Date", 
-                                "Time"]
+                        worksheet.merge_range("A1:AM1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                        worksheet.merge_range("C2:AM2", f"Receipt Quality Analysis (Road)", report_name_format)
+                        headers = [
+                            "Sr.No.",
+                            "Plant Certificate Id",
+                            "Sample No",
+                            "Do No",
+                            "Plant Sample Date",
+                            "Plant Preparation Date",
+                            "Plant Analysis Date",
+                            "Sample Qty",
+                            "Mine",
+                            "Mine Grade",
+                            "Mode"]
 
                     for index, header in enumerate(headers):
-                        worksheet.write(0, index, header, cell_format2)
+                        worksheet.write(2, index, header, cell_format2)
 
                     fetchCoalGrades = CoalGrades.objects()
 
-                    for row, query in enumerate(usecase_data,start=1):
+                    for row, query in enumerate(usecase_data,start=3):
                         result = query.payload()
                         worksheet.write(row, 0, count, cell_format)
                         if filter_type == "gwel":
-                            worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                            worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
-                            worksheet.write(row, 3, str(result["DO_No"]), cell_format)
-                            worksheet.write(row, 4, str(result["DO_Qty"]), cell_format)
-                            worksheet.write(row, 5, str(result["Supplier"]), cell_format)
-                            worksheet.write(row, 6, str(result["Date"]), cell_format)
-                            worksheet.write(row, 7, str(result["Time"]), cell_format)
-                            worksheet.write(row, 8, str(result["GWEL_Total_Moisture_%"]), cell_format)
-                            worksheet.write(row, 9, str(result["GWEL_Inherent_Moisture_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 10, str(result["GWEL_Ash_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 11, str(result["GWEL_Volatile_Matter_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 12, str(result["GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            worksheet.write(row, 13, str(result["GWEL_Ash_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 14, str(result["GWEL_Volatile_Matter_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 15, str(result["GWEL_Fixed_Carbon_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 16, str(result["GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                            worksheet.write(row, 1, str(result["plant_certificate_id"]), cell_format)
+                            worksheet.write(row, 2, str(result["sample_no"]), cell_format)
+                            worksheet.write(row, 3, str(result["do_no"]), cell_format)
+                            worksheet.write(row, 4, str(result["GWEL_sample_date"]), cell_format)
+                            worksheet.write(row, 5, str(result["GWEL_preparation_date"]), cell_format)
+                            worksheet.write(row, 6, str(result["GWEL_analysis_date"]), cell_format)
+                            worksheet.write(row, 7, str(result["sample_qty"]), cell_format)
+                            worksheet.write(row, 8, str(result["mine"]), cell_format)
+                            worksheet.write(row, 9, str(result["mine_grade"]), cell_format)
+                            worksheet.write(row, 10, str(result["mode"]), cell_format)
+                            worksheet.write(row, 11, str(result["GWEL_LAB_TEMP"]), cell_format)
+                            worksheet.write(row, 12, str(result["GWEL_LAB_RH"]), cell_format)
+                            worksheet.write(row, 13, str(result["GWEL_ARB_TM"]), cell_format)
+                            worksheet.write(row, 14, str(result["GWEL_ARB_VM"]), cell_format)
+                            worksheet.write(row, 15, str(result["GWEL_ARB_ASH"]), cell_format)
+                            worksheet.write(row, 16, str(result["GWEL_ARB_FC"]), cell_format)
+                            worksheet.write(row, 17, str(result["GWEL_ARB_GCV"]), cell_format)
+                            worksheet.write(row, 18, str(result["GWEL_ADB_IM"]), cell_format)
+                            worksheet.write(row, 19, str(result["GWEL_ADB_VM"]), cell_format)
+                            worksheet.write(row, 20, str(result["GWEL_ADB_ASH"]), cell_format)
+                            worksheet.write(row, 21, str(result["GWEL_ADB_FC"]), cell_format)
+                            worksheet.write(row, 22, str(result["GWEL_ADB_GCV"]), cell_format)
+                            worksheet.write(row, 23, str(result["GWEL_ULR_ID"]), cell_format)
+                            if result.get("GWEL_ADB_GCV"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= int(result.get("GWEL_ADB_GCV"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
-                                        worksheet.write(row, 17, str(single_coal_grades["grade"]), cell_format)
-                                    elif int(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
-                                        worksheet.write(row, 17, "G-1", cell_format)
+                                        worksheet.write(row, 24, str(single_coal_grades["grade"]), cell_format)
+                                    elif int(result.get("GWEL_ADB_GCV")) > 7001:
+                                        worksheet.write(row, 24, "G-1", cell_format)
 
                         elif filter_type == "third_party":
-                            worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                            worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
-                            worksheet.write(row, 3, str(result["DO_No"]), cell_format)
-                            worksheet.write(row, 4, str(result["DO_Qty"]), cell_format)
-                            worksheet.write(row, 5, str(result["Supplier"]), cell_format)
-                            worksheet.write(row, 6, str(result["Date"]), cell_format)
-                            worksheet.write(row, 7, str(result["Time"]), cell_format)
-                            if result.get("Third_Party_Report_No"):
-                                worksheet.write(row, 8, str(result["Third_Party_Report_No"]), cell_format)
-                            if result.get("Third_Party_Total_Moisture_%"):
-                                worksheet.write(row, 9, str(result["Third_Party_Total_Moisture_%"]), cell_format)
-                            if result.get("Third_Party_Inherent_Moisture_(Adb)_%"):
-                                worksheet.write(row, 10, str(result["Third_Party_Inherent_Moisture_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Ash_(Adb)_%"):
-                                worksheet.write(row, 11, str(result["Third_Party_Ash_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Volatile_Matter_(Adb)_%"):
-                                worksheet.write(row, 12, str(result["Third_Party_Volatile_Matter_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
-                                worksheet.write(row, 13, str(result["Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            if result.get("Third_Party_Ash_(Arb)_%"):
-                                worksheet.write(row, 14, str(result["Third_Party_Ash_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Volatile_Matter_(Arb)_%"):
-                                worksheet.write(row, 15, str(result["Third_Party_Volatile_Matter_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Fixed_Carbon_(Arb)_%"):
-                                worksheet.write(row, 16, str(result["Third_Party_Fixed_Carbon_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"):
-                                worksheet.write(row, 17, str(result["Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                            worksheet.write(row, 1, str(result["plant_certificate_id"]), cell_format)
+                            worksheet.write(row, 2, str(result["sample_no"]), cell_format)
+                            worksheet.write(row, 3, str(result["do_no"]), cell_format)
+                            worksheet.write(row, 4, str(result["GWEL_sample_date"]), cell_format)
+                            worksheet.write(row, 5, str(result["GWEL_preparation_date"]), cell_format)
+                            worksheet.write(row, 6, str(result["GWEL_analysis_date"]), cell_format)
+                            worksheet.write(row, 7, str(result["sample_qty"]), cell_format)
+                            worksheet.write(row, 8, str(result["mine"]), cell_format)
+                            worksheet.write(row, 9, str(result["mine_grade"]), cell_format)
+                            worksheet.write(row, 10, str(result["mode"]), cell_format)
+                            if result.get("THIRDPARTY_REPORT_DATE"):
+                                worksheet.write(row, 11, str(result["THIRDPARTY_REPORT_DATE"]), cell_format)
+                            if result.get("THIRDPARTY_REFERENCE_NO"):
+                                worksheet.write(row, 12, str(result["THIRDPARTY_REFERENCE_NO"]), cell_format)
+                            if result.get("THIRDPARTY_SAMPLE_DATE"):
+                                worksheet.write(row, 13, str(result["THIRDPARTY_SAMPLE_DATE"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_TM"):
+                                worksheet.write(row, 14, str(result["THIRDPARTY_ARB_TM"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_VM"):
+                                worksheet.write(row, 15, str(result["THIRDPARTY_ARB_VM"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_ASH"):
+                                worksheet.write(row, 16, str(result["THIRDPARTY_ARB_ASH"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_FC"):
+                                worksheet.write(row, 17, str(result["THIRDPARTY_ARB_FC"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_GCV"):
+                                worksheet.write(row, 18, str(result["THIRDPARTY_ARB_GCV"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_IM"):
+                                worksheet.write(row, 19, str(result["THIRDPARTY_ADB_IM"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_VM"):
+                                worksheet.write(row, 20, str(result["THIRDPARTY_ADB_VM"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_ASH"):
+                                worksheet.write(row, 21, str(result["THIRDPARTY_ADB_ASH"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_FC"):
+                                worksheet.write(row, 22, str(result["THIRDPARTY_ADB_FC"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_GCV"):
+                                worksheet.write(row, 23, str(result["THIRDPARTY_ADB_GCV"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_GCV"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= float(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= float(result.get("THIRDPARTY_ADB_GCV"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
-                                        worksheet.write(row, 18, str(single_coal_grades["grade"]), cell_format)
-                                    elif float(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
-                                        worksheet.write(row, 18, "G-1", cell_format)
+                                        worksheet.write(row, 24, str(single_coal_grades["grade"]), cell_format)
+                                    elif float(result.get("THIRDPARTY_ADB_GCV")) > 7001:
+                                        worksheet.write(row, 24, "G-1", cell_format)
                         elif filter_type == "all":
-                            worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                            worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
-                            worksheet.write(row, 3, str(result["DO_No"]), cell_format)
-                            worksheet.write(row, 4, str(result["DO_Qty"]), cell_format)
-                            worksheet.write(row, 5, str(result["Supplier"]), cell_format)
-                            worksheet.write(row, 6, str(result["Date"]), cell_format)
-                            worksheet.write(row, 7, str(result["Time"]), cell_format)
-                            worksheet.write(row, 8, str(result["GWEL_Total_Moisture_%"]), cell_format)
-                            worksheet.write(row, 9, str(result["GWEL_Inherent_Moisture_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 10, str(result["GWEL_Ash_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 11, str(result["GWEL_Volatile_Matter_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 12, str(result["GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            worksheet.write(row, 13, str(result["GWEL_Ash_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 14, str(result["GWEL_Volatile_Matter_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 15, str(result["GWEL_Fixed_Carbon_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 16, str(result["GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                            worksheet.write(row, 1, str(result["plant_certificate_id"]), cell_format)
+                            worksheet.write(row, 2, str(result["sample_no"]), cell_format)
+                            worksheet.write(row, 3, str(result["do_no"]), cell_format)
+                            worksheet.write(row, 4, str(result["GWEL_sample_date"]), cell_format)
+                            worksheet.write(row, 5, str(result["GWEL_preparation_date"]), cell_format)
+                            worksheet.write(row, 6, str(result["GWEL_analysis_date"]), cell_format)
+                            worksheet.write(row, 7, str(result["sample_qty"]), cell_format)
+                            worksheet.write(row, 8, str(result["mine"]), cell_format)
+                            worksheet.write(row, 9, str(result["mine_grade"]), cell_format)
+                            worksheet.write(row, 10, str(result["mode"]), cell_format)
+                            worksheet.write(row, 11, str(result["GWEL_LAB_TEMP"]), cell_format)
+                            worksheet.write(row, 12, str(result["GWEL_LAB_RH"]), cell_format)
+                            worksheet.write(row, 13, str(result["GWEL_ARB_TM"]), cell_format)
+                            worksheet.write(row, 14, str(result["GWEL_ARB_VM"]), cell_format)
+                            worksheet.write(row, 15, str(result["GWEL_ARB_ASH"]), cell_format)
+                            worksheet.write(row, 16, str(result["GWEL_ARB_FC"]), cell_format)
+                            worksheet.write(row, 17, str(result["GWEL_ARB_GCV"]), cell_format)
+                            worksheet.write(row, 18, str(result["GWEL_ADB_IM"]), cell_format)
+                            worksheet.write(row, 19, str(result["GWEL_ADB_VM"]), cell_format)
+                            worksheet.write(row, 20, str(result["GWEL_ADB_ASH"]), cell_format)
+                            worksheet.write(row, 21, str(result["GWEL_ADB_FC"]), cell_format)
+                            worksheet.write(row, 22, str(result["GWEL_ADB_GCV"]), cell_format)
+                            worksheet.write(row, 23, str(result["GWEL_ULR_ID"]), cell_format)
+                            if result.get("GWEL_ADB_GCV"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= float(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= float(result.get("GWEL_ADB_GCV"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
-                                        worksheet.write(row, 17, str(single_coal_grades["grade"]), cell_format)
-                                    elif float(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
-                                        worksheet.write(row, 17, "G-1", cell_format)
-                            if result.get("Third_Party_Report_No"):
-                                worksheet.write(row, 17, str(result["Third_Party_Report_No"]), cell_format)
-                            if result.get("Third_Party_Total_Moisture_%"):
-                                worksheet.write(row, 18, str(result["Third_Party_Total_Moisture_%"]), cell_format)
-                            if result.get("Third_Party_Inherent_Moisture_(Adb)_%"):
-                                worksheet.write(row, 19, str(result["Third_Party_Inherent_Moisture_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Ash_(Adb)_%"):
-                                worksheet.write(row, 20, str(result["Third_Party_Ash_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Volatile_Matter_(Adb)_%"):
-                                worksheet.write(row, 21, str(result["Third_Party_Volatile_Matter_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
-                                worksheet.write(row, 22, str(result["Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            if result.get("Third_Party_Ash_(Arb)_%"):
-                                worksheet.write(row, 23, str(result["Third_Party_Ash_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Volatile_Matter_(Arb)_%"):
-                                worksheet.write(row, 24, str(result["Third_Party_Volatile_Matter_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Fixed_Carbon_(Arb)_%"):
-                                worksheet.write(row, 25, str(result["Third_Party_Fixed_Carbon_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"):
-                                worksheet.write(row, 26, str(result["Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                                        worksheet.write(row, 24, str(single_coal_grades["grade"]), cell_format)
+                                    elif float(result.get("GWEL_ADB_GCV")) > 7001:
+                                        worksheet.write(row, 24, "G-1", cell_format)
+                            if result.get("THIRDPARTY_REPORT_DATE"):
+                                worksheet.write(row, 25, str(result["THIRDPARTY_REPORT_DATE"]), cell_format)
+                            if result.get("THIRDPARTY_REFERENCE_NO"):
+                                worksheet.write(row, 26, str(result["THIRDPARTY_REFERENCE_NO"]), cell_format)
+                            if result.get("THIRDPARTY_SAMPLE_DATE"):
+                                worksheet.write(row, 27, str(result["THIRDPARTY_SAMPLE_DATE"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_TM"):
+                                worksheet.write(row, 28, str(result["THIRDPARTY_ARB_TM"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_VM"):
+                                worksheet.write(row, 29, str(result["THIRDPARTY_ARB_VM"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_ASH"):
+                                worksheet.write(row, 30, str(result["THIRDPARTY_ARB_ASH"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_FC"):
+                                worksheet.write(row, 31, str(result["THIRDPARTY_ARB_FC"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_GCV"):
+                                worksheet.write(row, 32, str(result["THIRDPARTY_ARB_GCV"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_IM"):
+                                worksheet.write(row, 33, str(result["THIRDPARTY_ADB_IM"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_VM"):
+                                worksheet.write(row, 34, str(result["THIRDPARTY_ADB_VM"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_ASH"):
+                                worksheet.write(row, 35, str(result["THIRDPARTY_ADB_ASH"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_FC"):
+                                worksheet.write(row, 36, str(result["THIRDPARTY_ADB_FC"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_GCV"):
+                                worksheet.write(row, 37, str(result["THIRDPARTY_ADB_GCV"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_GCV"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= float(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= float(result.get("THIRDPARTY_ADB_GCV"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
-                                        worksheet.write(row, 27, str(single_coal_grades["grade"]), cell_format)
-                                    elif float(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
-                                        worksheet.write(row, 27, "G-1", cell_format)
+                                        worksheet.write(row, 38, str(single_coal_grades["grade"]), cell_format)
+                                    elif float(result.get("THIRDPARTY_ADB_GCV")) > 7001:
+                                        worksheet.write(row, 38, "G-1", cell_format)
                         else:
-                            worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                            worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
-                            worksheet.write(row, 3, str(result["DO_No"]), cell_format)
-                            worksheet.write(row, 4, str(result["DO_Qty"]), cell_format)
-                            worksheet.write(row, 5, str(result["Supplier"]), cell_format)
-                            worksheet.write(row, 6, str(result["Date"]), cell_format)
-                            worksheet.write(row, 7, str(result["Time"]), cell_format)
+                            worksheet.write(row, 1, str(result["plant_certificate_id"]), cell_format)
+                            worksheet.write(row, 2, str(result["sample_no"]), cell_format)
+                            worksheet.write(row, 3, str(result["do_no"]), cell_format)
+                            worksheet.write(row, 4, str(result["GWEL_sample_date"]), cell_format)
+                            worksheet.write(row, 5, str(result["GWEL_preparation_date"]), cell_format)
+                            worksheet.write(row, 6, str(result["GWEL_analysis_date"]), cell_format)
+                            worksheet.write(row, 7, str(result["sample_qty"]), cell_format)
+                            worksheet.write(row, 8, str(result["mine"]), cell_format)
+                            worksheet.write(row, 9, str(result["mine_grade"]), cell_format)
+                            worksheet.write(row, 10, str(result["mode"]), cell_format)
                         count -= 1
                     workbook.close()
 
@@ -3742,6 +6617,423 @@ def coal_wcl_test_table(response:Response,currentPage: Optional[int] = None, per
         return e
 
 
+# @router.get("/coal_train_test_table", tags=["Coal Testing"])
+# def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, perPage: Optional[int] = None,
+#                     search_text: Optional[str] = None,
+#                     start_timestamp: Optional[str] = None,
+#                     end_timestamp: Optional[str] = None,
+#                     month_date: Optional[str] = None,
+#                     filter_type: Optional[str] = None,
+#                     type: Optional[str] = "display"):
+#     try:
+#         result = {        
+#                 "labels": [],
+#                 "datasets": [],
+#                 "total" : 0,
+#                 "page_size": 15
+#         }
+        
+#         if type and type == "display":
+
+#             data = Q()
+#             page_no = 1
+#             page_len = result["page_size"]
+
+#             if currentPage:
+#                 page_no = currentPage
+
+#             if perPage:
+#                 page_len = perPage
+#                 result["page_size"] = perPage
+            
+#             offset = (page_no - 1) * page_len
+
+#             if month_date:
+#                 start_date = f'{month_date}-01'
+#                 startd_date=datetime.datetime.strptime(start_date,"%Y-%m-%d")
+#                 end_date = startd_date + relativedelta( day=31)
+#                 data &= Q(receive_date__gte = startd_date)
+#                 data &= Q(receive_date__lte = end_date)
+
+#             if search_text:
+#                 if search_text.isdigit():
+#                     data &= (Q(rrNo__icontains=search_text))
+#                 else:
+#                     data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
+
+#             if start_timestamp:
+#                 start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+#                 data &= Q(receive_date__gte = start_date)
+            
+
+#             if end_timestamp:
+#                 end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
+#                 data &= Q(receive_date__lte = end_date)
+
+
+            
+#             logs = (
+#                 CoalTestingTrain.objects(data)
+#                 .order_by("-ID")
+#                 .skip(offset)
+#                 .limit(page_len)                  
+#             )        
+
+#             if any(logs):
+#                 for log in logs:
+#                     # result["labels"] = list(log.payload().keys())
+#                     result["labels"] = [
+#                     "Sr.No", 
+#                     "Mine", 
+#                     "Lot_No", 
+#                     "RR_No", 
+#                     "RR_Qty", 
+#                     "Supplier", 
+#                     "Date", 
+#                     "Time", 
+#                     "Id", 
+#                     "GWEL_Total_Moisture_%", 
+#                     "GWEL_Inherent_Moisture_(Adb)_%", 
+#                     "GWEL_Ash_(Adb)_%", 
+#                     "GWEL_Volatile_Matter_(Adb)_%", 
+#                     "GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg", 
+#                     "GWEL_Ash_(Arb)_%", 
+#                     "GWEL_Volatile_Matter_(Arb)_%", 
+#                     "GWEL_Fixed_Carbon_(Arb)_%", 
+#                     "GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg", 
+#                     "Third_Party_Report_No", 
+#                     "Third_Party_Total_Moisture_%", 
+#                     "Third_Party_Inherent_Moisture_(Adb)_%", 
+#                     "Third_Party_Ash_(Adb)_%", 
+#                     "Third_Party_Volatile_Matter_(Adb)_%", 
+#                     "Third_Party_Ash_(Arb)_%", 
+#                     "Third_Party_Volatile_Matter_(Arb)_%",
+#                     "Third_Party_Fixed_Carbon_(Arb)_%",
+#                     "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]
+#                     result["datasets"].append(log.payload())
+
+#             result["total"] = (len(CoalTestingTrain.objects(data)))
+#             # console_logger.debug(f"-------- Rail Coal Testing Response -------- {result}")
+#             return result
+
+#         elif type and type == "download":
+#             del type
+
+#             file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+#             target_directory = f"static_server/gmr_ai/{file}"
+#             os.umask(0)
+#             os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+#             data = Q()
+
+#             if start_timestamp:
+#                 start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+#                 data &= Q(receive_date__gte = start_date)
+
+#             if end_timestamp:
+#                 end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
+#                 data &= Q(receive_date__lte = end_date)
+
+#             if search_text:
+#                 if search_text.isdigit():
+#                     data &= (Q(rrNo__icontains=search_text))
+#                 else:
+#                     data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
+
+#             usecase_data = CoalTestingTrain.objects(data).order_by("-receive_date")
+#             count = len(usecase_data)
+#             path = None
+#             if usecase_data:
+#                 try:
+#                     path = os.path.join(
+#                         "static_server",
+#                         "gmr_ai",
+#                         file,
+#                         "Railwise_Coal_Lab_Test_Report_{}.xlsx".format(
+#                             datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+#                         ),
+#                     )
+#                     filename = os.path.join(os.getcwd(), path)
+#                     workbook = xlsxwriter.Workbook(filename)
+#                     workbook.use_zip64()
+#                     cell_format2 = workbook.add_format()
+#                     cell_format2.set_bold()
+#                     cell_format2.set_font_size(10)
+#                     cell_format2.set_align("center")
+#                     cell_format2.set_align("vjustify")
+
+#                     worksheet = workbook.add_worksheet()
+#                     worksheet.set_column("A:AZ", 20)
+#                     worksheet.set_default_row(50)
+#                     cell_format = workbook.add_format()
+#                     cell_format.set_font_size(10)
+#                     cell_format.set_align("center")
+#                     cell_format.set_align("vcenter")
+
+#                     if filter_type == "gwel":
+#                         headers = ["Sr.No",
+#                                 "Mine",
+#                                 "Lot No", 
+#                                 "RR No", 
+#                                 "RR Qty", 
+#                                 "Supplier", 
+#                                 "Date", 
+#                                 "Time",
+#                                 "GWEL Total Moisture%", 
+#                                 "GWEL Inherent Moisture (Adb)%", 
+#                                 "GWEL Ash (Adb)%", 
+#                                 "GWEL Volatile Matter (Adb)%", 
+#                                 "GWEL Gross Calorific Value (Adb) Kcal/Kg", 
+#                                 "GWEL Ash (Arb)%", 
+#                                 "GWEL Volatile Matter (Arb)%", 
+#                                 "GWEL Fixed Carbon (Arb)%", 
+#                                 "GWEL Gross Calorific Value (Arb) Kcal/Kg",
+#                                 "GWEL Grade (Adb)",
+#                                 ]
+#                     elif filter_type == "third_party":
+#                         headers = [
+#                                "Sr.No",
+#                                "Mine",
+#                                "Lot No", 
+#                                "RR No", 
+#                                "RR Qty", 
+#                                "Supplier",
+#                                "Date", 
+#                                "Time",
+#                                "Third Party Report No", 
+#                                "Third Party Total Moisture%", 
+#                                "Third Party Inherent Moisture (Adb)%", 
+#                                "Third Party Ash (Adb)%", 
+#                                "Third Party Volatile Matter (Adb)%", 
+#                                "Third Party Gross Calorific Value (Adb) Kcal/Kg",
+#                                "Third Party Ash (Arb)%", 
+#                                "Third Party Volatile Matter (Arb)%", 
+#                                "Third Party Fixed Carbon (Arb)%", 
+#                                "Third Party Gross Calorific Value (Arb) Kcal/Kg",
+#                                "Third Party Grade (Adb)",
+#                                ]
+#                     elif filter_type == "all":
+#                         headers = ["Sr.No",
+#                                 "Mine",
+#                                 "Lot No", 
+#                                 "RR No", 
+#                                 "RR Qty", 
+#                                 "Supplier", 
+#                                 "Date", 
+#                                 "Time",
+#                                 "GWEL Total Moisture%", 
+#                                 "GWEL Inherent Moisture (Adb)%", 
+#                                 "GWEL Ash (Adb)%", 
+#                                 "GWEL Volatile Matter (Adb)%", 
+#                                 "GWEL Gross Calorific Value (Adb) Kcal/Kg", 
+#                                 "GWEL Ash (Arb)%", 
+#                                 "GWEL Volatile Matter (Arb)%", 
+#                                 "GWEL Fixed Carbon (Arb)%", 
+#                                 "GWEL Gross Calorific Value (Arb) Kcal/Kg",
+#                                 "GWEL Grade (Adb)",
+#                                 "Third Party Report No", 
+#                                 "Third Party Total Moisture%", 
+#                                 "Third Party Inherent Moisture (Adb)%", 
+#                                 "Third Party Ash (Adb)%", 
+#                                 "Third Party Volatile Matter (Adb)%", 
+#                                 "Third Party Gross Calorific Value (Adb) Kcal/Kg",
+#                                 "Third Party Ash (Arb)%", 
+#                                 "Third Party Volatile Matter (Arb)%", 
+#                                 "Third Party Fixed Carbon (Arb)%", 
+#                                 "Third Party Gross Calorific Value (Arb) Kcal/Kg",
+#                                 "Third Party Grade (Adb)",
+#                                 ]
+#                     else:
+#                         headers = [
+#                                 "Sr.No",
+#                                 "Mine",
+#                                 "Lot No", 
+#                                 "RR No", 
+#                                 "RR Qty", 
+#                                 "Supplier",
+#                                 "Date", 
+#                                 "Time"]
+
+#                     for index, header in enumerate(headers):
+#                         worksheet.write(0, index, header, cell_format2)
+#                     fetchCoalGrades = CoalGrades.objects()
+#                     for row, query in enumerate(usecase_data,start=1):
+#                         result = query.payload()
+#                         worksheet.write(row, 0, count, cell_format)
+#                         if filter_type == "gwel":
+#                             worksheet.write(row, 1, str(result["Mine"]), cell_format)
+#                             worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
+#                             worksheet.write(row, 3, str(result["RR_No"]), cell_format)
+#                             worksheet.write(row, 4, str(result["RR_Qty"]), cell_format)
+#                             worksheet.write(row, 5, str(result["Supplier"]), cell_format)
+#                             worksheet.write(row, 6, str(result["Date"]), cell_format)
+#                             worksheet.write(row, 7, str(result["Time"]), cell_format)
+#                             worksheet.write(row, 8, str(result["GWEL_Total_Moisture_%"]), cell_format)
+#                             worksheet.write(row, 9, str(result["GWEL_Inherent_Moisture_(Adb)_%"]), cell_format)
+#                             worksheet.write(row, 10, str(result["GWEL_Ash_(Adb)_%"]), cell_format)
+#                             worksheet.write(row, 11, str(result["GWEL_Volatile_Matter_(Adb)_%"]), cell_format)
+#                             worksheet.write(row, 12, str(result["GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
+#                             worksheet.write(row, 13, str(result["GWEL_Ash_(Arb)_%"]), cell_format)
+#                             worksheet.write(row, 14, str(result["GWEL_Volatile_Matter_(Arb)_%"]), cell_format)
+#                             worksheet.write(row, 15, str(result["GWEL_Fixed_Carbon_(Arb)_%"]), cell_format)
+#                             worksheet.write(row, 16, str(result["GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
+#                             if result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+#                                 for single_coal_grades in fetchCoalGrades:
+#                                     if (
+#                                         int(single_coal_grades["start_value"])
+#                                         <= float(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+#                                         <= int(single_coal_grades["end_value"])
+#                                         and single_coal_grades["start_value"] != ""
+#                                         and single_coal_grades["end_value"] != ""
+#                                     ):
+#                                         worksheet.write(row, 17, str(single_coal_grades["grade"]), cell_format)
+#                                     elif float(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
+#                                         worksheet.write(row, 17, "G-1", cell_format)
+                            
+#                         elif filter_type == "third_party":
+#                             worksheet.write(row, 1, str(result["Mine"]), cell_format)
+#                             worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
+#                             worksheet.write(row, 3, str(result["RR_No"]), cell_format)
+#                             worksheet.write(row, 4, str(result["RR_Qty"]), cell_format)
+#                             worksheet.write(row, 5, str(result["Supplier"]), cell_format)
+#                             worksheet.write(row, 6, str(result["Date"]), cell_format)
+#                             worksheet.write(row, 7, str(result["Time"]), cell_format)
+#                             if result.get("Third_Party_Report_No"):
+#                                 worksheet.write(row, 8, str(result["Third_Party_Report_No"]), cell_format)
+#                             if result.get("Third_Party_Total_Moisture_%"):
+#                                 worksheet.write(row, 9, str(result["Third_Party_Total_Moisture_%"]), cell_format)
+#                             if result.get("Third_Party_Inherent_Moisture_(Adb)_%"):
+#                                 worksheet.write(row, 10, str(result["Third_Party_Inherent_Moisture_(Adb)_%"]), cell_format)
+#                             if result.get("Third_Party_Ash_(Adb)_%"):
+#                                 worksheet.write(row, 11, str(result["Third_Party_Ash_(Adb)_%"]), cell_format)
+#                             if result.get("Third_Party_Volatile_Matter_(Adb)_%"):
+#                                 worksheet.write(row, 12, str(result["Third_Party_Volatile_Matter_(Adb)_%"]), cell_format)
+#                             if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+#                                 worksheet.write(row, 13, str(result["Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
+#                             if result.get("Third_Party_Ash_(Arb)_%"):
+#                                 worksheet.write(row, 14, str(result["Third_Party_Ash_(Arb)_%"]), cell_format)
+#                             if result.get("Third_Party_Volatile_Matter_(Arb)_%"):
+#                                 worksheet.write(row, 15, str(result["Third_Party_Volatile_Matter_(Arb)_%"]), cell_format)
+#                             if result.get("Third_Party_Fixed_Carbon_(Arb)_%"):
+#                                 worksheet.write(row, 16, str(result["Third_Party_Fixed_Carbon_(Arb)_%"]), cell_format)
+#                             if result.get("Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"):
+#                                 worksheet.write(row, 17, str(result["Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
+#                             if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+#                                 for single_coal_grades in fetchCoalGrades:
+#                                     if (
+#                                         int(single_coal_grades["start_value"])
+#                                         <= int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+#                                         <= int(single_coal_grades["end_value"])
+#                                         and single_coal_grades["start_value"] != ""
+#                                         and single_coal_grades["end_value"] != ""
+#                                     ):
+#                                         worksheet.write(row, 18, str(single_coal_grades["grade"]), cell_format)
+#                                     elif int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
+#                                         worksheet.write(row, 18, "G-1", cell_format)
+#                         elif filter_type == "all":
+#                             worksheet.write(row, 1, str(result["Mine"]), cell_format)
+#                             worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
+#                             worksheet.write(row, 3, str(result["RR_No"]), cell_format)
+#                             worksheet.write(row, 4, str(result["RR_Qty"]), cell_format)
+#                             worksheet.write(row, 5, str(result["Supplier"]), cell_format)
+#                             worksheet.write(row, 6, str(result["Date"]), cell_format)
+#                             worksheet.write(row, 7, str(result["Time"]), cell_format)
+#                             worksheet.write(row, 8, str(result["GWEL_Total_Moisture_%"]), cell_format)
+#                             worksheet.write(row, 9, str(result["GWEL_Inherent_Moisture_(Adb)_%"]), cell_format)
+#                             worksheet.write(row, 10, str(result["GWEL_Ash_(Adb)_%"]), cell_format)
+#                             worksheet.write(row, 11, str(result["GWEL_Volatile_Matter_(Adb)_%"]), cell_format)
+#                             worksheet.write(row, 12, str(result["GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
+#                             worksheet.write(row, 13, str(result["GWEL_Ash_(Arb)_%"]), cell_format)
+#                             worksheet.write(row, 14, str(result["GWEL_Volatile_Matter_(Arb)_%"]), cell_format)
+#                             worksheet.write(row, 15, str(result["GWEL_Fixed_Carbon_(Arb)_%"]), cell_format)
+#                             worksheet.write(row, 16, str(result["GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
+#                             if result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+#                                 for single_coal_grades in fetchCoalGrades:
+#                                     if (
+#                                         int(single_coal_grades["start_value"])
+#                                         <= float(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+#                                         <= int(single_coal_grades["end_value"])
+#                                         and single_coal_grades["start_value"] != ""
+#                                         and single_coal_grades["end_value"] != ""
+#                                     ):
+#                                         worksheet.write(row, 17, str(single_coal_grades["grade"]), cell_format)
+#                                     elif float(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
+#                                         worksheet.write(row, 17, "G-1", cell_format)
+#                             if result.get("Third_Party_Report_No"):
+#                                 worksheet.write(row, 17, str(result["Third_Party_Report_No"]), cell_format)
+#                             if result.get("Third_Party_Total_Moisture_%"):
+#                                 worksheet.write(row, 18, str(result["Third_Party_Total_Moisture_%"]), cell_format)
+#                             if result.get("Third_Party_Inherent_Moisture_(Adb)_%"):
+#                                 worksheet.write(row, 19, str(result["Third_Party_Inherent_Moisture_(Adb)_%"]), cell_format)
+#                             if result.get("Third_Party_Ash_(Adb)_%"):
+#                                 worksheet.write(row, 20, str(result["Third_Party_Ash_(Adb)_%"]), cell_format)
+#                             if result.get("Third_Party_Volatile_Matter_(Adb)_%"):
+#                                 worksheet.write(row, 21, str(result["Third_Party_Volatile_Matter_(Adb)_%"]), cell_format)
+#                             if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+#                                 worksheet.write(row, 22, str(result["Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
+#                             if result.get("Third_Party_Ash_(Arb)_%"):
+#                                 worksheet.write(row, 23, str(result["Third_Party_Ash_(Arb)_%"]), cell_format)
+#                             if result.get("Third_Party_Volatile_Matter_(Arb)_%"):
+#                                 worksheet.write(row, 24, str(result["Third_Party_Volatile_Matter_(Arb)_%"]), cell_format)
+#                             if result.get("Third_Party_Fixed_Carbon_(Arb)_%"):
+#                                 worksheet.write(row, 25, str(result["Third_Party_Fixed_Carbon_(Arb)_%"]), cell_format)
+#                             if result.get("Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"):
+#                                 worksheet.write(row, 26, str(result["Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
+#                             if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+#                                 for single_coal_grades in fetchCoalGrades:
+#                                     if (
+#                                         int(single_coal_grades["start_value"])
+#                                         <= int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+#                                         <= int(single_coal_grades["end_value"])
+#                                         and single_coal_grades["start_value"] != ""
+#                                         and single_coal_grades["end_value"] != ""
+#                                     ):
+#                                         worksheet.write(row, 27, str(single_coal_grades["grade"]), cell_format)
+#                                     elif int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
+#                                         worksheet.write(row, 27, "G-1", cell_format)
+#                         else:
+#                             worksheet.write(row, 1, str(result["Mine"]), cell_format)
+#                             worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
+#                             worksheet.write(row, 3, str(result["RR_No"]), cell_format)
+#                             worksheet.write(row, 4, str(result["RR_Qty"]), cell_format)
+#                             worksheet.write(row, 5, str(result["Supplier"]), cell_format)
+#                             worksheet.write(row, 6, str(result["Date"]), cell_format)
+#                             worksheet.write(row, 7, str(result["Time"]), cell_format)
+#                         count -= 1
+#                     workbook.close()
+
+
+#                     console_logger.debug("Successfully {} report generated".format(service_id))
+#                     console_logger.debug("sent data {}".format(path))
+#                     return {
+#                             "Type": "coal_test_download_event",
+#                             "Datatype": "Report",
+#                             "File_Path": path,
+#                         }
+#                 except Exception as e:
+#                     console_logger.debug(e)
+#                     exc_type, exc_obj, exc_tb = sys.exc_info()
+#                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#                     console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#                     console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#             else:
+#                 console_logger.error("No data found")
+#                 return {
+#                             "Type": "coal_test_download_event",
+#                             "Datatype": "Report",
+#                             "File_Path": path,
+#                         }
+
+#     except Exception as e:
+#         response.status_code = 400
+#         console_logger.debug(e)
+#         exc_type, exc_obj, exc_tb = sys.exc_info()
+#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#         return e
+
+# new as per table
 @router.get("/coal_train_test_table", tags=["Coal Testing"])
 def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, perPage: Optional[int] = None,
                     search_text: Optional[str] = None,
@@ -3777,67 +7069,64 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
                 start_date = f'{month_date}-01'
                 startd_date=datetime.datetime.strptime(start_date,"%Y-%m-%d")
                 end_date = startd_date + relativedelta( day=31)
-                data &= Q(receive_date__gte = startd_date)
-                data &= Q(receive_date__lte = end_date)
+                data &= Q(plant_analysis_date__gte = startd_date)
+                data &= Q(plant_analysis_date__lte = end_date)
 
             if search_text:
                 if search_text.isdigit():
-                    data &= (Q(rrNo__icontains=search_text))
+                    data &= (Q(sample_id__icontains=search_text))
                 else:
-                    data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
+                    data &= Q(mine__icontains=search_text) | Q(sample_no__icontains=search_text)
 
             if start_timestamp:
                 start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
-                data &= Q(receive_date__gte = start_date)
+                data &= Q(plant_analysis_date__gte = start_date)
             
-
             if end_timestamp:
                 end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
-                data &= Q(receive_date__lte = end_date)
+                data &= Q(plant_analysis_date__lte = end_date)
 
-
-            
             logs = (
-                CoalTestingTrain.objects(data)
-                .order_by("-ID")
+                RecieptCoalQualityAnalysis.objects(data, mode="Rail")
+                .order_by("-plant_analysis_date")
                 .skip(offset)
                 .limit(page_len)                  
             )        
 
             if any(logs):
                 for log in logs:
-                    # result["labels"] = list(log.payload().keys())
-                    result["labels"] = [
-                    "Sr.No", 
-                    "Mine", 
-                    "Lot_No", 
-                    "RR_No", 
-                    "RR_Qty", 
-                    "Supplier", 
-                    "Date", 
-                    "Time", 
-                    "Id", 
-                    "GWEL_Total_Moisture_%", 
-                    "GWEL_Inherent_Moisture_(Adb)_%", 
-                    "GWEL_Ash_(Adb)_%", 
-                    "GWEL_Volatile_Matter_(Adb)_%", 
-                    "GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg", 
-                    "GWEL_Ash_(Arb)_%", 
-                    "GWEL_Volatile_Matter_(Arb)_%", 
-                    "GWEL_Fixed_Carbon_(Arb)_%", 
-                    "GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg", 
-                    "Third_Party_Report_No", 
-                    "Third_Party_Total_Moisture_%", 
-                    "Third_Party_Inherent_Moisture_(Adb)_%", 
-                    "Third_Party_Ash_(Adb)_%", 
-                    "Third_Party_Volatile_Matter_(Adb)_%", 
-                    "Third_Party_Ash_(Arb)_%", 
-                    "Third_Party_Volatile_Matter_(Arb)_%",
-                    "Third_Party_Fixed_Carbon_(Arb)_%",
-                    "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]
+                    result["labels"] = list(log.payload().keys())
+                    # result["labels"] = [
+                    # "Sr.No", 
+                    # "Mine", 
+                    # "Lot_No", 
+                    # "RR_No", 
+                    # "RR_Qty", 
+                    # "Supplier", 
+                    # "Date", 
+                    # "Time", 
+                    # "Id", 
+                    # "GWEL_Total_Moisture_%", 
+                    # "GWEL_Inherent_Moisture_(Adb)_%", 
+                    # "GWEL_Ash_(Adb)_%", 
+                    # "GWEL_Volatile_Matter_(Adb)_%", 
+                    # "GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg", 
+                    # "GWEL_Ash_(Arb)_%", 
+                    # "GWEL_Volatile_Matter_(Arb)_%", 
+                    # "GWEL_Fixed_Carbon_(Arb)_%", 
+                    # "GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg", 
+                    # "Third_Party_Report_No", 
+                    # "Third_Party_Total_Moisture_%", 
+                    # "Third_Party_Inherent_Moisture_(Adb)_%", 
+                    # "Third_Party_Ash_(Adb)_%", 
+                    # "Third_Party_Volatile_Matter_(Adb)_%", 
+                    # "Third_Party_Ash_(Arb)_%", 
+                    # "Third_Party_Volatile_Matter_(Arb)_%",
+                    # "Third_Party_Fixed_Carbon_(Arb)_%",
+                    # "Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]
                     result["datasets"].append(log.payload())
 
-            result["total"] = (len(CoalTestingTrain.objects(data)))
+            result["total"] = (len(RecieptCoalQualityAnalysis.objects(data, mode="Rail")))
             # console_logger.debug(f"-------- Rail Coal Testing Response -------- {result}")
             return result
 
@@ -3853,21 +7142,22 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
 
             if start_timestamp:
                 start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
-                data &= Q(receive_date__gte = start_date)
+                data &= Q(plant_analysis_date__gte = start_date)
 
             if end_timestamp:
                 end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
-                data &= Q(receive_date__lte = end_date)
+                data &= Q(plant_analysis_date__lte = end_date)
 
             if search_text:
                 if search_text.isdigit():
-                    data &= (Q(rrNo__icontains=search_text))
+                    data &= (Q(sample_id__icontains=search_text))
                 else:
-                    data &= Q(location__icontains=search_text) | Q(rake_no__icontains=search_text)
-
-            usecase_data = CoalTestingTrain.objects(data).order_by("-receive_date")
+                    data &= Q(mine__icontains=search_text) | Q(sample_no__icontains=search_text)
+            
+            usecase_data = RecieptCoalQualityAnalysis.objects(data, mode="Rail").order_by("-plant_analysis_date")
             count = len(usecase_data)
             path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             if usecase_data:
                 try:
                     path = os.path.join(
@@ -3885,7 +7175,20 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
                     cell_format2.set_bold()
                     cell_format2.set_font_size(10)
                     cell_format2.set_align("center")
-                    cell_format2.set_align("vjustify")
+                    cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+                    cell_format2.set_border(1)
+
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+
+                    header_format.set_align("vcenter")
+                    date_format.set_align("vcenter")
+                    report_name_format.set_align("vcenter")
+                    header_format.set_border(1)
+                    date_format.set_border(1)
+                    report_name_format.set_border(1)
 
                     worksheet = workbook.add_worksheet()
                     worksheet.set_column("A:AZ", 20)
@@ -3894,239 +7197,317 @@ def coal_secl_test_table(response:Response,currentPage: Optional[int] = None, pe
                     cell_format.set_font_size(10)
                     cell_format.set_align("center")
                     cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+                    cell_format.set_border(1)
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    main_header = "GMR Warora Energy Limited" 
+                    
+                    worksheet.write("A2", f"Date: {end_date.strftime('%d-%m-%Y')}", date_format)
 
                     if filter_type == "gwel":
-                        headers = ["Sr.No",
-                                "Mine",
-                                "Lot No", 
-                                "RR No", 
-                                "RR Qty", 
-                                "Supplier", 
-                                "Date", 
-                                "Time",
-                                "GWEL Total Moisture%", 
-                                "GWEL Inherent Moisture (Adb)%", 
-                                "GWEL Ash (Adb)%", 
-                                "GWEL Volatile Matter (Adb)%", 
-                                "GWEL Gross Calorific Value (Adb) Kcal/Kg", 
-                                "GWEL Ash (Arb)%", 
-                                "GWEL Volatile Matter (Arb)%", 
-                                "GWEL Fixed Carbon (Arb)%", 
-                                "GWEL Gross Calorific Value (Arb) Kcal/Kg",
-                                "GWEL Grade (Adb)",
-                                ]
+                        worksheet.merge_range("A1:Y1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                        worksheet.merge_range("C2:Y2", f"GWEL Receipt Quality Analysis (Road)", report_name_format)
+                        headers = [
+                            "Sr.No.",
+                            "Plant Certificate ID",
+                            "Sample No",
+                            "Do No",
+                            "Plant Sample Date",
+                            "Plant Preparation Date",
+                            "Plant Analysis Date",
+                            "Sample Qty",
+                            "Mine",
+                            "Mine Grade",
+                            "Mode",
+                            "GWEL LAB TEMP",
+                            "GWEL LAB RH",
+                            "GWEL ARB TM",
+                            "GWEL ARB VM",
+                            "GWEL ARB ASH",
+                            "GWEL ARB FC",
+                            "GWEL ARB GCV",
+                            "GWEL ADB IM",
+                            "GWEL ADB VM",
+                            "GWEL ADB ASH",
+                            "GWEL ADB FC",
+                            "GWEL ADB GCV",
+                            "GWEL ULR ID",
+                            "GWEL GRADE"
+                        ]
                     elif filter_type == "third_party":
+                        worksheet.merge_range("A1:Y1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                        worksheet.merge_range("C2:Y2", f"ThirdParty Receipt Quality Analysis (Road)", report_name_format)
                         headers = [
-                               "Sr.No",
-                               "Mine",
-                               "Lot No", 
-                               "RR No", 
-                               "RR Qty", 
-                               "Supplier",
-                               "Date", 
-                               "Time",
-                               "Third Party Report No", 
-                               "Third Party Total Moisture%", 
-                               "Third Party Inherent Moisture (Adb)%", 
-                               "Third Party Ash (Adb)%", 
-                               "Third Party Volatile Matter (Adb)%", 
-                               "Third Party Gross Calorific Value (Adb) Kcal/Kg",
-                               "Third Party Ash (Arb)%", 
-                               "Third Party Volatile Matter (Arb)%", 
-                               "Third Party Fixed Carbon (Arb)%", 
-                               "Third Party Gross Calorific Value (Arb) Kcal/Kg",
-                               "Third Party Grade (Adb)",
-                               ]
+                            "Sr.No.",
+                            "Plant Certificate ID",
+                            "Sample No",
+                            "Do No",
+                            "Plant Sample Date",
+                            "Plant Preparation Date",
+                            "Plant Analysis Date",
+                            "Sample Qty",
+                            "Mine",
+                            "Mine Grade",
+                            "Mode",
+                            "THIRDPARTY Report Date",
+                            "THIRDPARTY Reference No",
+                            "THIRDPARTY Sample Date",
+                            "THIRDPARTY ARB TM",
+                            "THIRDPARTY ARB VM",
+                            "THIRDPARTY ARB ASH",
+                            "THIRDPARTY ARB FC",
+                            "THIRDPARTY ARB GCV",
+                            "THIRDPARTY ADB IM",
+                            "THIRDPARTY ADB VM",
+                            "THIRDPARTY ADB ASH",
+                            "THIRDPARTY ADB FC",
+                            "THIRDPARTY ADB GCV",
+                            "THIRDPARTY GRADE"
+                        ]
                     elif filter_type == "all":
-                        headers = ["Sr.No",
-                                "Mine",
-                                "Lot No", 
-                                "RR No", 
-                                "RR Qty", 
-                                "Supplier", 
-                                "Date", 
-                                "Time",
-                                "GWEL Total Moisture%", 
-                                "GWEL Inherent Moisture (Adb)%", 
-                                "GWEL Ash (Adb)%", 
-                                "GWEL Volatile Matter (Adb)%", 
-                                "GWEL Gross Calorific Value (Adb) Kcal/Kg", 
-                                "GWEL Ash (Arb)%", 
-                                "GWEL Volatile Matter (Arb)%", 
-                                "GWEL Fixed Carbon (Arb)%", 
-                                "GWEL Gross Calorific Value (Arb) Kcal/Kg",
-                                "GWEL Grade (Adb)",
-                                "Third Party Report No", 
-                                "Third Party Total Moisture%", 
-                                "Third Party Inherent Moisture (Adb)%", 
-                                "Third Party Ash (Adb)%", 
-                                "Third Party Volatile Matter (Adb)%", 
-                                "Third Party Gross Calorific Value (Adb) Kcal/Kg",
-                                "Third Party Ash (Arb)%", 
-                                "Third Party Volatile Matter (Arb)%", 
-                                "Third Party Fixed Carbon (Arb)%", 
-                                "Third Party Gross Calorific Value (Arb) Kcal/Kg",
-                                "Third Party Grade (Adb)",
-                                ]
-                    else:
+                        worksheet.merge_range("A1:AM1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                        worksheet.merge_range("C2:AM2", f"Receipt Quality Analysis (Road)", report_name_format)
                         headers = [
-                                "Sr.No",
-                                "Mine",
-                                "Lot No", 
-                                "RR No", 
-                                "RR Qty", 
-                                "Supplier",
-                                "Date", 
-                                "Time"]
+                            "Sr.No.",
+                            "Plant Certificate Id",
+                            "Sample No",
+                            "Do No",
+                            "Plant Sample Date",
+                            "Plant Preparation Date",
+                            "Plant Analysis Date",
+                            "Sample Qty",
+                            "Mine",
+                            "Mine Grade",
+                            "Mode",
+                            "GWEL Lab Temp",
+                            "GWEL Lab RH",
+                            "GWEL ARB TM",
+                            "GWEL ARB VM",
+                            "GWEL ARB ASH",
+                            "GWEL ARB FC",
+                            "GWEL ARB GCV",
+                            "GWEL ADB IM",
+                            "GWEL ADB VM",
+                            "GWEL ADB ASH",
+                            "GWEL ADB FC",
+                            "GWEL ADB GCV",
+                            "GWEL ULR ID",
+                            "GWEL GRADE",
+                            "THIRDPARTY REPORT DATE",
+                            "THIRDPARTY REFERENCE NO",
+                            "THIRDPARTY SAMPLE DATE",
+                            "THIRDPARTY ARB TM",
+                            "THIRDPARTY ARB VM",
+                            "THIRDPARTY ARB ASH",
+                            "THIRDPARTY ARB FC",
+                            "THIRDPARTY ARB GCV",
+                            "THIRDPARTY ADB IM",
+                            "THIRDPARTY ADB VM",
+                            "THIRDPARTY ADB ASH",
+                            "THIRDPARTY ADB FC",
+                            "THIRDPARTY ADB GCV",
+                            "THIRRDPARTY GRADE",
+                        ]
+                    else:
+                        worksheet.merge_range("A1:AM1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                        worksheet.merge_range("C2:AM2", f"Receipt Quality Analysis (Road)", report_name_format)
+                        headers = [
+                            "Sr.No.",
+                            "Plant Certificate Id",
+                            "Sample No",
+                            "Do No",
+                            "Plant Sample Date",
+                            "Plant Preparation Date",
+                            "Plant Analysis Date",
+                            "Sample Qty",
+                            "Mine",
+                            "Mine Grade",
+                            "Mode"]
 
                     for index, header in enumerate(headers):
-                        worksheet.write(0, index, header, cell_format2)
+                        worksheet.write(2, index, header, cell_format2)
                     fetchCoalGrades = CoalGrades.objects()
-                    for row, query in enumerate(usecase_data,start=1):
+
+                    for row, query in enumerate(usecase_data,start=3):
                         result = query.payload()
                         worksheet.write(row, 0, count, cell_format)
                         if filter_type == "gwel":
-                            worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                            worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
-                            worksheet.write(row, 3, str(result["RR_No"]), cell_format)
-                            worksheet.write(row, 4, str(result["RR_Qty"]), cell_format)
-                            worksheet.write(row, 5, str(result["Supplier"]), cell_format)
-                            worksheet.write(row, 6, str(result["Date"]), cell_format)
-                            worksheet.write(row, 7, str(result["Time"]), cell_format)
-                            worksheet.write(row, 8, str(result["GWEL_Total_Moisture_%"]), cell_format)
-                            worksheet.write(row, 9, str(result["GWEL_Inherent_Moisture_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 10, str(result["GWEL_Ash_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 11, str(result["GWEL_Volatile_Matter_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 12, str(result["GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            worksheet.write(row, 13, str(result["GWEL_Ash_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 14, str(result["GWEL_Volatile_Matter_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 15, str(result["GWEL_Fixed_Carbon_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 16, str(result["GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                            worksheet.write(row, 1, str(result["plant_certificate_id"]), cell_format)
+                            worksheet.write(row, 2, str(result["sample_no"]), cell_format)
+                            worksheet.write(row, 3, str(result["do_no"]), cell_format)
+                            worksheet.write(row, 4, str(result["GWEL_sample_date"]), cell_format)
+                            worksheet.write(row, 5, str(result["GWEL_preparation_date"]), cell_format)
+                            worksheet.write(row, 6, str(result["GWEL_analysis_date"]), cell_format)
+                            worksheet.write(row, 7, str(result["sample_qty"]), cell_format)
+                            worksheet.write(row, 8, str(result["mine"]), cell_format)
+                            worksheet.write(row, 9, str(result["mine_grade"]), cell_format)
+                            worksheet.write(row, 10, str(result["mode"]), cell_format)
+                            worksheet.write(row, 11, str(result["GWEL_LAB_TEMP"]), cell_format)
+                            worksheet.write(row, 12, str(result["GWEL_LAB_RH"]), cell_format)
+                            worksheet.write(row, 13, str(result["GWEL_ARB_TM"]), cell_format)
+                            worksheet.write(row, 14, str(result["GWEL_ARB_VM"]), cell_format)
+                            worksheet.write(row, 15, str(result["GWEL_ARB_ASH"]), cell_format)
+                            worksheet.write(row, 16, str(result["GWEL_ARB_FC"]), cell_format)
+                            worksheet.write(row, 17, str(result["GWEL_ARB_GCV"]), cell_format)
+                            worksheet.write(row, 18, str(result["GWEL_ADB_IM"]), cell_format)
+                            worksheet.write(row, 19, str(result["GWEL_ADB_VM"]), cell_format)
+                            worksheet.write(row, 20, str(result["GWEL_ADB_ASH"]), cell_format)
+                            worksheet.write(row, 21, str(result["GWEL_ADB_FC"]), cell_format)
+                            worksheet.write(row, 22, str(result["GWEL_ADB_GCV"]), cell_format)
+                            worksheet.write(row, 23, str(result["GWEL_ULR_ID"]), cell_format)
+                            if result.get("GWEL_ADB_GCV"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= float(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= int(result.get("GWEL_ADB_GCV"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
-                                        worksheet.write(row, 17, str(single_coal_grades["grade"]), cell_format)
-                                    elif float(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
-                                        worksheet.write(row, 17, "G-1", cell_format)
-                            
+                                        console_logger.debug("inside if")
+                                        worksheet.write(row, 24, str(single_coal_grades["grade"]), cell_format)
+                                    elif int(result.get("GWEL_ADB_GCV")) > 7001:
+                                        worksheet.write(row, 24, "G-1", cell_format)
+                                        console_logger.debug("inside else")
+
                         elif filter_type == "third_party":
-                            worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                            worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
-                            worksheet.write(row, 3, str(result["RR_No"]), cell_format)
-                            worksheet.write(row, 4, str(result["RR_Qty"]), cell_format)
-                            worksheet.write(row, 5, str(result["Supplier"]), cell_format)
-                            worksheet.write(row, 6, str(result["Date"]), cell_format)
-                            worksheet.write(row, 7, str(result["Time"]), cell_format)
-                            if result.get("Third_Party_Report_No"):
-                                worksheet.write(row, 8, str(result["Third_Party_Report_No"]), cell_format)
-                            if result.get("Third_Party_Total_Moisture_%"):
-                                worksheet.write(row, 9, str(result["Third_Party_Total_Moisture_%"]), cell_format)
-                            if result.get("Third_Party_Inherent_Moisture_(Adb)_%"):
-                                worksheet.write(row, 10, str(result["Third_Party_Inherent_Moisture_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Ash_(Adb)_%"):
-                                worksheet.write(row, 11, str(result["Third_Party_Ash_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Volatile_Matter_(Adb)_%"):
-                                worksheet.write(row, 12, str(result["Third_Party_Volatile_Matter_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
-                                worksheet.write(row, 13, str(result["Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            if result.get("Third_Party_Ash_(Arb)_%"):
-                                worksheet.write(row, 14, str(result["Third_Party_Ash_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Volatile_Matter_(Arb)_%"):
-                                worksheet.write(row, 15, str(result["Third_Party_Volatile_Matter_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Fixed_Carbon_(Arb)_%"):
-                                worksheet.write(row, 16, str(result["Third_Party_Fixed_Carbon_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"):
-                                worksheet.write(row, 17, str(result["Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                            worksheet.write(row, 1, str(result["plant_certificate_id"]), cell_format)
+                            worksheet.write(row, 2, str(result["sample_no"]), cell_format)
+                            worksheet.write(row, 3, str(result["do_no"]), cell_format)
+                            worksheet.write(row, 4, str(result["GWEL_sample_date"]), cell_format)
+                            worksheet.write(row, 5, str(result["GWEL_preparation_date"]), cell_format)
+                            worksheet.write(row, 6, str(result["GWEL_analysis_date"]), cell_format)
+                            worksheet.write(row, 7, str(result["sample_qty"]), cell_format)
+                            worksheet.write(row, 8, str(result["mine"]), cell_format)
+                            worksheet.write(row, 9, str(result["mine_grade"]), cell_format)
+                            worksheet.write(row, 10, str(result["mode"]), cell_format)
+                            if result.get("THIRDPARTY_REPORT_DATE"):
+                                worksheet.write(row, 11, str(result["THIRDPARTY_REPORT_DATE"]), cell_format)
+                            if result.get("THIRDPARTY_REFERENCE_NO"):
+                                worksheet.write(row, 12, str(result["THIRDPARTY_REFERENCE_NO"]), cell_format)
+                            if result.get("THIRDPARTY_SAMPLE_DATE"):
+                                worksheet.write(row, 13, str(result["THIRDPARTY_SAMPLE_DATE"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_TM"):
+                                worksheet.write(row, 14, str(result["THIRDPARTY_ARB_TM"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_VM"):
+                                worksheet.write(row, 15, str(result["THIRDPARTY_ARB_VM"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_ASH"):
+                                worksheet.write(row, 16, str(result["THIRDPARTY_ARB_ASH"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_FC"):
+                                worksheet.write(row, 17, str(result["THIRDPARTY_ARB_FC"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_GCV"):
+                                worksheet.write(row, 18, str(result["THIRDPARTY_ARB_GCV"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_IM"):
+                                worksheet.write(row, 19, str(result["THIRDPARTY_ADB_IM"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_VM"):
+                                worksheet.write(row, 20, str(result["THIRDPARTY_ADB_VM"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_ASH"):
+                                worksheet.write(row, 21, str(result["THIRDPARTY_ADB_ASH"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_FC"):
+                                worksheet.write(row, 22, str(result["THIRDPARTY_ADB_FC"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_GCV"):
+                                worksheet.write(row, 23, str(result["THIRDPARTY_ADB_GCV"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_GCV"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= float(result.get("THIRDPARTY_ADB_GCV"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
-                                        worksheet.write(row, 18, str(single_coal_grades["grade"]), cell_format)
-                                    elif int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
-                                        worksheet.write(row, 18, "G-1", cell_format)
+                                        worksheet.write(row, 24, str(single_coal_grades["grade"]), cell_format)
+                                    elif float(result.get("THIRDPARTY_ADB_GCV")) > 7001:
+                                        worksheet.write(row, 24, "G-1", cell_format)
                         elif filter_type == "all":
-                            worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                            worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
-                            worksheet.write(row, 3, str(result["RR_No"]), cell_format)
-                            worksheet.write(row, 4, str(result["RR_Qty"]), cell_format)
-                            worksheet.write(row, 5, str(result["Supplier"]), cell_format)
-                            worksheet.write(row, 6, str(result["Date"]), cell_format)
-                            worksheet.write(row, 7, str(result["Time"]), cell_format)
-                            worksheet.write(row, 8, str(result["GWEL_Total_Moisture_%"]), cell_format)
-                            worksheet.write(row, 9, str(result["GWEL_Inherent_Moisture_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 10, str(result["GWEL_Ash_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 11, str(result["GWEL_Volatile_Matter_(Adb)_%"]), cell_format)
-                            worksheet.write(row, 12, str(result["GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            worksheet.write(row, 13, str(result["GWEL_Ash_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 14, str(result["GWEL_Volatile_Matter_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 15, str(result["GWEL_Fixed_Carbon_(Arb)_%"]), cell_format)
-                            worksheet.write(row, 16, str(result["GWEL_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                            worksheet.write(row, 1, str(result["plant_certificate_id"]), cell_format)
+                            worksheet.write(row, 2, str(result["sample_no"]), cell_format)
+                            worksheet.write(row, 3, str(result["do_no"]), cell_format)
+                            worksheet.write(row, 4, str(result["GWEL_sample_date"]), cell_format)
+                            worksheet.write(row, 5, str(result["GWEL_preparation_date"]), cell_format)
+                            worksheet.write(row, 6, str(result["GWEL_analysis_date"]), cell_format)
+                            worksheet.write(row, 7, str(result["sample_qty"]), cell_format)
+                            worksheet.write(row, 8, str(result["mine"]), cell_format)
+                            worksheet.write(row, 9, str(result["mine_grade"]), cell_format)
+                            worksheet.write(row, 10, str(result["mode"]), cell_format)
+                            worksheet.write(row, 11, str(result["GWEL_LAB_TEMP"]), cell_format)
+                            worksheet.write(row, 12, str(result["GWEL_LAB_RH"]), cell_format)
+                            worksheet.write(row, 13, str(result["GWEL_ARB_TM"]), cell_format)
+                            worksheet.write(row, 14, str(result["GWEL_ARB_VM"]), cell_format)
+                            worksheet.write(row, 15, str(result["GWEL_ARB_ASH"]), cell_format)
+                            worksheet.write(row, 16, str(result["GWEL_ARB_FC"]), cell_format)
+                            worksheet.write(row, 17, str(result["GWEL_ARB_GCV"]), cell_format)
+                            worksheet.write(row, 18, str(result["GWEL_ADB_IM"]), cell_format)
+                            worksheet.write(row, 19, str(result["GWEL_ADB_VM"]), cell_format)
+                            worksheet.write(row, 20, str(result["GWEL_ADB_ASH"]), cell_format)
+                            worksheet.write(row, 21, str(result["GWEL_ADB_FC"]), cell_format)
+                            worksheet.write(row, 22, str(result["GWEL_ADB_GCV"]), cell_format)
+                            worksheet.write(row, 23, str(result["GWEL_ULR_ID"]), cell_format)
+                            if result.get("GWEL_ADB_GCV"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= float(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= float(result.get("GWEL_ADB_GCV"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
-                                        worksheet.write(row, 17, str(single_coal_grades["grade"]), cell_format)
-                                    elif float(result.get("GWEL_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
-                                        worksheet.write(row, 17, "G-1", cell_format)
-                            if result.get("Third_Party_Report_No"):
-                                worksheet.write(row, 17, str(result["Third_Party_Report_No"]), cell_format)
-                            if result.get("Third_Party_Total_Moisture_%"):
-                                worksheet.write(row, 18, str(result["Third_Party_Total_Moisture_%"]), cell_format)
-                            if result.get("Third_Party_Inherent_Moisture_(Adb)_%"):
-                                worksheet.write(row, 19, str(result["Third_Party_Inherent_Moisture_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Ash_(Adb)_%"):
-                                worksheet.write(row, 20, str(result["Third_Party_Ash_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Volatile_Matter_(Adb)_%"):
-                                worksheet.write(row, 21, str(result["Third_Party_Volatile_Matter_(Adb)_%"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
-                                worksheet.write(row, 22, str(result["Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"]), cell_format)
-                            if result.get("Third_Party_Ash_(Arb)_%"):
-                                worksheet.write(row, 23, str(result["Third_Party_Ash_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Volatile_Matter_(Arb)_%"):
-                                worksheet.write(row, 24, str(result["Third_Party_Volatile_Matter_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Fixed_Carbon_(Arb)_%"):
-                                worksheet.write(row, 25, str(result["Third_Party_Fixed_Carbon_(Arb)_%"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"):
-                                worksheet.write(row, 26, str(result["Third_Party_Gross_Calorific_Value_(Arb)_Kcal/Kg"]), cell_format)
-                            if result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"):
+                                        worksheet.write(row, 24, str(single_coal_grades["grade"]), cell_format)
+                                    elif float(result.get("GWEL_ADB_GCV")) > 7001:
+                                        worksheet.write(row, 24, "G-1", cell_format)
+                            if result.get("THIRDPARTY_REPORT_DATE"):
+                                worksheet.write(row, 25, str(result["THIRDPARTY_REPORT_DATE"]), cell_format)
+                            if result.get("THIRDPARTY_REFERENCE_NO"):
+                                worksheet.write(row, 26, str(result["THIRDPARTY_REFERENCE_NO"]), cell_format)
+                            if result.get("THIRDPARTY_SAMPLE_DATE"):
+                                worksheet.write(row, 27, str(result["THIRDPARTY_SAMPLE_DATE"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_TM"):
+                                worksheet.write(row, 28, str(result["THIRDPARTY_ARB_TM"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_VM"):
+                                worksheet.write(row, 29, str(result["THIRDPARTY_ARB_VM"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_ASH"):
+                                worksheet.write(row, 30, str(result["THIRDPARTY_ARB_ASH"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_FC"):
+                                worksheet.write(row, 31, str(result["THIRDPARTY_ARB_FC"]), cell_format)
+                            if result.get("THIRDPARTY_ARB_GCV"):
+                                worksheet.write(row, 32, str(result["THIRDPARTY_ARB_GCV"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_IM"):
+                                worksheet.write(row, 33, str(result["THIRDPARTY_ADB_IM"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_VM"):
+                                worksheet.write(row, 34, str(result["THIRDPARTY_ADB_VM"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_ASH"):
+                                worksheet.write(row, 35, str(result["THIRDPARTY_ADB_ASH"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_FC"):
+                                worksheet.write(row, 36, str(result["THIRDPARTY_ADB_FC"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_GCV"):
+                                worksheet.write(row, 37, str(result["THIRDPARTY_ADB_GCV"]), cell_format)
+                            if result.get("THIRDPARTY_ADB_GCV"):
                                 for single_coal_grades in fetchCoalGrades:
                                     if (
                                         int(single_coal_grades["start_value"])
-                                        <= int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg"))
+                                        <= float(result.get("THIRDPARTY_ADB_GCV"))
                                         <= int(single_coal_grades["end_value"])
                                         and single_coal_grades["start_value"] != ""
                                         and single_coal_grades["end_value"] != ""
                                     ):
-                                        worksheet.write(row, 27, str(single_coal_grades["grade"]), cell_format)
-                                    elif int(result.get("Third_Party_Gross_Calorific_Value_(Adb)_Kcal/Kg")) > 7001:
-                                        worksheet.write(row, 27, "G-1", cell_format)
+                                        worksheet.write(row, 38, str(single_coal_grades["grade"]), cell_format)
+                                    elif float(result.get("THIRDPARTY_ADB_GCV")) > 7001:
+                                        worksheet.write(row, 38, "G-1", cell_format)
                         else:
-                            worksheet.write(row, 1, str(result["Mine"]), cell_format)
-                            worksheet.write(row, 2, str(result["Lot_No"]), cell_format)
-                            worksheet.write(row, 3, str(result["RR_No"]), cell_format)
-                            worksheet.write(row, 4, str(result["RR_Qty"]), cell_format)
-                            worksheet.write(row, 5, str(result["Supplier"]), cell_format)
-                            worksheet.write(row, 6, str(result["Date"]), cell_format)
-                            worksheet.write(row, 7, str(result["Time"]), cell_format)
+                            worksheet.write(row, 1, str(result["plant_certificate_id"]), cell_format)
+                            worksheet.write(row, 2, str(result["sample_no"]), cell_format)
+                            worksheet.write(row, 3, str(result["do_no"]), cell_format)
+                            worksheet.write(row, 4, str(result["GWEL_sample_date"]), cell_format)
+                            worksheet.write(row, 5, str(result["GWEL_preparation_date"]), cell_format)
+                            worksheet.write(row, 6, str(result["GWEL_analysis_date"]), cell_format)
+                            worksheet.write(row, 7, str(result["sample_qty"]), cell_format)
+                            worksheet.write(row, 8, str(result["mine"]), cell_format)
+                            worksheet.write(row, 9, str(result["mine_grade"]), cell_format)
+                            worksheet.write(row, 10, str(result["mode"]), cell_format)
                         count -= 1
                     workbook.close()
-
 
                     console_logger.debug("Successfully {} report generated".format(service_id))
                     console_logger.debug("sent data {}".format(path))
@@ -4281,8 +7662,10 @@ def gmr_table(response:Response, filter_data: Optional[List[str]] = Query([]),
             )
             count = len(usecase_data)
             path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             if usecase_data:
                 try:
+                    # Define the file path and filename
                     path = os.path.join(
                         "static_server",
                         "gmr_ai",
@@ -4292,58 +7675,104 @@ def gmr_table(response:Response, filter_data: Optional[List[str]] = Query([]),
                         ),
                     )
                     filename = os.path.join(os.getcwd(), path)
+                    
+                    # Create the workbook and worksheet
                     workbook = xlsxwriter.Workbook(filename)
                     workbook.use_zip64()
+                    worksheet = workbook.add_worksheet()
+                    
+                    # Define formats for the Excel file
                     cell_format2 = workbook.add_format()
                     cell_format2.set_bold()
                     cell_format2.set_font_size(10)
                     cell_format2.set_align("center")
                     cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+                    cell_format2.set_border(1)
+                    
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+                    
+                    header_format.set_align("vcenter")
+                    date_format.set_align("vcenter")
+                    report_name_format.set_align("vcenter")
 
-                    worksheet = workbook.add_worksheet()
+                    header_format.set_border(1)
+                    date_format.set_border(1)
+                    report_name_format.set_border(1)
+
+                    # report_name_format.set_text_wrap(True)
+                    # Set columns width and default row height
                     worksheet.set_column("A:AZ", 20)
                     worksheet.set_default_row(50)
+                    
                     cell_format = workbook.add_format()
                     cell_format.set_font_size(10)
                     cell_format.set_align("center")
                     cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+                    cell_format.set_border(1)
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
                     headers = filter_data
                     header_indexes = {header: index for index, header in enumerate(headers)}
                     headers = [header.capitalize().replace("_", " ") for header in headers]
+                    input_data = len(headers)
+                    DataExecutionsHandler = DataExecutions()
+                    excelTitle = DataExecutionsHandler.findExcelColumnTitleFromColumnNumber(n=input_data)
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range(f"A1:{excelTitle}1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    
+                    # Write the current date on the left side (A2)
+                    worksheet.write("A2", f"Date: {end_date.strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range(f"C2:{excelTitle}2", f"Road Coal Journey", report_name_format)
+                    # Write headers starting from row 3 (which is Excel row C)
+                    
                     for index, header in enumerate(headers):
-                        worksheet.write(0, index, header, cell_format2)
-                    for row, query in enumerate(usecase_data,start=1):
+                        worksheet.write(2, index, header, cell_format2)  # Writing headers in the 3rd row (row C)
+                    
+                    # Write data starting from row 4 (Excel row D)
+                    for row, query in enumerate(usecase_data, start=3):  # Starting from row 4 (index 3)
                         result = query.payload()
-                        worksheet.write(row, 0, count, cell_format)     
+                        worksheet.write(row, 0, count, cell_format)  # Write count in column A
                         for header in filter_data:
                             if header in result:
-                                worksheet.write(row, header_indexes[header], str(result[header]), cell_format)                        
-                        
-                        count-=1
-                        
+                                if header == "GWEL_Net_Wt(MT)":
+                                    worksheet.write(row, header_indexes[header], round(float(result[header]), 2), cell_format)
+                                else:
+                                    worksheet.write(row, header_indexes[header], str(result[header]), cell_format)
+                        count -= 1
+                    
+                    # Close the workbook after writing the data
+                    worksheet.autofit()
                     workbook.close()
+                    
                     console_logger.debug("Successfully {} report generated".format(service_id))
                     console_logger.debug("sent data {}".format(path))
-
+                    
                     return {
-                            "Type": "gmr_road_journey_download_event",
-                            "Datatype": "Report",
-                            "File_Path": path,
-                            }
-                
+                        "Type": "gmr_road_journey_download_event",
+                        "Datatype": "Report",
+                        "File_Path": path,
+                    }
+
                 except Exception as e:
                     console_logger.debug(e)
                     exc_type, exc_obj, exc_tb = sys.exc_info()
                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                     console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
                     console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+
             else:
                 console_logger.error("No data found")
                 return {
-                        "Type": "gmr_road_journey_download_event",
-                        "Datatype": "Report",
-                        "File_Path": path,
-                        }
+                    "Type": "gmr_road_journey_download_event",
+                    "Datatype": "Report",
+                    "File_Path": path,
+                }
 
     except Exception as e:
         response.status_code = 400
@@ -4382,7 +7811,7 @@ async def store_dc_request_data(data:RequestData):
                                     ID=Gmrrequest.objects.count() + 1)
             dc_data.save()
             record_num = Gmrrequest.objects(delivery_challan_number=challan_no,record_id__exists=True).order_by("-created_at").first()
-            console_logger.debug(record_num.record_id)
+            
             return {"message": "Successful"}
         return {"message": "Entry with this challan Number exist"}
 
@@ -4404,7 +7833,7 @@ async def store_dc_request_data(data:RequestData):
                             ID=Gmrrequest.objects.count() + 1)
         dc_data.save()
         record_num = Gmrrequest.objects(delivery_challan_number=challan_no,record_id__exists=True).order_by("-created_at").first()
-        console_logger.debug(record_num.record_id)
+        
         return {"message": "Successful"}
 
 
@@ -4955,7 +8384,7 @@ async def store_tare_request_data(data:RequestData):
                             ID=Gmrrequest.objects.count() + 1)
         tare_data.save()
         record_num = Gmrrequest.objects(delivery_challan_number=challan_no,record_id__exists=True).order_by("-created_at").first()
-        console_logger.debug(record_num.record_id)
+        
         return {"message": "Successful"}
 
 
@@ -5384,6 +8813,7 @@ def gmr_table(response: Response, currentPage: Optional[int] = None,
             usecase_data = Gmrdata.objects(**data).order_by("-created_at")
             count = len(usecase_data)
             path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             if usecase_data:
                 try:
                     path = os.path.join(
@@ -5402,6 +8832,12 @@ def gmr_table(response: Response, currentPage: Optional[int] = None,
                     cell_format2.set_font_size(10)
                     cell_format2.set_align("center")
                     cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'left', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'left', 'font_size': 12, "bold": True})
+
 
                     worksheet = workbook.add_worksheet()
                     worksheet.set_column("A:AZ", 20)
@@ -5410,6 +8846,19 @@ def gmr_table(response: Response, currentPage: Optional[int] = None,
                     cell_format.set_font_size(10)
                     cell_format.set_align("center")
                     cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range("A1:O1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    
+                    # Write the current date on the left side (A2)
+                    worksheet.write("A2", f"Date: {datetime.datetime.now().strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range("C2:H2", f"Report Name: Mine Wise Table", report_name_format)
+
 
                     headers = [
                         "Sr.No",
@@ -5431,8 +8880,8 @@ def gmr_table(response: Response, currentPage: Optional[int] = None,
                     ]
 
                     for index, header in enumerate(headers):
-                        worksheet.write(0, index, header, cell_format2)
-                    for row, query in enumerate(usecase_data,start=1):
+                        worksheet.write(2, index, header, cell_format2)
+                    for row, query in enumerate(usecase_data,start=3):
                         result = query.payload()
                         worksheet.write(row, 0, count, cell_format)
                         worksheet.write(row, 1, str(result["PO_No"]), cell_format)
@@ -5760,7 +9209,6 @@ def daywise_unit1_generation(response: Response):
             count = doc["count"]
             total_sum = doc["total_sum"]
 
-        console_logger.debug(count)
         result = total_sum / count if count > 0 else 0
 
         return {
@@ -5857,7 +9305,6 @@ def daywise_unit2_generation(response: Response):
             count = doc["count"]
             total_sum = doc["total_sum"]
         
-        console_logger.debug(count)
         result = total_sum / count
 
         return {
@@ -6380,6 +9827,7 @@ def daywise_in_vehicle_count_datewise(date):
         # to_ts = datetime.datetime.strptime(enddate,"%Y-%m-%d %H:%M:%S")
         from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
         to_ts = convert_to_utc_format(enddate, "%Y-%m-%d %H:%M:%S")
+        
 
         # vehicle_count = Gmrdata.objects(GWEL_Tare_Time__ne=None, 
         #                                 GWEL_Tare_Time__gte=from_ts, 
@@ -6390,7 +9838,6 @@ def daywise_in_vehicle_count_datewise(date):
                 # Q(GWEL_Tare_Time=None, vehicle_in_time__gte=from_ts, vehicle_in_time__lte=to_ts)  # OR condition
             ).count()
 
-        console_logger.debug(vehicle_count)
 
         return {"title": "Vehicle in count",
                 "data": vehicle_count}
@@ -6455,7 +9902,7 @@ def daywise_grn_receive_datewise(date):
                     },
                     {
                         "$match": {
-                            "GWEL_Tare_Time": {"$gte": from_ts, "$lte": to_ts},
+                            "GWEL_Tare_Time": {'$ne': None, "$gte": from_ts, "$lte": to_ts},
                                 "net_qty": {"$ne": None}
                             }
                     },
@@ -6472,7 +9919,7 @@ def daywise_grn_receive_datewise(date):
         HistoricPipeline = [
                     {
                         "$match": {
-                            "GWEL_Tare_Time": {"$gte": from_ts, "$lte": to_ts},
+                            "GWEL_Tare_Time": {'$ne': None, "$gte": from_ts, "$lte": to_ts},
                                 "net_qty": {"$ne": None}
                             }
                     },
@@ -6513,7 +9960,6 @@ def daywise_grn_receive_datewise(date):
         #         }
         #     }
         # ]
-
         
         result = Gmrdata.objects.aggregate(pipeline)
         result1 = gmrdataHistoric.objects.aggregate(HistoricPipeline)
@@ -6545,8 +9991,8 @@ def daywise_grn_receive_datewise_new(date):
         from_ts = convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
         to_ts = convert_to_utc_format(enddate, "%Y-%m-%d %H:%M:%S")
 
-        console_logger.debug(from_ts)
-        console_logger.debug(to_ts)
+        # console_logger.debug(from_ts)
+        # console_logger.debug(to_ts)
 
         # pipeline = [
         #             {
@@ -6808,7 +10254,6 @@ def daywise_out_vehicle_count_datewise(date):
                 # Q(GWEL_Tare_Time=None, vehicle_out_time__gte=from_ts, vehicle_out_time__lte=to_ts)  # OR condition
             ).count()
         
-        console_logger.debug(vehicle_count)
 
         return {"title": "Vehicle out count",
                 "data": vehicle_count}
@@ -6840,7 +10285,6 @@ def daywise_out_vehicle_count_datewise_new(date):
                 Q(GWEL_Tare_Time=None, vehicle_out_time__gte=from_ts, vehicle_out_time__lte=to_ts)  # OR condition
             ).count()
         
-        console_logger.debug(vehicle_count)
 
         return {"title": "Vehicle out count",
                 "data": vehicle_count}
@@ -6863,14 +10307,17 @@ def bar_graph_data(specified_date):
             start_of_month = datetime.datetime.strftime(start_of_month, '%Y-%m-%d')
             end_of_month = datetime.datetime.strftime(specified_date, '%Y-%m-%d')
 
-            fetchCoalTesting = CoalTesting.objects(
-                receive_date__gte= datetime.datetime.strptime(start_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
-            )
-            
-            fetchCoalTestingTrain = CoalTestingTrain.objects(
-                receive_date__gte = datetime.datetime.strptime(start_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
-            )
+            # fetchCoalTesting = CoalTesting.objects(
+            #     receive_date__gte= datetime.datetime.strptime(start_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
+            # )
 
+            fetchCoalTesting = RecieptCoalQualityAnalysis.objects(plant_analysis_date__gte = datetime.datetime.strptime(start_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), plant_analysis_date__lte = datetime.datetime.strptime(end_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), mode="Road")
+            fetchCoalTestingTrain = RecieptCoalQualityAnalysis.objects(plant_analysis_date__gte = datetime.datetime.strptime(start_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), plant_analysis_date__lte = datetime.datetime.strptime(end_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), mode="Rail")
+            
+            # fetchCoalTestingTrain = CoalTestingTrain.objects(
+            #     receive_date__gte = datetime.datetime.strptime(start_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
+            # )
+            # console_logger.debug()
             # fetchGmrData = Gmrdata.objects(created_at__gte=datetime.datetime.strptime(start_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), created_at__lte=datetime.datetime.strptime(end_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"))
             fetchGmrData = Gmrdata.objects(
                 GWEL_Tare_Time__gte=f"{start_of_month}T00:00:00",
@@ -6880,36 +10327,39 @@ def bar_graph_data(specified_date):
                 created_at__gte=f"{start_of_month}T00:00:00",
                 created_at__lte=f"{end_of_month}T23:59:59"
             )
+            
             rrNo_values = {}
 
             for single_coal_testing in fetchCoalTesting:
-                rrNo = single_coal_testing.rrNo
-                location = single_coal_testing.location
-                for param in single_coal_testing.parameters:
-                    if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
-                        if param["val1"] != None and param["val1"] != "":
-                            calorific_value = float(param["val1"])
-                            break
-                else:
-                    continue
+                roadrrNo = single_coal_testing.sample_id
+                location = single_coal_testing.mine
+                calorific_value = single_coal_testing.plant_arb_gcv
+                # for param in single_coal_testing.parameters:
+                #     if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
+                #         if param["val1"] != None and param["val1"] != "":
+                #             calorific_value = float(param["val1"])
+                #             break
+                # else:
+                #     continue
 
-                if rrNo in rrNo_values:
+                if roadrrNo in rrNo_values:
                     rrNo_values[location] += calorific_value
                 else:
                     rrNo_values[location] = calorific_value
 
             for single_coal_testing_train in fetchCoalTestingTrain:
-                rrNo = single_coal_testing_train.rrNo
-                location = single_coal_testing_train.location
-                for param in single_coal_testing_train.parameters:
-                    if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
-                        if param["val1"] != None:
-                            calorific_value = float(param["val1"])
-                            break
-                else:
-                    continue
+                trainrrNo = single_coal_testing_train.sample_id
+                location = single_coal_testing_train.mine
+                calorific_value = single_coal_testing_train.plant_arb_gcv
+                # for param in single_coal_testing_train.parameters:
+                #     if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
+                #         if param["val1"] != None:
+                #             calorific_value = float(param["val1"])
+                #             break
+                # else:
+                #     continue
 
-                if rrNo in rrNo_values:
+                if trainrrNo in rrNo_values:
                     rrNo_values[location] += calorific_value
                 else:
                     rrNo_values[location] = calorific_value
@@ -6961,7 +10411,6 @@ def bar_graph_data(specified_date):
                 mine: actual_net_qty_totals[mine] - net_qty_totals[mine]
                 for mine in net_qty_totals
             }
-
             return rrNo_values, clubbed_data, aopList
     except Exception as e:
         console_logger.debug("----- Gate Vehicle Count Error -----",e)
@@ -6990,7 +10439,7 @@ def bar_graph_data_new(specified_date):
             )
 
             # fetchGmrData = Gmrdata.objects(created_at__gte=datetime.datetime.strptime(start_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), created_at__lte=datetime.datetime.strptime(end_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"))
-            fetchGmrData = Gmrdatanew.objects(
+            fetchGmrData = Gmrdata.objects(
                 GWEL_Tare_Time__gte=f"{start_of_month}T00:00:00",
                 GWEL_Tare_Time__lte=f"{end_of_month}T23:59:59"
             )
@@ -7002,14 +10451,15 @@ def bar_graph_data_new(specified_date):
 
             for single_coal_testing in fetchCoalTesting:
                 rrNo = single_coal_testing.rrNo
-                location = single_coal_testing.location
-                for param in single_coal_testing.parameters:
-                    if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
-                        if param["val1"] != None and param["val1"] != "":
-                            calorific_value = float(param["val1"])
-                            break
-                else:
-                    continue
+                location = single_coal_testing.mine
+                calorific_value = single_coal_testing.plant_arb_gcv
+                # for param in single_coal_testing.parameters:
+                #     if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
+                #         if param["val1"] != None and param["val1"] != "":
+                #             calorific_value = float(param["val1"])
+                #             break
+                # else:
+                #     continue
 
                 if rrNo in rrNo_values:
                     rrNo_values[location] += calorific_value
@@ -7018,14 +10468,15 @@ def bar_graph_data_new(specified_date):
 
             for single_coal_testing_train in fetchCoalTestingTrain:
                 rrNo = single_coal_testing_train.rrNo
-                location = single_coal_testing_train.location
-                for param in single_coal_testing_train.parameters:
-                    if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
-                        if param["val1"] != None:
-                            calorific_value = float(param["val1"])
-                            break
-                else:
-                    continue
+                location = single_coal_testing_train.mine
+                calorific_value = single_coal_testing_train.plant_arb_gcv
+                # for param in single_coal_testing_train.parameters:
+                #     if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
+                #         if param["val1"] != None:
+                #             calorific_value = float(param["val1"])
+                #             break
+                # else:
+                #     continue
 
                 if rrNo in rrNo_values:
                     rrNo_values[location] += calorific_value
@@ -8731,8 +12182,88 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
             from_ts = convert_to_utc_format(f'{specified_date} 00:00:00', "%Y-%m-%d %H:%M:%S")
             to_ts = convert_to_utc_format(f'{specified_date} 23:59:59', "%Y-%m-%d %H:%M:%S")
         # staticdate "2024-09-23T19:50:51.572Z"
+
+        # console_logger.debug(from_ts)
+        # console_logger.debug(to_ts)
+        
         created_at_date = datetime.datetime(2024, 9, 23, 19, 50, 51, 572000)
         basePipeline = [
+            {
+                '$match': {
+                    'created_at': {
+                        '$gt': created_at_date,
+                    }
+                }
+            },
+            {
+                '$match': {
+                    'GWEL_Tare_Time': {
+                        '$ne': None, 
+                        # '$gte': from_ts, 
+                        '$lte': to_ts,
+                    }
+                }
+            }, {
+                '$group': {
+                    '_id': '$arv_cum_do_number', 
+                    'challan_lr_qty': {
+                        '$sum': {
+                            '$toDouble': '$net_qty'
+                        }
+                    }, 
+                    'Grade': {
+                        '$first': '$grade'
+                    }, 
+                    'slno': {
+                        '$first': '$slno'
+                    }, 
+                    'start_date': {
+                        '$first': '$start_date'
+                    }, 
+                    'end_date': {
+                        '$first': '$end_date'
+                    }, 
+                    'type_consumer': {
+                        '$first': '$type_consumer'
+                    }, 
+                    'do_qty': {
+                        '$first': '$po_qty'
+                    }, 
+                    'mine_name': {
+                        '$first': '$mine'
+                    }, 
+                    'grn_status': {
+                        '$first': '$grn_status'
+                    },
+                    'date': {
+                        '$last': '$GWEL_Tare_Time'
+                    }
+                }
+            }, {
+                '$lookup': {
+                    'from': 'gmrdata', 
+                    'localField': '_id', 
+                    'foreignField': 'arv_cum_do_number', 
+                    'as': 'cumulative_data'
+                }
+            }, {
+                '$addFields': {
+                    'cumulative_challan_lr_qty': {
+                        '$sum': {
+                            '$map': {
+                                'input': '$cumulative_data', 
+                                'as': 'item', 
+                                'in': {
+                                    '$toDouble': '$$item.net_qty'
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+
+        challanlrqtybasePipeline = [
             {
                 '$match': {
                     'created_at': {
@@ -8808,6 +12339,75 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
             }
         ]
         basePipelineHistoric = [
+            {
+                '$match': {
+                    'GWEL_Tare_Time': {
+                        '$ne': None, 
+                        # '$gte': from_ts, 
+                        '$lte': to_ts,
+                    }
+                }
+            }, {
+                '$group': {
+                    '_id': '$arv_cum_do_number', 
+                    'challan_lr_qty': {
+                        '$sum': {
+                            '$toDouble': '$net_qty'
+                        }
+                    }, 
+                    'Grade': {
+                        '$first': '$grade'
+                    }, 
+                    'slno': {
+                        '$first': '$slno'
+                    }, 
+                    'start_date': {
+                        '$first': '$start_date'
+                    }, 
+                    'end_date': {
+                        '$first': '$end_date'
+                    }, 
+                    'type_consumer': {
+                        '$first': '$type_consumer'
+                    }, 
+                    'do_qty': {
+                        '$first': '$po_qty'
+                    }, 
+                    'mine_name': {
+                        '$first': '$mine'
+                    }, 
+                    'grn_status': {
+                        '$first': '$grn_status'
+                    },
+                    'date': {
+                        '$last': '$GWEL_Tare_Time'
+                    }
+                }
+            }, {
+                '$lookup': {
+                    'from': 'gmrdata', 
+                    'localField': '_id', 
+                    'foreignField': 'arv_cum_do_number', 
+                    'as': 'cumulative_data'
+                }
+            }, {
+                '$addFields': {
+                    'cumulative_challan_lr_qty': {
+                        '$sum': {
+                            '$map': {
+                                'input': '$cumulative_data', 
+                                'as': 'item', 
+                                'in': {
+                                    '$toDouble': '$$item.net_qty'
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+
+        basepipelineHistoricChallanLrQty = [
             {
                 '$match': {
                     'GWEL_Tare_Time': {
@@ -8964,8 +12564,9 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                     'do_qty': { '$sum': { '$toDouble': '$do_qty' } },  # Summing up the do_qty as double
                     'start_date': { '$first': '$start_date' },  # Getting the first start_date
                     'end_date': { '$first': '$end_date' },  # Getting the first end_date
-                    'source_type': { '$first': '$source' },  # Getting the first source_type
-                    'slno': { '$first': '$slno' }  # Getting the first slno
+                    'source_type': { '$first': '$consumer_type' },  # Getting the first source_type
+                    'slno': { '$first': '$slno' },  # Getting the first slno
+                    'Grade': {'$first': '$grade'}
                 }
             }, 
             {
@@ -8976,18 +12577,18 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                     'start_date': 1, 
                     'end_date': 1, 
                     'source_type': 1, 
-                    'slno': 1
+                    'slno': 1,
+                    'Grade': 1,
                 }
             }
         ]
 
-        console_logger.debug(saprecordsPipeline)
-
         fetchGmrData = Gmrdata.objects.aggregate(basePipeline)
+        fetchGmrDatachallanltqty = Gmrdata.objects.aggregate(challanlrqtybasePipeline)
         fetchGmrHistoricData = gmrdataHistoric.objects.aggregate(basePipelineHistoric)
+        fetchGmrHistoricDataChallanLrQty = gmrdataHistoric.objects.aggregate(basepipelineHistoricChallanLrQty)
         fetchSapRecordsData = SapRecords.objects.aggregate(saprecordsPipeline)
         listData= []
-
         for singleData in fetchGmrData:
             dictData = {}
             dictData["DO_No"] = singleData.get("_id")
@@ -8996,17 +12597,13 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                 dictData["DO_Qty"] = int(singleData.get("do_qty"))
             else:
                 dictData["DO_Qty"] = 0
-            dictData["challan_lr_qty"] = round(singleData.get("challan_lr_qty"), 2)
             dictData["cumulative_challan_lr_qty"] = round(singleData.get("cumulative_challan_lr_qty"), 2)
-            # dictData["grade"] = singleData.get("Grade")
             dictData["grn_status"] = singleData.get("grn_status")
             dictData["date"] = singleData.get("date").strftime("%Y-%m-%d")
             dictData["start_date"] = singleData.get("start_date")
             dictData["end_date"] = singleData.get("end_date")
             dictData["source_type"] = singleData.get("type_consumer")
-            # dictData["slno"] = singleData.get("slno")
             dictData["slno"] = datetime.datetime.strptime(singleData.get("slno"), "%Y%m").strftime("%B %Y") if singleData.get("slno") else "-"
-            console_logger.debug(dictData["slno"])
             if singleData.get("Grade") is not None:
                 if '-' in singleData.get("Grade"):
                     dictData["average_GCV_Grade"] = singleData.get("Grade").split("-")[0]
@@ -9020,39 +12617,39 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                 dictData["balance_days"] = balance_days.days
             else:
                 dictData["balance_days"] = 0
-            if singleData.get("do_qty") is not None and singleData.get("cumulative_challan_lr_qty") != 0:
-                dictData['percent_supply'] = round((singleData.get('cumulative_challan_lr_qty') / int(singleData.get('do_qty'))) * 100, 2)
+            if singleData.get("do_qty") is not None:
+                single_do_qty = singleData.get("do_qty")
             else:
-                dictData["percent_supply"] = 0
-            if singleData.get("do_qty") is not None and singleData.get("cumulative_challan_lr_qty") != 0:
-                dictData["balance_qty"] = round(int(singleData.get("do_qty")) - singleData.get("cumulative_challan_lr_qty"), 2)
+                single_do_qty = 0
+            if single_do_qty != 0:
+                dictData['percent_supply'] = round((singleData.get('cumulative_challan_lr_qty') / int(single_do_qty)) * 100, 2)
             else:
-                dictData["balance_qty"] = 0
+                dictData['percent_supply'] = 0
+                
+            dictData["balance_qty"] = round(int(single_do_qty) - singleData.get("cumulative_challan_lr_qty"), 2)
                 
             if dictData['balance_days'] and dictData['balance_qty'] != 0:
                 dictData['asking_rate'] = round(dictData['balance_qty'] / dictData['balance_days'], 2)
             else:
                 dictData["asking_rate"] = 0
             listData.append(dictData)
+
+        # console_logger.debug(listData)
         
         for singleDataHistoric in fetchGmrHistoricData:
             dictDataHIstoric = {}
             dictDataHIstoric["DO_No"] = singleDataHistoric.get("_id")
             dictDataHIstoric["mine_name"] = singleDataHistoric.get("mine_name")
             if singleDataHistoric.get("do_qty"):
-                dictDataHIstoric["DO_Qty"] = int(singleDataHistoric.get("do_qty"))
+                dictDataHIstoric["DO_Qty"] = int(float(singleDataHistoric.get("do_qty")))
             else:
                 dictDataHIstoric["DO_Qty"] = 0
-            # dictDataHIstoric["DO_Qty"] = int(singleDataHistoric.get("do_qty"))
-            dictDataHIstoric["challan_lr_qty"] = round(singleDataHistoric.get("challan_lr_qty"), 2)
             dictDataHIstoric["cumulative_challan_lr_qty"] = round(singleDataHistoric.get("cumulative_challan_lr_qty"), 2)
-            # dictDataHIstoric["grade"] = singleDataHistoric.get("Grade")
             dictDataHIstoric["grn_status"] = singleDataHistoric.get("grn_status")
             dictDataHIstoric["date"] = singleDataHistoric.get("date").strftime("%Y-%m-%d")
             dictDataHIstoric["start_date"] = singleDataHistoric.get("start_date")
             dictDataHIstoric["end_date"] = singleDataHistoric.get("end_date")
             dictDataHIstoric["source_type"] = singleDataHistoric.get("type_consumer")
-            # dictDataHIstoric["slno"] = singleDataHistoric.get("slno")
             dictDataHIstoric["slno"] = datetime.datetime.strptime(singleDataHistoric.get("slno"), "%Y%m").strftime("%B %Y") if singleDataHistoric.get("slno") else "-"
             if singleDataHistoric.get("Grade") is not None:
                 if '-' in singleDataHistoric.get("Grade"):
@@ -9067,33 +12664,30 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                 dictDataHIstoric["balance_days"] = balance_days.days
             else:
                 dictDataHIstoric["balance_days"] = 0
-            if singleDataHistoric.get("do_qty") is not None and singleDataHistoric.get("cumulative_challan_lr_qty") != 0:
-                dictDataHIstoric['percent_supply'] = round((singleDataHistoric.get('cumulative_challan_lr_qty') / int(singleDataHistoric.get('do_qty'))) * 100, 2)
+            
+            if singleDataHistoric.get("do_qty") is not None:
+                historic_do_qty = singleDataHistoric.get("do_qty")
             else:
-                dictDataHIstoric["percent_supply"] = 0
-            if singleDataHistoric.get("do_qty") is not None and singleDataHistoric.get("cumulative_challan_lr_qty") != 0:
-                dictDataHIstoric["balance_qty"] = round(int(singleDataHistoric.get("do_qty")) - singleDataHistoric.get("cumulative_challan_lr_qty"), 2)
+                historic_do_qty = 0
+            if historic_do_qty != 0:
+                dictDataHIstoric['percent_supply'] = round((singleDataHistoric.get('cumulative_challan_lr_qty') / int(float(historic_do_qty))) * 100, 2)
             else:
-                dictDataHIstoric["balance_qty"] = 0
+                dictDataHIstoric['percent_supply'] = 0
+            
+                
+            dictDataHIstoric["balance_qty"] = round(int(float(historic_do_qty)) - singleDataHistoric.get("cumulative_challan_lr_qty"), 2)
                 
             if dictDataHIstoric['balance_days'] and dictDataHIstoric['balance_qty'] != 0:
                 dictDataHIstoric['asking_rate'] = round(dictDataHIstoric['balance_qty'] / dictDataHIstoric['balance_days'], 2)
             else:
                 dictDataHIstoric["asking_rate"] = 0
             
-            console_logger.debug(dictDataHIstoric)
-            
-            do_no_exists = any(item['DO_No'] == singleDataHistoric.get("_id") for item in listData)
-            
-            # if do_no_exists:
-            #     print("DO_No exists in final_data.")
-            # else:
-            #     print("DO_No does not exist in final_data.")
-            #     listData.append(dictDataHIstoric)
+            do_no_exists = any(item['DO_No'] == dictDataHIstoric["DO_No"] for item in listData)
 
             if not do_no_exists:
-                print("DO_No does not exist in final_data.")
+                console_logger.debug("DO_No does not exist in final_data.")
                 listData.append(dictDataHIstoric)
+
         for saprecordsSingle in fetchSapRecordsData:
             sapdict = {}
             sapdict["DO_No"] = saprecordsSingle.get("_id")
@@ -9104,9 +12698,7 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
             sapdict["source_type"] = saprecordsSingle.get("source_type")
             sapdict["challan_lr_qty"] = 0
             sapdict["cumulative_challan_lr_qty"] = 0
-            # console_logger.debug(saprecordsSingle.get("slno"))
             sapdict["slno"] = datetime.datetime.strptime(saprecordsSingle.get("slno"), "%Y%m").strftime("%B %Y") if saprecordsSingle.get("slno") else "-"
-            console_logger.debug(sapdict["slno"])
             if saprecordsSingle.get("Grade") is not None:
                 if '-' in saprecordsSingle.get("Grade"):
                     sapdict["average_GCV_Grade"] = saprecordsSingle.get("Grade").split("-")[0]
@@ -9120,40 +12712,98 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                 sapdict["balance_days"] = balance_days.days
             else:
                 sapdict["balance_days"] = 0
-            if saprecordsSingle.get("do_qty") is not None and sapdict["cumulative_challan_lr_qty"] != 0:
-                sapdict['percent_supply'] = round((sapdict["cumulative_challan_lr_qty"] / int(saprecordsSingle.get('do_qty'))) * 100, 2)
+            if saprecordsSingle.get("do_qty") is not None:
+                do_qty_val = saprecordsSingle.get("do_qty")
             else:
-                sapdict["percent_supply"] = 0
-            if saprecordsSingle.get("do_qty") is not None and sapdict["cumulative_challan_lr_qty"] != 0:
-                sapdict["balance_qty"] = round(int(saprecordsSingle.get("do_qty")) - sapdict["cumulative_challan_lr_qty"], 2)
+                do_qty_val = 0
+            if do_qty_val != 0:
+                sapdict['percent_supply'] = round((sapdict["cumulative_challan_lr_qty"] / int(do_qty_val)) * 100, 2)
             else:
-                sapdict["balance_qty"] = 0
+                sapdict['percent_supply'] = 0
+            sapdict["balance_qty"] = round(int(do_qty_val) - sapdict["cumulative_challan_lr_qty"], 2)
             if sapdict['balance_days'] and sapdict['balance_qty'] != 0:
                 sapdict['asking_rate'] = round(sapdict['balance_qty'] / sapdict['balance_days'], 2)
             else:
                 sapdict["asking_rate"] = 0
 
-            sap_do_no_exists = any(item['DO_No'] == sapdict.get("_id") for item in listData)
+            sap_do_no_exists = any(item['DO_No'] == sapdict.get("DO_No") for item in listData)
             
-            # if do_no_exists:
-            #     print("DO_No exists in final_data.")
-            # else:
-            #     print("DO_No does not exist in final_data.")
-            #     listData.append(dictDataHIstoric)
-
             if not sap_do_no_exists:
-                print("DO_No does not exist in final_data.")
+                console_logger.debug("DO_No does not exist in final_data for sap_records")
                 listData.append(sapdict)
 
-        console_logger.debug(listData)
+        for singlelrqtyData in fetchGmrDatachallanltqty:
+            dictDatalrQty = {}
+            dictDatalrQty["DO_No"] = singlelrqtyData.get("_id")
+            dictDatalrQty["mine_name"] = singlelrqtyData.get("mine_name")
+            if singleData.get("do_qty"):
+                dictDatalrQty["DO_Qty"] = int(singlelrqtyData.get("do_qty"))
+            else:
+                dictDatalrQty["DO_Qty"] = 0
+            dictDatalrQty["challan_lr_qty"] = round(singlelrqtyData.get("challan_lr_qty"), 2)
+            
+            # Check if there is an item with the same DO_No in listData
+            do_no_exists_data = next((item for item in listData if item["DO_No"] == dictDatalrQty["DO_No"]), None)
+            
+            # If it exists, update the "challan_lr_qty" in listData
+            if do_no_exists_data:
+                do_no_exists_data["challan_lr_qty"] = dictDatalrQty["challan_lr_qty"]
+
+        for singlehistoriclrqty in fetchGmrHistoricDataChallanLrQty:
+            dictDatahistoriclrQty = {}
+            dictDatahistoriclrQty["DO_No"] = singlehistoriclrqty.get("_id")
+            dictDatahistoriclrQty["mine_name"] = singlehistoriclrqty.get("mine_name")
+            if singleData.get("do_qty"):
+                dictDatahistoriclrQty["DO_Qty"] = int(singlehistoriclrqty.get("do_qty"))
+            else:
+                dictDatahistoriclrQty["DO_Qty"] = 0
+            dictDatahistoriclrQty["challan_lr_qty"] = round(singlehistoriclrqty.get("challan_lr_qty"), 2)
+            
+            # Check if there is an item with the same DO_No in listData
+            do_no_exists_historic = next((item for item in listData if item["DO_No"] == dictDatahistoriclrQty["DO_No"]), None)
+            
+            # If it exists, update the "challan_lr_qty" in listData
+            if do_no_exists_data:
+                do_no_exists_historic["challan_lr_qty"] = dictDatahistoriclrQty["challan_lr_qty"]
+            
         
         # final_data = [
         #     d for d in listData 
         #     if d['start_date'] is not None and datetime.datetime.strptime(d['start_date'], '%Y-%m-%d').date() <= datetime.datetime.now().date()
         # ]
 
-        final_data = listData
-        
+        final_data_check = [
+            d for d in listData
+            if d['end_date'] is not None and 
+            (datetime.datetime.strptime(d['end_date'], '%Y-%m-%d') + datetime.timedelta(days=2)) > datetime.datetime.strptime(specified_date, "%Y-%m-%d")
+        ]
+
+        # console_logger.debug(final_data_check)
+
+        filtered_data = []
+        for single_data_percent in final_data_check:
+            percent_supply = single_data_percent.get('percent_supply')
+
+            # Check for percent_supply greater than or equal to 100.0
+            if percent_supply >= 100.0:
+                # Query Gmrdata with the DO_No
+                fetchGmrData = Gmrdata.objects(arv_cum_do_number=single_data_percent.get("DO_No")).first()
+                
+                # Check if data exists and GWEL_Tare_Time is not None
+                if fetchGmrData is not None and fetchGmrData.GWEL_Tare_Time:
+                    # Compare GWEL_Tare_Time + 2 days with today's date
+                    if (fetchGmrData.GWEL_Tare_Time + datetime.timedelta(days=2)) < datetime.datetime.now():
+                        # console_logger.debug("Data removed due to GWEL_Tare_Time being older than today's date.")
+                        continue  # Skip entry
+                
+            # If not removed, append to filtered_data
+            filtered_data.append(single_data_percent)
+            
+        # Sort the data by 'balance_days', placing entries with 'balance_days' of 0 at the end
+        final_data_check = sorted(filtered_data, key=lambda x: (x['balance_days'] == 0, x['balance_days']))
+
+        final_data = final_data_check
+
         rrNo_values, clubbed_data, aopList = bar_graph_data(specified_date)
         clubbed_data_final = gmr_main_graph()
         total_monthly_final_net_qty = transit_loss_gain_road_mode_month(specified_date)
@@ -9169,9 +12819,12 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
 
         fetchRakeQuota = end_point_to_fetch_rake_quota_test(response)
 
+        fetchRcrRakeQuota = end_point_to_fetch_rcr_rake_quota_pdf(response)
+
         # console_logger.debug(fetchRakeQuota)
 
         seclLinkagegraph = endpoint_to_fetch_secl_linkage_matrialization(response, str(datetime.datetime.strptime(specified_date, "%Y-%m-%d").strftime("%Y")))
+        # seclLinkagegraph = endpoint_to_fetch_secl_linkage_matrialization_for_pdf(response, str(datetime.datetime.strptime(specified_date, "%Y-%m-%d").strftime("%Y")))
         wclLinkagegraph = endpoint_to_fetch_wcl_linkage_matrialization(response, str(datetime.datetime.strptime(specified_date, "%Y-%m-%d").strftime("%Y")))
 
         # console_logger.debug(seclLinkagegraph)
@@ -9179,10 +12832,10 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
 
         if specified_date:
             month_data = specified_date
-            fetchData = generate_report(final_data, rrNo_values, month_data, clubbed_data, clubbed_data_final, dayWiseVehicleInCount, dayWiseGrnReceive, dayWiseGwelReceive, dayWiseOutVehicelCount, total_monthly_final_net_qty, yearly_final_data, aopList, fetchRailData, yearly_rail_final_data, fetchRakeQuota.get('datasets'), seclLinkagegraph, wclLinkagegraph)
+            fetchData = generate_report(final_data, rrNo_values, month_data, clubbed_data, clubbed_data_final, dayWiseVehicleInCount, dayWiseGrnReceive, dayWiseGwelReceive, dayWiseOutVehicelCount, total_monthly_final_net_qty, yearly_final_data, aopList, fetchRailData, yearly_rail_final_data, fetchRakeQuota.get('datasets'), fetchRcrRakeQuota.get("datasets"), seclLinkagegraph, wclLinkagegraph)
             return fetchData
         else:
-            fetchData = generate_report(final_data, rrNo_values, "", clubbed_data, clubbed_data_final, dayWiseVehicleInCount, dayWiseGrnReceive, dayWiseGwelReceive, dayWiseOutVehicelCount, total_monthly_final_net_qty, yearly_final_data, aopList, fetchRailData, yearly_rail_final_data, fetchRakeQuota.get('datasets'), seclLinkagegraph, wclLinkagegraph)
+            fetchData = generate_report(final_data, rrNo_values, "", clubbed_data, clubbed_data_final, dayWiseVehicleInCount, dayWiseGrnReceive, dayWiseGwelReceive, dayWiseOutVehicelCount, total_monthly_final_net_qty, yearly_final_data, aopList, fetchRailData, yearly_rail_final_data, fetchRakeQuota.get('datasets'), fetchRcrRakeQuota.get("datasets"), seclLinkagegraph, wclLinkagegraph)
             return fetchData
 
         # return listData
@@ -9771,16 +13424,54 @@ def endpoint_to_fetch_aoptarget(response: Response, target_name: str=None):
         console_logger.debug("Error on line {}".format(sys.exc_info()[-1].tb_lineno))
         return {"detail": "failed"}
 
+    
+
 @router.get("/fetch/minecoaljourneysource", tags=["PDF Report"])
 def endpoint_to_fetch_aoptarget(response: Response, mine_name: str=None):
     try:
         mine_data = short_mine_collection.find_one({"mine_name":mine_name.upper()})
         return {
+            "id": str(mine_data.get("_id")),
             "mine_name": mine_data.get("mine_name"),
             "short_code": mine_data.get("short_code"),
             "coal_journey": mine_data.get("coal_journey"),
+            "source_type": mine_data.get("source_type"),
         }
+    except Exception as e:
+        console_logger.debug(e)
+        console_logger.debug("Error on line {}".format(sys.exc_info()[-1].tb_lineno))
+        return {"detail": "failed"}
 
+
+@router.get("/mine/shortcode/sourcetype", tags=["PDF Report"])
+def get_mine_shortcodes_sourcetype(response:Response):
+    try:
+        sourcetype = []
+        result = short_mine_collection.find({},{"_id":0})
+        for single_data in result:
+            if single_data["source_type"] is not None:
+                console_logger.debug(single_data["source_type"])
+                sourcetype.append(single_data["source_type"])
+        return sourcetype
+    except Exception as e:
+        console_logger.debug(e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(f"{exc_type} in {fname} on line {exc_tb.tb_lineno}")
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return {"detail": str(e)}
+
+
+@router.post("/update/minecoaljourneysource", tags=["PDF Report"])
+def endpoint_to_update_minename_data(response: Response, data: mineNameUpdate):
+    try:
+        final_data = data.dict()
+        existing_entry = short_mine_collection.find_one({"_id": ObjectId(final_data.get("id"))})
+        short_mine_collection.update_one(
+            {"_id": ObjectId(final_data.get("id"))},
+            {"$set": {"short_code": final_data.get("mine_code"), "coal_journey": final_data.get("mine_mode"), "source_type": final_data.get("source_type")}})
+        return {"detail": "success"}
     except Exception as e:
         console_logger.debug(e)
         console_logger.debug("Error on line {}".format(sys.exc_info()[-1].tb_lineno))
@@ -9836,6 +13527,7 @@ def fetch_email_data():
         url_data = f"http://{ip}/api/v1/base/smtp/unprotected"
         response = requests.request("GET", url=url_data, headers=headers, data=data, proxies=proxies)
         data = json.loads(response.text)
+        console_logger.debug(data)
         return response.status_code, data
     except Exception as e:
         console_logger.debug(e)
@@ -9975,6 +13667,8 @@ def send_report_generate(**kwargs):
                         checkEmailDevelopment = EmailDevelopmentCheck.objects()
                         if checkEmailDevelopment[0].development == "local":
                             send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[0].recipient_list, body, f"{os.path.join(os.getcwd())}/{generateReportData}", reportSchedule[0].cc_list, reportSchedule[0].bcc_list)
+                            # another_test_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[0].recipient_list, body, f"{os.path.join(os.getcwd())}/{generateReportData}", reportSchedule[0].cc_list, reportSchedule[0].bcc_list)
+                            # another_test_email()                        
                         elif checkEmailDevelopment[0].development == "prod":
                             send_data = {
                                 "sender_email": fetch_email.get("Smtp_user"),
@@ -10052,21 +13746,21 @@ def send_report_generate(**kwargs):
                 else:
                     return
 
-        elif kwargs["report_name"] == "gwel_coal_report":
+        elif kwargs["report_name"] == "gwel_receipt_quality_analysis":
             if reportSchedule[2].active == False:
                 console_logger.debug("scheduler is off")
                 return
             elif reportSchedule[2].active == True:
-                if not check_existing_notification("gwel_coal_report"):
-                    emailNotifications(notification_name="gwel_coal_report").save()
-                    console_logger.debug("inside gwel coal report")
+                if not check_existing_notification("gwel_receipt_quality_analysis"):
+                    emailNotifications(notification_name="gwel_receipt_quality_analysis").save()
+                    console_logger.debug("inside gwel receipt quality analysis")
                     start_date = datetime.datetime.today().strftime('%Y-%m-%d')
                     end_date = datetime.datetime.today().strftime('%Y-%m-%d')
                     # start_date = (datetime.datetime.today() - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
                     # end_date = (datetime.datetime.today() - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
                     
-                    console_logger.debug(start_date)
-                    console_logger.debug(end_date)
+                    # console_logger.debug(start_date)
+                    # console_logger.debug(end_date)
 
                     # start_date = "2024-07-29"
                     # end_date = "2024-07-29"
@@ -10121,21 +13815,21 @@ def send_report_generate(**kwargs):
                                 generate_email(Response, email=send_data)
                 else:
                     return
-        elif kwargs["report_name"] == "thirdparty_coal_report":
+        elif kwargs["report_name"] == "thirdparty_receipt_quality_analysis":
             if reportSchedule[3].active == False:
                 console_logger.debug("scheduler is off")
                 return
             elif reportSchedule[3].active == True:
-                if not check_existing_notification("thirdparty_coal_report"):
-                    emailNotifications(notification_name="thirdparty_coal_report").save()
-                    console_logger.debug("inside Thirdparty Coal Report")
+                if not check_existing_notification("thirdparty_receipt_quality_analysis"):
+                    emailNotifications(notification_name="thirdparty_receipt_quality_analysis").save()
+                    console_logger.debug("inside thirdparty receipt quality analysis")
                     start_date = datetime.datetime.today().strftime('%Y-%m-%d')
                     end_date = datetime.datetime.today().strftime('%Y-%m-%d')
                     # start_date = (datetime.datetime.today() - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
                     # end_date = (datetime.datetime.today() - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
 
-                    console_logger.debug(start_date)
-                    console_logger.debug(start_date)
+                    # console_logger.debug(start_date)
+                    # console_logger.debug(start_date)
 
                     # start_date = "2024-07-29"
                     # end_date = "2024-07-29"
@@ -10328,6 +14022,7 @@ def send_report_generate(**kwargs):
                     emailNotifications(notification_name="road_coal_journey_report").save()
                     console_logger.debug("inside road coal journey report")
                     date_data = datetime.datetime.today().strftime('%Y-%m-%d')
+                    # date_data = "2024-09-17"
                     headers = {
                         'accept': 'application/json',
                     }
@@ -10402,13 +14097,13 @@ def send_report_generate(**kwargs):
                             generate_email(Response, email=send_data)
                 else:
                     return   
-        elif kwargs["report_name"] == "bunker_analysis_report":
+        elif kwargs["report_name"] == "bunker_quality_analysis":
             if reportSchedule[11].active == False:
                 console_logger.debug("scheduler is off")
                 return
             elif reportSchedule[11].active == True:
-                if not check_existing_notification("bunker_analysis_report"):
-                    emailNotifications(notification_name="bunker_analysis_report").save()
+                if not check_existing_notification("bunker_quality_analysis"):
+                    emailNotifications(notification_name="bunker_quality_analysis").save()
                     # todays_date = f"{datetime.date.today().strftime("%Y-%m-%d")} 00"
                     start_todays_date = f"{datetime.date.today().strftime('%Y-%m-%d')}T00:00"
                     end_todays_date = f"{datetime.date.today().strftime('%Y-%m-%d')}T23:59"
@@ -10421,7 +14116,7 @@ def send_report_generate(**kwargs):
                     if response_code == 200:
                         console_logger.debug(reportSchedule[11].recipient_list)
                         if fetchBunkerData.get("File_Path") is None:
-                            console_logger.debug(reportSchedule[3].recipient_list)
+                            console_logger.debug(reportSchedule[11].recipient_list)
                             subject = f"GMR Bunker Analysis Report {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
                             body = f"""<b>No data found for Bunker Analysis Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b>"""
                             checkEmailDevelopment = EmailDevelopmentCheck.objects()
@@ -10462,6 +14157,130 @@ def send_report_generate(**kwargs):
                                     "file_path": f"{os.path.join(os.getcwd())}/{fetchBunkerData.get('File_Path')}",
                                     "cc_list": reportSchedule[11].cc_list,
                                     "bcc_list": reportSchedule[11].bcc_list
+                                }
+                                generate_email(Response, email=send_data)
+                else:
+                    return  
+        elif kwargs["report_name"] == "coal_analysis":
+            if reportSchedule[12].active == False:
+                console_logger.debug("scheduler is off")
+                return
+            elif reportSchedule[12].active == True:
+                if not check_existing_notification("coal_analysis"):
+                    emailNotifications(notification_name="coal_analysis").save()
+                    input_date = date.today()
+                    DataExecutionsHandler = DataExecutions()
+                    start_date, end_date = DataExecutionsHandler.get_financial_year_dates_from_todays(input_date=input_date)
+                    start_todays_date = f"{start_date}T00:00"
+                    end_todays_date = f"{end_date}T23:59"
+                    fetchOverAllAnalysisData = get_overall_analysis(Response, start_timestamp=start_todays_date, end_timestamp=end_todays_date, type="download")
+                    console_logger.debug(fetchOverAllAnalysisData.get("File_Path"))
+                    response_code, fetch_email = fetch_email_data()
+                    if response_code == 200:
+                        console_logger.debug(reportSchedule[12].recipient_list)
+                        if fetchOverAllAnalysisData.get("File_Path") is None:
+                            console_logger.debug(reportSchedule[12].recipient_list)
+                            subject = f"GMR Coal Analysis Report {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                            body = f"""<b>No data found for Coal Analysis Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b>"""
+                            checkEmailDevelopment = EmailDevelopmentCheck.objects()
+                            if checkEmailDevelopment[0].development == "local":
+                                send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[12].recipient_list, body, "", reportSchedule[12].cc_list, reportSchedule[12].bcc_list)
+                            elif checkEmailDevelopment[0].development == "prod":
+                                send_data = {
+                                    "sender_email": fetch_email.get("Smtp_user"),
+                                    "subject": subject,
+                                    "password": fetch_email.get("Smtp_password"),
+                                    "smtp_host": fetch_email.get("Smtp_host"),
+                                    "smtp_port": fetch_email.get("Smtp_port"),
+                                    "receiver_email": reportSchedule[12].recipient_list,
+                                    "body": body,
+                                    "file_path": "",
+                                    "cc_list": reportSchedule[12].cc_list,
+                                    "bcc_list": reportSchedule[12].bcc_list
+                                }
+                                # console_logger.debug(send_data)
+                                generate_email(Response, email=send_data)
+                        else:
+                            subject = f"GMR Coal Analysis Report {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                            body = f"Coal Analysis Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                            # send_email(smtpData.Smtp_user, subject, smtpData.Smtp_password, smtpData.Smtp_host, smtpData.Smtp_port, receiver_email, body, f"{os.path.join(os.getcwd())}{generateReportData}")
+                            checkEmailDevelopment = EmailDevelopmentCheck.objects()
+                            if checkEmailDevelopment[0].development == "local":
+                                send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[12].recipient_list, body, f"{os.path.join(os.getcwd())}/{fetchOverAllAnalysisData.get('File_Path')}", reportSchedule[12].cc_list, reportSchedule[12].bcc_list)
+                            elif checkEmailDevelopment[0].development == "prod":
+                                console_logger.debug("inside prod")
+                                send_data = {
+                                    "sender_email": fetch_email.get("Smtp_user"),
+                                    "subject": subject,
+                                    "password": fetch_email.get("Smtp_password"),
+                                    "smtp_host": fetch_email.get("Smtp_host"),
+                                    "smtp_port": fetch_email.get("Smtp_port"),
+                                    "receiver_email": reportSchedule[12].recipient_list,
+                                    "body": body,
+                                    "file_path": f"{os.path.join(os.getcwd())}/{fetchOverAllAnalysisData.get('File_Path')}",
+                                    "cc_list": reportSchedule[12].cc_list,
+                                    "bcc_list": reportSchedule[12].bcc_list
+                                }
+                                generate_email(Response, email=send_data)
+                else:
+                    return  
+        elif kwargs["report_name"] == "coal_gcv_analysis":
+            if reportSchedule[13].active == False:
+                console_logger.debug("scheduler is off")
+                return
+            elif reportSchedule[13].active == True:
+                if not check_existing_notification("coal_gcv_analysis"):
+                    emailNotifications(notification_name="coal_gcv_analysis").save()
+                    input_date = date.today()
+                    DataExecutionsHandler = DataExecutions()
+                    fetch_financial_year = DataExecutionsHandler.get_financial_year_final(input_date=input_date)
+                    console_logger.debug(f"FY {fetch_financial_year}")
+                    fetchGcvAnalysisData = endpoint_to_fetch_gcv_analysis(Response, search_text=f"FY {fetch_financial_year}", type="download")
+                    console_logger.debug(fetchGcvAnalysisData.get("File_Path"))
+                    response_code, fetch_email = fetch_email_data()
+                    if response_code == 200:
+                        console_logger.debug(reportSchedule[13].recipient_list)
+                        if fetchGcvAnalysisData.get("File_Path") is None:
+                            subject = f"GMR Coal GCV Analysis Report {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                            body = f"""<b>No data found for Coal GCV Analysis Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}</b>"""
+                            checkEmailDevelopment = EmailDevelopmentCheck.objects()
+                            if checkEmailDevelopment[0].development == "local":
+                                send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[13].recipient_list, body, "", reportSchedule[13].cc_list, reportSchedule[13].bcc_list)
+                            elif checkEmailDevelopment[0].development == "prod":
+                                send_data = {
+                                    "sender_email": fetch_email.get("Smtp_user"),
+                                    "subject": subject,
+                                    "password": fetch_email.get("Smtp_password"),
+                                    "smtp_host": fetch_email.get("Smtp_host"),
+                                    "smtp_port": fetch_email.get("Smtp_port"),
+                                    "receiver_email": reportSchedule[13].recipient_list,
+                                    "body": body,
+                                    "file_path": "",
+                                    "cc_list": reportSchedule[13].cc_list,
+                                    "bcc_list": reportSchedule[13].bcc_list
+                                }
+                                # console_logger.debug(send_data)
+                                generate_email(Response, email=send_data)
+                        else:
+                            subject = f"GMR Coal GCV Analysis Report {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                            body = f"Coal GCV Analysis Report for Date: {datetime.datetime.strptime(datetime.datetime.today().strftime('%Y-%m-%d'),'%Y-%m-%d').strftime('%d %B %Y')}"
+                            # send_email(smtpData.Smtp_user, subject, smtpData.Smtp_password, smtpData.Smtp_host, smtpData.Smtp_port, receiver_email, body, f"{os.path.join(os.getcwd())}{generateReportData}")
+                            checkEmailDevelopment = EmailDevelopmentCheck.objects()
+                            if checkEmailDevelopment[0].development == "local":
+                                send_email(fetch_email.get("Smtp_user"), subject, fetch_email.get("Smtp_password"), fetch_email.get("Smtp_host"), fetch_email.get("Smtp_port"), reportSchedule[13].recipient_list, body, f"{os.path.join(os.getcwd())}/{fetchGcvAnalysisData.get('File_Path')}", reportSchedule[13].cc_list, reportSchedule[13].bcc_list)
+                            elif checkEmailDevelopment[0].development == "prod":
+                                console_logger.debug("inside prod")
+                                send_data = {
+                                    "sender_email": fetch_email.get("Smtp_user"),
+                                    "subject": subject,
+                                    "password": fetch_email.get("Smtp_password"),
+                                    "smtp_host": fetch_email.get("Smtp_host"),
+                                    "smtp_port": fetch_email.get("Smtp_port"),
+                                    "receiver_email": reportSchedule[13].recipient_list,
+                                    "body": body,
+                                    "file_path": f"{os.path.join(os.getcwd())}/{fetchGcvAnalysisData.get('File_Path')}",
+                                    "cc_list": reportSchedule[13].cc_list,
+                                    "bcc_list": reportSchedule[13].bcc_list
                                 }
                                 generate_email(Response, email=send_data)
                 else:
@@ -10791,7 +14610,6 @@ def coal_logistics_report_test(
                 # {'$limit': page_len}
             ]
 
-            # Remove empty filters from the pipeline
             saprecordsPipeline = [stage for stage in saprecordsPipeline if stage]
 
             fetchGmrData = Gmrdata.objects.aggregate(basePipeline)
@@ -10816,7 +14634,8 @@ def coal_logistics_report_test(
                 dictData["start_date"] = singleData.get("start_date")
                 dictData["end_date"] = singleData.get("end_date")
                 dictData["source_type"] = singleData.get("type_consumer")
-                dictData["month"] = singleData.get("slno")
+                # dictData["month"] = singleData.get("slno")
+                dictData["month"] = datetime.datetime.strptime(singleData.get("slno"), "%Y%m").strftime("%B %Y") if singleData.get("slno") else "-"
                 if singleData.get("Grade") is not None:
                     if '-' in singleData.get("Grade"):
                         dictData["average_GCV_Grade"] = singleData.get("Grade").split("-")[0]
@@ -10866,7 +14685,8 @@ def coal_logistics_report_test(
                 dictDataHIstoric["start_date"] = singleDataHistoric.get("start_date")
                 dictDataHIstoric["end_date"] = singleDataHistoric.get("end_date")
                 dictDataHIstoric["source_type"] = singleDataHistoric.get("type_consumer")
-                dictDataHIstoric["month"] = singleDataHistoric.get("slno")
+                # dictDataHIstoric["month"] = singleDataHistoric.get("slno")
+                dictDataHIstoric["month"] = datetime.datetime.strptime(singleDataHistoric.get("slno"), "%Y%m").strftime("%B %Y") if singleDataHistoric.get("slno") else "-"
                 if singleDataHistoric.get("Grade") is not None:
                     if '-' in singleDataHistoric.get("Grade"):
                         dictDataHIstoric["average_GCV_Grade"] = singleDataHistoric.get("Grade").split("-")[0]
@@ -10896,7 +14716,7 @@ def coal_logistics_report_test(
                 
                 # console_logger.debug(dictDataHIstoric)
                 
-                do_no_exists = any(item['DO_No'] == singleDataHistoric.get("_id") for item in listData)
+                do_no_exists = any(item['DO_No'] == dictDataHIstoric["DO_No"] for item in listData)
                 
                 # if do_no_exists:
                 #     print("DO_No exists in final_data.")
@@ -10946,7 +14766,7 @@ def coal_logistics_report_test(
                 else:
                     sapdict["asking_rate"] = 0
 
-                sap_do_no_exists = any(item['DO_No'] == sapdict.get("_id") for item in listData)
+                sap_do_no_exists = any(item['DO_No'] == sapdict["DO_No"] for item in listData)
                 
                 # if do_no_exists:
                 #     print("DO_No exists in final_data.")
@@ -12788,7 +16608,124 @@ def coal_logistics_report_train(
         )
         return e
 
+        
+# @router.get("/mine_wise_average_gcv", tags=["Road Map"])
+# def mine_wise_average_gwel_gcv(
+#     response: Response,
+#     type: Optional[str] = "Daily",
+#     Month: Optional[str] = None, 
+#     Daily: Optional[str] = None, 
+#     Year: Optional[str] = None
+# ):
+#     try:
+#         if type == "Daily":
+#             specified_date = datetime.datetime.strptime(Daily, "%Y-%m-%d")
+#             start_of_month = specified_date.replace(day=1)
+#             start_date = datetime.datetime.strftime(start_of_month, '%Y-%m-%d')
+#             end_date = datetime.datetime.strftime(specified_date, '%Y-%m-%d')
+#         elif type == "Week":
+#             specified_date = datetime.datetime.now().date()
+#             start_of_week = specified_date - datetime.timedelta(days=7)
+#             start_date = datetime.datetime.strftime(start_of_week, '%Y-%m-%d')
+#             end_date = datetime.datetime.strftime(specified_date, '%Y-%m-%d')
+#         elif type == "Month":
+#             date=Month
+#             datestructure = date.replace(" ", "").split("-")
+#             final_month = f"{datestructure[0]}-{str(datestructure[1]).zfill(2)}"
+#             start_month = f"{final_month}-01"
+#             startd_date = datetime.datetime.strptime(start_month, "%Y-%m-%d")
+#             endd_date = startd_date + datetime.timedelta(days=31)
+#             start_date = datetime.datetime.strftime(startd_date, '%Y-%m-%d')
+#             end_date = datetime.datetime.strftime(endd_date, '%Y-%m-%d')
+#         elif type == "Year":
+#             date = Year
+#             endd_date =f'{date}-12-31'
+#             startd_date = f'{date}-01-01'
+#             format_data = "%Y-%m-%d"
+#             end_date=datetime.datetime.strftime(datetime.datetime.strptime(endd_date,format_data), format_data)
+#             start_date=datetime.datetime.strftime(datetime.datetime.strptime(startd_date,format_data), format_data)
 
+#         # Query for CoalTesting objects
+#         fetchCoalTesting = CoalTesting.objects(
+#             receive_date__gte= datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
+#         )
+#         # Query for CoalTestingTrain objects
+#         fetchCoalTestingTrain = CoalTestingTrain.objects(
+#             receive_date__gte = datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
+#         )
+#         # Query for GMRData objects
+#         # fetchGmrData = Gmrdata.objects(created_at__gte=datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), created_at__lte=datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"))
+        
+#         rrNo_values = {}
+
+#         # Iterate through fetched CoalTesting objects
+#         for single_coal_testing in fetchCoalTesting:
+#             rrNo = single_coal_testing.rrNo
+#             location = single_coal_testing.location
+#             for param in single_coal_testing.parameters:
+#                 if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
+#                     if param["val1"] != None and param["val1"] != "":
+#                         calorific_value = float(param["val1"])
+#                         break
+#             else:
+#                 continue
+
+#             # Aggregate values based on rrNo
+#             if rrNo in rrNo_values:
+#                 rrNo_values[location] += calorific_value
+#             else:
+#                 rrNo_values[location] = calorific_value
+
+#         # Iterate through fetched CoalTestingTrain objects
+#         for single_coal_testing_train in fetchCoalTestingTrain:
+#             rrNo = single_coal_testing_train.rrNo
+#             location = single_coal_testing_train.location
+#             for param in single_coal_testing_train.parameters:
+#                 if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
+#                     if param["val1"] != None:
+#                         calorific_value = float(param["val1"])
+#                         break
+#             else:
+#                 continue
+
+#             # Aggregate values based on rrNo
+#             if rrNo in rrNo_values:
+#                 rrNo_values[location] += calorific_value
+#             else:
+#                 rrNo_values[location] = calorific_value
+        
+#         # fetch data from AopTarget
+#         aopList = []
+#         fetchAopTarget = AopTarget.objects()
+#         if fetchAopTarget:
+#             for single_aop_target in fetchAopTarget:
+#                 aopList.append(single_aop_target.payload())
+
+#         target_dict = {item['source_name']: int(item['aop_target']) for item in aopList}
+        
+#         aligned_target_data = [target_dict.get(label.strip(), 0) for label in rrNo_values.keys()]
+
+#         result = {
+#             "data": {
+#                 "labels": list(rrNo_values.keys()),
+#                 "datasets": [
+#                     {"label": "Mine", "data": list(rrNo_values.values()), "order": 1, "type": "bar"},
+#                     {"label": "Target", "data": aligned_target_data, "order": 0, "type": "line"},
+#                 ],
+#             }
+#         }
+
+#         return result
+        
+#     except Exception as e:
+#         console_logger.debug("----- Gate Vehicle Count Error -----",e)
+#         exc_type, exc_obj, exc_tb = sys.exc_info()
+#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#         return e
+
+# new db structure
 @router.get("/mine_wise_average_gcv", tags=["Road Map"])
 def mine_wise_average_gwel_gcv(
     response: Response,
@@ -12825,14 +16762,18 @@ def mine_wise_average_gwel_gcv(
             end_date=datetime.datetime.strftime(datetime.datetime.strptime(endd_date,format_data), format_data)
             start_date=datetime.datetime.strftime(datetime.datetime.strptime(startd_date,format_data), format_data)
 
-        # Query for CoalTesting objects
-        fetchCoalTesting = CoalTesting.objects(
-            receive_date__gte= datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
-        )
-        # Query for CoalTestingTrain objects
-        fetchCoalTestingTrain = CoalTestingTrain.objects(
-            receive_date__gte = datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
-        )
+        # # Query for CoalTesting objects
+        # fetchCoalTesting = CoalTesting.objects(
+        #     receive_date__gte= datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
+        # )
+        # # Query for CoalTestingTrain objects
+        # fetchCoalTestingTrain = CoalTestingTrain.objects(
+        #     receive_date__gte = datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
+        # )
+
+        fetchCoalTesting = RecieptCoalQualityAnalysis.objects(plant_analysis_date__gte=datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), plant_analysis_date__lte=datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), mode="Road")
+        fetchCoalTestingTrain = RecieptCoalQualityAnalysis.objects(plant_analysis_date__gte=datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), plant_analysis_date__lte=datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), mode="Rail")
+
         # Query for GMRData objects
         # fetchGmrData = Gmrdata.objects(created_at__gte=datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), created_at__lte=datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"))
         
@@ -12840,15 +16781,9 @@ def mine_wise_average_gwel_gcv(
 
         # Iterate through fetched CoalTesting objects
         for single_coal_testing in fetchCoalTesting:
-            rrNo = single_coal_testing.rrNo
-            location = single_coal_testing.location
-            for param in single_coal_testing.parameters:
-                if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
-                    if param["val1"] != None and param["val1"] != "":
-                        calorific_value = float(param["val1"])
-                        break
-            else:
-                continue
+            rrNo = single_coal_testing.sample_id
+            location = single_coal_testing.mine
+            calorific_value = single_coal_testing.plant_arb_gcv
 
             # Aggregate values based on rrNo
             if rrNo in rrNo_values:
@@ -12858,15 +16793,9 @@ def mine_wise_average_gwel_gcv(
 
         # Iterate through fetched CoalTestingTrain objects
         for single_coal_testing_train in fetchCoalTestingTrain:
-            rrNo = single_coal_testing_train.rrNo
-            location = single_coal_testing_train.location
-            for param in single_coal_testing_train.parameters:
-                if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
-                    if param["val1"] != None:
-                        calorific_value = float(param["val1"])
-                        break
-            else:
-                continue
+            rrNo = single_coal_testing_train.sample_id
+            location = single_coal_testing_train.mine
+            calorific_value = single_coal_testing_train.plant_arb_gcv
 
             # Aggregate values based on rrNo
             if rrNo in rrNo_values:
@@ -12904,6 +16833,7 @@ def mine_wise_average_gwel_gcv(
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
+
 
 @router.get("/source_wise_profit_loss", tags=["Road Map"])
 def source_wise_transist_loss_gain(response: Response, type: Optional[str] = "Daily", Month: Optional[str] = None, Daily: Optional[str] = None, Year: Optional[str] = None):
@@ -13619,6 +17549,139 @@ async def endpoint_to_add_sap_excel_data(response: Response, file: UploadFile = 
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
 
+@router.post("/add/saprcr/excel", tags=["Coal Testing"])
+async def endpoint_to_add_sap_excel_data(response: Response, file: UploadFile = File(...)):
+    try:
+        if file is None:
+            return {"error": "No file Uploaded!"}
+        
+        contents = await file.read()
+        if not contents:
+            response.status_code = 400
+            return {"error": "Uploaded file is empty!"}
+
+        if file.filename.endswith(".xlsx"):
+            # file saving start
+            date = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{date}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+            file_extension = file.filename.split(".")[-1]
+            file_name = f'rail_saprcrrail_manual_{datetime.datetime.now().strftime("%Y-%m-%d:%H:%M")}.{file_extension}'
+            full_path = os.path.join(os.getcwd(), target_directory, file_name)
+            with open(full_path, "wb") as file_object:
+                file_object.write(contents)
+            # file saving end
+
+            excel_data = pd.read_excel(BytesIO(contents))
+            data_excel_fetch = json.loads(excel_data.to_json(orient="records"))
+            for single_data in data_excel_fetch:
+                try:
+                    fetchSapRecords = sapRecordsRCR.objects.get(rr_no=str(single_data["RR No"]))
+                    console_logger.debug(fetchSapRecords.sap_po)
+                    fetchSapRecords.sap_po = str(single_data["SAP PO"]) if single_data["SAP PO"] else None
+                    fetchSapRecords.rr_date = str(single_data["SAP PO Date"]) if single_data["SAP PO Date"] else None
+                    fetchSapRecords.line_item = str(single_data["Line Item"]) if single_data["Line Item"] else None
+                    fetchSapRecords.save()
+                except DoesNotExist as e:
+                    add_data_excel = sapRecordsRCR(
+                        # slno=single_data["Slno"] if single_data["Slno"] else None,
+                        # source=single_data["source"],
+                        # mine_name=single_data["Mines Name"],
+                        sap_po=str(single_data["SAP PO"]) if single_data["SAP PO"] else None,
+                        rr_date=str(single_data["SAP PO Date"]) if single_data["SAP PO Date"] else None,
+                        line_item=str(single_data["Line Item"]) if single_data["Line Item"] else None,
+                        rr_no=str(single_data["RR No"]) if single_data["RR No"] else None,
+                        # do_qty=str(single_data["DO QTY"]),
+                        # rake_no=single_data["DO/RR Qty"],
+                        # start_date=single_data["DO Start Date"],
+                        # end_date=single_data["DO End Date"],
+                        # grade=single_data["Grade"]
+                    )
+                    add_data_excel.save()
+
+        return {"detail": "success"}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Key Error")
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug("----- Sap Excel Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.post("/add/saproadrcr/excel", tags=["Coal Testing"])
+async def endpoint_to_add_sap_excel_data(response: Response, file: UploadFile = File(...)):
+    try:
+        if file is None:
+            return {"error": "No file Uploaded!"}
+        
+        contents = await file.read()
+        if not contents:
+            response.status_code = 400
+            return {"error": "Uploaded file is empty!"}
+
+        if file.filename.endswith(".xlsx"):
+            # file saving start
+            date = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{date}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+            file_extension = file.filename.split(".")[-1]
+            file_name = f'coallab_saproadrcr_manual_{datetime.datetime.now().strftime("%Y-%m-%d:%H:%M")}.{file_extension}'
+            full_path = os.path.join(os.getcwd(), target_directory, file_name)
+            with open(full_path, "wb") as file_object:
+                file_object.write(contents)
+            # file saving end
+
+            excel_data = pd.read_excel(BytesIO(contents))
+            data_excel_fetch = json.loads(excel_data.to_json(orient="records"))
+            for single_data in data_excel_fetch:
+                console_logger.debug(single_data)
+                try:
+                    fetchSapRecords = SapRecordsRcrRoad.objects.get(do_no=str(single_data["DO No"]))
+                except DoesNotExist as e:
+                    add_data_excel = SapRecordsRcrRoad(
+                        # slno=single_data["Slno"] if single_data["Slno"] else None,
+                        # source=single_data["source"],
+                        # mine_name=single_data["Mines Name"],
+                        sap_po=str(single_data["SAP PO"]) if single_data["SAP PO"] else None,
+                        do_date=str(single_data["SAP PO Date"]) if single_data["SAP PO Date"] else None,
+                        line_item=str(single_data["Line Item"]) if single_data["Line Item"] else None,
+                        do_no=str(single_data["DO No"]) if single_data["DO No"] else None,
+                        # do_qty=str(single_data["DO QTY"]),
+                        # rake_no=single_data["DO/RR Qty"],
+                        # start_date=single_data["DO Start Date"],
+                        # end_date=single_data["DO End Date"],
+                        # grade=single_data["Grade"]
+                    )
+                    add_data_excel.save()
+
+                # # take it here
+                fetchGmrData = RcrRoadData.objects(do_number = str(single_data["DO No"]))
+                for single_gmr_data in fetchGmrData:
+                    single_gmr_data.sap_po = str(single_data["SAP PO"]) if single_data["SAP PO"] else None
+                    single_gmr_data.line_item = str(single_data["Line Item"]) if single_data["Line Item"] else None
+                    single_gmr_data.po_date = str(single_data["SAP PO Date"]) if single_data["SAP PO Date"] else None
+                    # single_gmr_data.slno = str(single_data["Slno"]) if single_data["Slno"] else None
+                    single_gmr_data.save()
+
+        return {"detail": "success"}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Key Error")
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug("----- Sap Excel Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
 @router.post("/add/railsap/excel", tags=["Coal Testing"])
 async def endpoint_to_add_sap_excel_data(response: Response, file: UploadFile = File(...)):
     try:
@@ -13963,7 +18026,7 @@ def endpoint_to_insert_reportname(response: Response, name: str):
 
 
 @router.get("/fetch/reportname", tags=["PDF Report"])
-def endpoint_to_fetch_report_name():
+def endpoint_to_fetch_report_name_extra():
     try:
         listData = []
         fetchAllPdfReportName = PdfReportName.objects()
@@ -13978,6 +18041,138 @@ def endpoint_to_fetch_report_name():
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
 
+
+# @router.get("/coallabtestanalysis", tags=["Coal Testing"])
+# def endpoint_to_fetch_report_name(response: Response,
+#     type: Optional[str] = "Daily",
+#     Month: Optional[str] = None, 
+#     Daily: Optional[str] = None, 
+#     Year: Optional[str] = None
+# ):
+#     try:
+#         if type == "Daily":
+#             specified_date = datetime.datetime.strptime(Daily, "%Y-%m-%d")
+#             start_of_month = specified_date.replace(day=1)
+#             start_date = datetime.datetime.strftime(start_of_month, '%Y-%m-%d')
+#             end_date = datetime.datetime.strftime(specified_date, '%Y-%m-%d')
+#         elif type == "Week":
+#             specified_date = datetime.datetime.now().date()
+#             start_of_week = specified_date - datetime.timedelta(days=7)
+#             start_date = datetime.datetime.strftime(start_of_week, '%Y-%m-%d')
+#             end_date = datetime.datetime.strftime(specified_date, '%Y-%m-%d')
+#         elif type == "Month":
+#             date=Month
+#             datestructure = date.replace(" ", "").split("-")
+#             final_month = f"{datestructure[0]}-{str(datestructure[1]).zfill(2)}"
+#             start_month = f"{final_month}-01"
+#             startd_date = datetime.datetime.strptime(start_month, "%Y-%m-%d")
+#             endd_date = startd_date + datetime.timedelta(days=31)
+#             start_date = datetime.datetime.strftime(startd_date, '%Y-%m-%d')
+#             end_date = datetime.datetime.strftime(endd_date, '%Y-%m-%d')
+#         elif type == "Year":
+#             date = Year
+#             endd_date =f'{date}-12-31'
+#             startd_date = f'{date}-01-01'
+#             format_data = "%Y-%m-%d"
+#             end_date=datetime.datetime.strftime(datetime.datetime.strptime(endd_date,format_data), format_data)
+#             start_date=datetime.datetime.strftime(datetime.datetime.strptime(startd_date,format_data), format_data)
+
+#         # Query for CoalTesting objects
+#         fetchCoalTesting = CoalTesting.objects(
+#             receive_date__gte= datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
+#         )
+#         # Query for CoalTestingTrain objects
+#         fetchCoalTestingTrain = CoalTestingTrain.objects(
+#             receive_date__gte = datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
+#         )
+#         # If no data is found from db, return empty result
+#         if not fetchCoalTesting and not fetchCoalTestingTrain:
+#             return {"data": {"labels": [], "datasets": []}}
+#         else:
+#             rrNo_values = {}
+#             calorific_value = 0
+#             third_party_calorific_value = 0
+#             # Iterate through fetched CoalTesting objects
+#             for single_coal_testing in fetchCoalTesting:
+#                 rrNo = single_coal_testing.rrNo
+#                 location = single_coal_testing.location
+#                 for param in single_coal_testing.parameters:
+#                     if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
+#                         if param["val1"] != None and param["val1"] != "":
+#                             calorific_value = float(param["val1"])
+#                             # break
+
+#                     if param["parameter_Name"] == "Third_Party_Gross_Calorific_Value_(Arb)":
+#                         if param["val1"] != None and param["val1"] != "":
+#                             third_party_calorific_value = float(param["val1"])
+
+
+#                 # Aggregate values based on rrNo
+#                 if rrNo in rrNo_values:
+#                     rrNo_values[location]["gwel"] += int(calorific_value)
+#                     rrNo_values[location]["third_party"] += int(third_party_calorific_value)
+#                 else:
+#                     rrNo_values[location] = {
+#                         "gwel": int(calorific_value),
+#                         "third_party": int(third_party_calorific_value) if third_party_calorific_value else 0
+#                     }
+
+#             # Iterate through fetched CoalTestingTrain objects
+#             for single_coal_testing_train in fetchCoalTestingTrain:
+#                 rrNo = single_coal_testing_train.rrNo
+#                 location = single_coal_testing_train.location
+#                 for param in single_coal_testing_train.parameters:
+#                     if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
+#                         if param["val1"] != None and param["val1"] != "":
+#                             calorific_value = float(param["val1"])
+#                             # break
+#                     if param["parameter_Name"] == "Third_Party_Gross_Calorific_Value_(Arb)":
+#                         if param["val1"] != None and param["val1"] != "":
+#                             third_party_calorific_value = float(param["val1"])
+                            
+
+#                 # Aggregate values based on rrNo
+#                 if rrNo in rrNo_values:
+#                     rrNo_values[location]["gwel"] += int(calorific_value)
+#                     rrNo_values[location]["third_party"] += int(third_party_calorific_value)
+#                 else:
+#                     rrNo_values[location] = {
+#                         "gwel": int(calorific_value),
+#                         "third_party": int(third_party_calorific_value) if third_party_calorific_value else 0
+#                     }
+            
+#             # fetch data from AopTarget
+#             aopList = []
+#             fetchAopTarget = AopTarget.objects()
+#             if fetchAopTarget:
+#                 for single_aop_target in fetchAopTarget:
+#                     aopList.append(single_aop_target.payload())
+
+
+#             target_dict = {item['source_name']: int(item['aop_target']) for item in aopList}
+            
+#             aligned_target_data = [target_dict.get(label.strip(), 0) for label in rrNo_values.keys()]
+
+#             result = {
+#                 "data": {
+#                     "labels": list(rrNo_values.keys()),
+#                     "datasets": [
+#                         {"label": "GWEL", "data": [data['gwel'] for data in rrNo_values.values()], "order": 1, "type": "bar"},
+#                         {"label": "Third Party", "data": [data['third_party'] for data in rrNo_values.values()], "order": 1, "type": "bar"},
+#                         {"label": "Target", "data": aligned_target_data, "order": 0, "type": "line"},
+#                     ],
+#                 }
+#             }
+
+#             return result
+        
+#     except Exception as e:
+#         console_logger.debug("----- Gate Vehicle Count Error -----",e)
+#         exc_type, exc_obj, exc_tb = sys.exc_info()
+#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#         return e
 
 @router.get("/coallabtestanalysis", tags=["Coal Testing"])
 def endpoint_to_fetch_report_name(response: Response,
@@ -14015,13 +18210,17 @@ def endpoint_to_fetch_report_name(response: Response,
             start_date=datetime.datetime.strftime(datetime.datetime.strptime(startd_date,format_data), format_data)
 
         # Query for CoalTesting objects
-        fetchCoalTesting = CoalTesting.objects(
-            receive_date__gte= datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
-        )
-        # Query for CoalTestingTrain objects
-        fetchCoalTestingTrain = CoalTestingTrain.objects(
-            receive_date__gte = datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
-        )
+        # fetchCoalTesting = CoalTesting.objects(
+        #     receive_date__gte= datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
+        # )
+        # # Query for CoalTestingTrain objects
+        # fetchCoalTestingTrain = CoalTestingTrain.objects(
+        #     receive_date__gte = datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), receive_date__lte= datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M")
+        # )
+
+        fetchCoalTesting = RecieptCoalQualityAnalysis.objects(plant_analysis_date__gte=datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), plant_analysis_date__lte=datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), mode="Road")
+        fetchCoalTestingTrain = RecieptCoalQualityAnalysis.objects(plant_analysis_date__gte=datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), plant_analysis_date__lte=datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), mode="Rail")
+        
         # If no data is found from db, return empty result
         if not fetchCoalTesting and not fetchCoalTestingTrain:
             return {"data": {"labels": [], "datasets": []}}
@@ -14029,22 +18228,13 @@ def endpoint_to_fetch_report_name(response: Response,
             rrNo_values = {}
             calorific_value = 0
             third_party_calorific_value = 0
-            # Iterate through fetched CoalTesting objects
+
             for single_coal_testing in fetchCoalTesting:
-                rrNo = single_coal_testing.rrNo
-                location = single_coal_testing.location
-                for param in single_coal_testing.parameters:
-                    if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
-                        if param["val1"] != None and param["val1"] != "":
-                            calorific_value = float(param["val1"])
-                            # break
+                rrNo = single_coal_testing.sample_id
+                location = single_coal_testing.mine
+                calorific_value = single_coal_testing.plant_arb_gcv
+                third_party_calorific_value = single_coal_testing.thirdparty_arb_gcv
 
-                    if param["parameter_Name"] == "Third_Party_Gross_Calorific_Value_(Arb)":
-                        if param["val1"] != None and param["val1"] != "":
-                            third_party_calorific_value = float(param["val1"])
-
-
-                # Aggregate values based on rrNo
                 if rrNo in rrNo_values:
                     rrNo_values[location]["gwel"] += int(calorific_value)
                     rrNo_values[location]["third_party"] += int(third_party_calorific_value)
@@ -14054,31 +18244,21 @@ def endpoint_to_fetch_report_name(response: Response,
                         "third_party": int(third_party_calorific_value) if third_party_calorific_value else 0
                     }
 
-            # Iterate through fetched CoalTestingTrain objects
             for single_coal_testing_train in fetchCoalTestingTrain:
-                rrNo = single_coal_testing_train.rrNo
-                location = single_coal_testing_train.location
-                for param in single_coal_testing_train.parameters:
-                    if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
-                        if param["val1"] != None and param["val1"] != "":
-                            calorific_value = float(param["val1"])
-                            # break
-                    if param["parameter_Name"] == "Third_Party_Gross_Calorific_Value_(Arb)":
-                        if param["val1"] != None and param["val1"] != "":
-                            third_party_calorific_value = float(param["val1"])
+                rrNo = single_coal_testing_train.sample_id
+                location = single_coal_testing_train.mine
+                calorific_value = single_coal_testing_train.plant_arb_gcv
+                third_party_calorific_value = single_coal_testing_train.thirdparty_arb_gcv
                             
-
-                # Aggregate values based on rrNo
                 if rrNo in rrNo_values:
                     rrNo_values[location]["gwel"] += int(calorific_value)
                     rrNo_values[location]["third_party"] += int(third_party_calorific_value)
                 else:
                     rrNo_values[location] = {
                         "gwel": int(calorific_value),
-                        "third_party": int(third_party_calorific_value) if third_party_calorific_value else 0
+                        "third_party": float(third_party_calorific_value) if third_party_calorific_value else 0
                     }
-            
-            # fetch data from AopTarget
+        
             aopList = []
             fetchAopTarget = AopTarget.objects()
             if fetchAopTarget:
@@ -14426,11 +18606,11 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
             # based on condition for timestamp playing with & and | 
             if start_timestamp:
                 start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
-                data &= Q(placement_date__gte = start_date)
+                data &= Q(placement_date__gte = f"{start_date}")
 
             if end_timestamp:
-                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
-                data &= Q(placement_date__lte = end_date)
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata")
+                data &= Q(placement_date__lte = f"{end_date}")
 
             if search_text:
                 if search_text.isdigit():
@@ -14442,10 +18622,10 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
                 start_date = f'{month_date}-01'
                 startd_date=datetime.datetime.strptime(f"{start_date}T00:00","%Y-%m-%dT%H:%M")
                 end_date = (datetime.datetime.strptime(start_date, "%Y-%m-%d") + relativedelta(day=31)).strftime("%Y-%m-%d")
-                # console_logger.debug(startd_date.strftime("%Y-%m-%dT%H:%M"))
-                # console_logger.debug(f"{end_date}T23:59")
                 data &= Q(placement_date__gte = startd_date.strftime("%Y-%m-%dT%H:%M"))
                 data &= Q(placement_date__lte = f"{end_date}T23:59")
+
+            console_logger.debug(data)
 
             offset = (page_no - 1) * page_len
             logs = (
@@ -14458,7 +18638,7 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
                 for log in logs:
                     result["labels"] = list(log.simplepayload().keys())
                     result["datasets"].append(log.simplepayload())
-            result["total"]= len(RailData.objects(data))
+                result["total"]= len(RailData.objects(data))
             return result
         elif type and type == "download":
             del type
@@ -14473,11 +18653,11 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
 
             if start_timestamp:
                 start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
-                data &= Q(created_at__gte = start_date)
+                data &= Q(placement_date__gte = f"{start_date}")
 
             if end_timestamp:
                 end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
-                data &= Q(created_at__lte = end_date)
+                data &= Q(placement_date__lte = f"{end_date}")
             
             if search_text:
                 if search_text.isdigit():
@@ -14488,6 +18668,7 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
             usecase_data = RailData.objects(data).order_by("-created_at")
             count = len(usecase_data)
             path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             if usecase_data:
                 try:
                     path = os.path.join(
@@ -14505,7 +18686,20 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
                     cell_format2.set_bold()
                     cell_format2.set_font_size(10)
                     cell_format2.set_align("center")
-                    cell_format2.set_align("vjustify")
+                    cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+                    cell_format2.set_border(1)
+
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+
+                    header_format.set_align("vcenter")
+                    date_format.set_align("vcenter")
+                    report_name_format.set_align("vcenter")
+                    header_format.set_border(1)
+                    date_format.set_border(1)
+                    report_name_format.set_border(1)
 
                     worksheet = workbook.add_worksheet()
                     worksheet.set_column("A:AZ", 20)
@@ -14514,6 +18708,19 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
                     cell_format.set_font_size(10)
                     cell_format.set_align("center")
                     cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+                    cell_format.set_border(1)
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range("A1:AC1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    
+                    # Write the current date on the left side (A2)
+                    worksheet.write("A2", f"Date: {end_date.strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range("C2:H2", f"Report Name: Rail Coal Journey", report_name_format)
+
                     headers = [
                         "Sr.No",
                         "RR No",
@@ -14547,9 +18754,10 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
                     ]
                    
                     for index, header in enumerate(headers):
-                        worksheet.write(0, index, header, cell_format2)
+                        worksheet.write(2, index, header, cell_format2)
 
-                    for row, query in enumerate(usecase_data, start=1):
+                    for row, query in enumerate(usecase_data, start=3):
+                        console_logger.debug(result)
                         result = query.simplepayload()
                         worksheet.write(row, 0, count, cell_format)     
                         worksheet.write(row, 1, str(result["rr_no"]))                      
@@ -14616,6 +18824,20 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
 
 @router.get("/fetch/avery/rail", tags=["Rail Map"])
 def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int] = None, perPage: Optional[int] = None, search_text: Optional[str] = None, start_timestamp: Optional[str] = None, end_timestamp: Optional[str] = None, month_date: Optional[str] = None, type: Optional[str] = "display"):
+    """
+    Function that fetches avery data from railway db  
+    Parameters:
+        currentPage: Page No | 
+        perPage: How much data on particular page |
+        search_text: Text to search | 
+        start_timestamp: start timestamp | 
+        end_timestamp: end timestamp | 
+        month_date: Single Month, for eg: 2024-11, 2024-10 |
+        type: Display, Download
+
+    Returns:
+        Set of data
+    """
     try:
         result = {        
                 "labels": [],
@@ -14661,19 +18883,23 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
                 data &= Q(avery_placement_date__lte = f"{end_date}T23:59")
             # console_logger.debug(data)
             offset = (page_no - 1) * page_len
+
             logs = (
                 RailData.objects(data)
                 .order_by("-avery_placement_date", "-avery_completion_date")
                 .skip(offset)
                 .limit(page_len)
-            )   
+            ) 
+            # console_logger.debug(logs)  
             # railData_result = []  # Initialize railData_result
             if any(logs):
                 for log in logs:
+                    console_logger.debug(log)
                     payload = log.averyPayloadMain()
-                    payload['total_wagon_gross_wt'] = 0
-                    payload['total_wagon_tare_wt'] = 0
-                    payload['total_wagon_net_wt'] = 0
+                    payload['total_gwel_gross_wt'] = 0
+                    payload['total_gwel_tare_wt'] = 0
+                    payload['total_gwel_net_wt'] = 0
+                    
                     if log.avery_rly_data:
                         total_wagon_gross_wt = 0
                         total_wagon_tare_wt = 0
@@ -14699,49 +18925,13 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
                                     total_wagon_net_wt += float(singleRailData.gwel_net_wt)
                                 except ValueError:
                                     print(f"Warning: Invalid data for wagon_net_wt: {singleRailData.wagon_net_wt}")
-                            # console_logger.debug(log.rr_no)
-                            # mongoPipeline = [
-                            #     {
-                            #         '$match': {
-                            #             'rr_no': log.rr_no,
-                            #         }
-                            #     }, {
-                            #         '$unwind': '$avery_rly_data'
-                            #     }, {
-                            #         '$match': {
-                            #             'avery_rly_data.po_number': {
-                            #                 '$exists': True
-                            #             }
-                            #         }
-                            #     }, {
-                            #         '$group': {
-                            #             '_id': None, 
-                            #             'count': {
-                            #                 '$sum': 1
-                            #             }
-                            #         }
-                            #     }
-                            # ]
-
-                            # railDataobjects = RailData.objects().aggregate(mongoPipeline)
-
-                            # railData_result = list(railDataobjects)
-
-                            # if railData_result:
-                            #     # Safely get the count value if it exists
-                            #     gwel_received_wagons = railData_result[0].get("count", 0)
-                            # else:
-                            #     # Handle the case where `railData_result` is empty
-                            #     gwel_received_wagons = 0        
-                            
-                            
-                            payload['total_wagon_gross_wt'] = total_wagon_gross_wt
-                            payload['total_wagon_tare_wt'] = total_wagon_tare_wt
-                            payload['total_wagon_net_wt'] = total_wagon_net_wt
+                            payload['total_gwel_gross_wt'] = round(total_wagon_gross_wt, 2)
+                            payload['total_gwel_tare_wt'] = round(total_wagon_tare_wt, 2)
+                            payload['total_gwel_net_wt'] = round(total_wagon_net_wt, 2)
                             # payload["GWEL_received_wagons"] = gwel_received_wagons
                             # payload["GWEL_pending_wagons"] = int(log.boxes_loaded) - int(gwel_received_wagons)
                     # result["labels"] = list(payload.keys())
-                    result["labels"] = ["rr_no", "rr_qty", "po_no", "po_date", "line_item", "source", "GWEL_placement_date", "GWEL_completion_date", "GWEL_received_wagons", "GWEL_pending_wagons", "boxes_loaded", "total_secl_gross_wt", "total_secl_tare_wt", "total_secl_net_wt", "total_rly_gross_wt", "total_rly_tare_wt", "total_rly_net_wt", "total_wagon_gross_wt", "total_wagon_tare_wt", "total_wagon_net_wt", "source_type", "month", "rr_date", "siding", "mine", "grade", "created_at"]
+                    result["labels"] = ["rr_no", "rr_qty", "po_no", "po_date", "line_item", "source", "GWEL_placement_date", "GWEL_completion_date", "GWEL_received_wagons", "GWEL_pending_wagons", "boxes_loaded", "total_secl_gross_wt", "total_secl_tare_wt", "total_secl_net_wt", "total_rly_gross_wt", "total_rly_tare_wt", "total_rly_net_wt", "total_gwel_gross_wt", "total_gwel_tare_wt", "total_gwel_net_wt", "source_type", "month", "rr_date", "siding", "mine", "grade", "created_at"]
                     result["datasets"].append(payload)
                     result["total"]= len(RailData.objects(data))
             return result
@@ -14757,22 +18947,22 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
             data = Q()
 
             if start_timestamp:
-                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
-                data &= Q(avery_placement_date__gte = start_date)
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M").strftime("%Y-%m-%dT%H:%M")
+                data &= Q(avery_placement_date__gte=start_date)
 
             if end_timestamp:
-                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
-                data &= Q(avery_placement_date__lte = end_date)
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False).strftime("%Y-%m-%dT%H:%M")
+                data &= Q(avery_placement_date__lte=end_date)
             
             if search_text:
                 if search_text.isdigit():
                     data &= Q(rr_no__icontains=search_text) | Q(po_no__icontains=search_text)
                 else:
                     data &= (Q(source__icontains=search_text))
-
-            usecase_data = RailData.objects(data).order_by("-avery_placement_date")
+            usecase_data = RailData.objects(data).order_by("-avery_placement_date", "-avery_completion_date")
             count = len(usecase_data)
             path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             if usecase_data:
                 try:
                     path = os.path.join(
@@ -14790,7 +18980,20 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
                     cell_format2.set_bold()
                     cell_format2.set_font_size(10)
                     cell_format2.set_align("center")
-                    cell_format2.set_align("vjustify")
+                    cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+                    cell_format2.set_border(1)
+
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+
+                    header_format.set_align("vcenter")
+                    date_format.set_align("vcenter")
+                    report_name_format.set_align("vcenter")
+                    header_format.set_border(1)
+                    date_format.set_border(1)
+                    report_name_format.set_border(1)
 
                     worksheet = workbook.add_worksheet()
                     worksheet.set_column("A:AZ", 20)
@@ -14799,6 +19002,19 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
                     cell_format.set_font_size(10)
                     cell_format.set_align("center")
                     cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+                    cell_format.set_border(1)
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range("A1:AA1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    
+                    # Write the current date on the left side (A2)
+                    worksheet.write("A2", f"Date: {datetime.datetime.strptime(end_date, '%Y-%m-%dT%H:%M').strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range("C2:AA2", f"GWEL-Rail Coal Journey", report_name_format)
+
                     headers = ["rr_no", 
                                 "rr_qty", 
                                 "po_no", 
@@ -14816,9 +19032,9 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
                                 "total_rly_gross_wt", 
                                 "total_rly_tare_wt", 
                                 "total_rly_net_wt", 
-                                "total_wagon_gross_wt", 
-                                "total_wagon_tare_wt", 
-                                "total_wagon_net_wt", 
+                                "total_gwel_gross_wt", 
+                                "total_gwel_tare_wt", 
+                                "total_gwel_net_wt", 
                                 "source_type", 
                                 "month", 
                                 "rr_date", 
@@ -14829,79 +19045,46 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
                             ]
                    
                     for index, header in enumerate(headers):
-                        worksheet.write(0, index, header, cell_format2)
+                        worksheet.write(2, index, header, cell_format2)
 
-                    for row, query in enumerate(usecase_data, start=1):
+                    for row, query in enumerate(usecase_data, start=3):
                         result = query.averyPayloadMain()
-                        result['total_wagon_gross_wt'] = 0
-                        result['total_wagon_tare_wt'] = 0
-                        result['total_wagon_net_wt'] = 0
+                        result['total_gwel_gross_wt'] = 0
+                        result['total_gwel_tare_wt'] = 0
+                        result['total_gwel_net_wt'] = 0
                         # result["GWEL_received_wagons"] = 0
                         # result["GWEL_pending_wagons"] = 0
-                        console_logger.debug(query)
                         if query.avery_rly_data:
                             total_wagon_gross_wt = 0
                             total_wagon_tare_wt = 0
                             total_wagon_net_wt = 0
                             for singleRailData in query.avery_rly_data:
                                 # Handle wagon_gross_wt
-                                if singleRailData.wagon_gross_wt:
+                                if hasattr(singleRailData, 'wagon_gross_wt'):
+                                # if singleRailData.wagon_gross_wt:
                                     try:
                                         total_wagon_gross_wt += float(singleRailData.wagon_gross_wt)
                                     except ValueError:
                                         print(f"Warning: Invalid data for wagon_gross_wt: {singleRailData.wagon_gross_wt}")
 
                                 # Handle wagon_tare_wt
-                                if singleRailData.wagon_tare_wt:
+                                if hasattr(singleRailData, 'wagon_tare_wt'):
+                                # if singleRailData.wagon_tare_wt:
                                     try:
                                         total_wagon_tare_wt += float(singleRailData.wagon_tare_wt)
                                     except ValueError:
                                         print(f"Warning: Invalid data for wagon_tare_wt: {singleRailData.wagon_tare_wt}")
 
                                 # Handle wagon_net_wt
-                                if singleRailData.wagon_net_wt:
+                                # if singleRailData.wagon_net_wt:
+                                if hasattr(singleRailData, 'wagon_net_wt'):
                                     try:
                                         total_wagon_net_wt += float(singleRailData.wagon_net_wt)
                                     except ValueError:
                                         print(f"Warning: Invalid data for wagon_net_wt: {singleRailData.wagon_net_wt}")
-                                # console_logger.debug(log.rr_no)
-                                # mongoPipeline = [
-                                #     {
-                                #         '$match': {
-                                #             'rr_no': query.rr_no,
-                                #         }
-                                #     }, {
-                                #         '$unwind': '$avery_rly_data'
-                                #     }, {
-                                #         '$match': {
-                                #             'avery_rly_data.po_number': {
-                                #                 '$exists': True
-                                #             }
-                                #         }
-                                #     }, {
-                                #         '$group': {
-                                #             '_id': None, 
-                                #             'count': {
-                                #                 '$sum': 1
-                                #             }
-                                #         }
-                                #     }
-                                # ]
-
-                                # railDataobjects = RailData.objects().aggregate(mongoPipeline)
-
-                                # railData_result = list(railDataobjects)
-
-                                # if railData_result:
-                                #     # Safely get the count value if it exists
-                                #     gwel_received_wagons = railData_result[0].get("count", 0)
-                                # else:
-                                #     # Handle the case where `railData_result` is empty
-                                #     gwel_received_wagons = 0
-
-                                result['total_wagon_gross_wt'] = total_wagon_gross_wt
-                                result['total_wagon_tare_wt'] = total_wagon_tare_wt
-                                result['total_wagon_net_wt'] = total_wagon_net_wt
+                                result['total_gwel_gross_wt'] = round(total_wagon_gross_wt, 2)
+                                result['total_gwel_tare_wt'] = round(total_wagon_tare_wt, 2)
+                                result['total_gwel_net_wt'] = round(total_wagon_net_wt, 2)
                                 # result["GWEL_received_wagons"] = gwel_received_wagons
                                 # result["GWEL_pending_wagons"] = int(query.boxes_loaded) - int(gwel_received_wagons)
                         # result['total_wagon_gross_wt'] = 0
@@ -14910,33 +19093,33 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
                         # result["GWEL_received_wagons"] = 0
                         # result["GWEL_pending_wagons"] = 0
                         # worksheet.write(row, 0, count, cell_format)     
-                        worksheet.write(row, 0, str(result["rr_no"]))                      
-                        worksheet.write(row, 1, str(result["rr_qty"]))                      
-                        worksheet.write(row, 2, str(result["po_no"]))                      
-                        worksheet.write(row, 3, str(result["po_date"]))                      
-                        worksheet.write(row, 4, str(result["line_item"]))                      
-                        worksheet.write(row, 5, str(result["source"]))                      
-                        worksheet.write(row, 6, str(result["GWEL_placement_date"]))                      
-                        worksheet.write(row, 7, str(result["GWEL_completion_date"]))
-                        worksheet.write(row, 8, str(result["GWEL_received_wagons"]))                      
-                        worksheet.write(row, 9, str(result["GWEL_pending_wagons"]))                      
-                        worksheet.write(row, 10, str(result["boxes_loaded"]))                      
-                        worksheet.write(row, 11, str(result["total_secl_gross_wt"]))                      
-                        worksheet.write(row, 12, str(result["total_secl_tare_wt"]))                      
-                        worksheet.write(row, 13, str(result["total_secl_net_wt"]))                    
-                        worksheet.write(row, 14, str(result["total_rly_gross_wt"]))                      
-                        worksheet.write(row, 15, str(result["total_rly_tare_wt"]))                      
-                        worksheet.write(row, 16, str(result["total_rly_net_wt"]))                    
-                        worksheet.write(row, 17, str(result["total_wagon_gross_wt"]))                      
-                        worksheet.write(row, 18, str(result["total_wagon_tare_wt"]))                      
-                        worksheet.write(row, 19, str(result["total_wagon_net_wt"]))                      
-                        worksheet.write(row, 20, str(result["source_type"]))                      
-                        worksheet.write(row, 21, str(result["month"]))                      
-                        worksheet.write(row, 22, str(result["rr_date"]))                      
-                        worksheet.write(row, 23, str(result["siding"]))                      
-                        worksheet.write(row, 24, str(result["mine"]))                      
-                        worksheet.write(row, 25, str(result["grade"]))                      
-                        worksheet.write(row, 26, str(result["created_at"]))                   
+                        worksheet.write(row, 0, str(result["rr_no"]), cell_format)                      
+                        worksheet.write(row, 1, str(result["rr_qty"]), cell_format)                      
+                        worksheet.write(row, 2, str(result["po_no"]), cell_format)                      
+                        worksheet.write(row, 3, str(result["po_date"]), cell_format)                      
+                        worksheet.write(row, 4, str(result["line_item"]), cell_format)                      
+                        worksheet.write(row, 5, str(result["source"]), cell_format)                      
+                        worksheet.write(row, 6, str(result["GWEL_placement_date"]), cell_format)                      
+                        worksheet.write(row, 7, str(result["GWEL_completion_date"]), cell_format)
+                        worksheet.write(row, 8, str(result["GWEL_received_wagons"]), cell_format)                      
+                        worksheet.write(row, 9, str(result["GWEL_pending_wagons"]), cell_format)                      
+                        worksheet.write(row, 10, str(result["boxes_loaded"]), cell_format)                      
+                        worksheet.write(row, 11, str(result["total_secl_gross_wt"]), cell_format)                      
+                        worksheet.write(row, 12, str(result["total_secl_tare_wt"]), cell_format)                      
+                        worksheet.write(row, 13, str(result["total_secl_net_wt"]), cell_format)                    
+                        worksheet.write(row, 14, str(result["total_rly_gross_wt"]), cell_format)                      
+                        worksheet.write(row, 15, str(result["total_rly_tare_wt"]), cell_format)                      
+                        worksheet.write(row, 16, str(result["total_rly_net_wt"]), cell_format)                    
+                        worksheet.write(row, 17, str(result["total_gwel_gross_wt"]), cell_format)                      
+                        worksheet.write(row, 18, str(result["total_gwel_tare_wt"]), cell_format)                      
+                        worksheet.write(row, 19, str(result["total_gwel_net_wt"]), cell_format)                      
+                        worksheet.write(row, 20, str(result["source_type"]), cell_format)                      
+                        worksheet.write(row, 21, str(result["month"]), cell_format)                      
+                        worksheet.write(row, 22, str(result["rr_date"]), cell_format)                      
+                        worksheet.write(row, 23, str(result["siding"]), cell_format)                      
+                        worksheet.write(row, 24, str(result["mine"]), cell_format)                      
+                        worksheet.write(row, 25, str(result["grade"]), cell_format)                      
+                        worksheet.write(row, 26, str(result["created_at"]), cell_format)                   
                         
                         count-=1
                         
@@ -14971,8 +19154,345 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
         return e
 
 
+@router.get("/fetch/avery/rcr", tags=["Rail Map"])
+def endpoint_to_fetch_avery_rcr_data(response: Response, currentPage: Optional[int] = None, perPage: Optional[int] = None, search_text: Optional[str] = None, start_timestamp: Optional[str] = None, end_timestamp: Optional[str] = None, month_date: Optional[str] = None, type: Optional[str] = "display"):
+    """
+    Function that fetches avery data from rcr db  
+    Parameters:
+        currentPage: Page No | 
+        perPage: How much data on particular page |
+        search_text: Text to search | 
+        start_timestamp: start timestamp | 
+        end_timestamp: end timestamp | 
+        month_date: Single Month, for eg: 2024-11, 2024-10 |
+        type: Display, Download
+
+    Returns:
+        Set of data
+    """
+    try:
+        result = {        
+                "labels": [],
+                "datasets": [],
+                "total" : 0,
+                "page_size": 15
+        }
+        if type and type == "display":
+            page_no = 1
+            page_len = result["page_size"]
+
+            if currentPage:
+                page_no = currentPage
+
+            if perPage:
+                page_len = perPage
+                result["page_size"] = perPage
+
+            data = Q()
+
+            # based on condition for timestamp playing with & and | 
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(avery_placement_date__gte = start_date)
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
+                data &= Q(avery_placement_date__lte = end_date)
+
+            if search_text:
+                if search_text.isdigit():
+                    data &= Q(rr_no__icontains=search_text) | Q(po_no__icontains=search_text)
+                else:
+                    data &= (Q(source__icontains=search_text))
+
+            if month_date:
+                start_date = f'{month_date}-01'
+                startd_date=datetime.datetime.strptime(f"{start_date}T00:00","%Y-%m-%dT%H:%M")
+                end_date = (datetime.datetime.strptime(start_date, "%Y-%m-%d") + relativedelta(day=31)).strftime("%Y-%m-%d")
+                # console_logger.debug(startd_date.strftime("%Y-%m-%dT%H:%M"))
+                # console_logger.debug(f"{end_date}T23:59")
+                data &= Q(avery_placement_date__gte = startd_date.strftime("%Y-%m-%dT%H:%M"))
+                data &= Q(avery_placement_date__lte = f"{end_date}T23:59")
+            # console_logger.debug(data)
+            offset = (page_no - 1) * page_len
+
+            logs = (
+                RcrData.objects(data)
+                .order_by("-avery_placement_date", "-avery_completion_date")
+                .skip(offset)
+                .limit(page_len)
+            )  
+            # railData_result = []  # Initialize railData_result
+            if any(logs):
+                for log in logs:
+                    payload = log.averyPayloadMain()
+                    payload['total_gwel_gross_wt'] = 0
+                    payload['total_gwel_tare_wt'] = 0
+                    payload['total_gwel_net_wt'] = 0
+                    if log.avery_rly_data:
+                        total_wagon_gross_wt = 0
+                        total_wagon_tare_wt = 0
+                        total_wagon_net_wt = 0
+                        for singleRailData in log.avery_rly_data:
+                            # Handle wagon_gross_wt
+                            if singleRailData.gwel_gross_wt:
+                                try:
+                                    total_wagon_gross_wt += float(singleRailData.gwel_gross_wt)
+                                except ValueError:
+                                    print(f"Warning: Invalid data for wagon_gross_wt: {singleRailData.wagon_gross_wt}")
+
+                            # Handle wagon_tare_wt
+                            if singleRailData.gwel_tare_wt:
+                                try:
+                                    total_wagon_tare_wt += float(singleRailData.gwel_tare_wt)
+                                except ValueError:
+                                    print(f"Warning: Invalid data for wagon_tare_wt: {singleRailData.wagon_tare_wt}")
+
+                            # Handle wagon_net_wt
+                            if singleRailData.gwel_net_wt:
+                                try:
+                                    total_wagon_net_wt += float(singleRailData.gwel_net_wt)
+                                except ValueError:
+                                    print(f"Warning: Invalid data for wagon_net_wt: {singleRailData.wagon_net_wt}")
+                            payload['total_gwel_gross_wt'] = total_wagon_gross_wt
+                            payload['total_gwel_tare_wt'] = total_wagon_tare_wt
+                            payload['total_gwel_net_wt'] = total_wagon_net_wt
+                            # payload["GWEL_received_wagons"] = gwel_received_wagons
+                            # payload["GWEL_pending_wagons"] = int(log.boxes_loaded) - int(gwel_received_wagons)
+                    # result["labels"] = list(payload.keys())
+                    result["labels"] = ["rr_no", "rr_qty", "po_no", "po_date", "line_item", "source", "GWEL_placement_date", "GWEL_completion_date", "GWEL_received_wagons", "GWEL_pending_wagons", "boxes_loaded", "total_secl_gross_wt", "total_secl_tare_wt", "total_secl_net_wt", "total_rly_gross_wt", "total_rly_tare_wt", "total_rly_net_wt", "total_gwel_gross_wt", "total_gwel_tare_wt", "total_gwel_net_wt", "source_type", "month", "rr_date", "siding", "mine", "grade", "created_at"]
+                    result["datasets"].append(payload)
+                    result["total"]= len(RcrData.objects(data))
+            return result
+        elif type and type == "download":
+            del type
+
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+            # Constructing the base for query
+            data = Q()
+
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M").strftime("%Y-%m-%dT%H:%M")
+                data &= Q(avery_placement_date__gte=start_date)
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False).strftime("%Y-%m-%dT%H:%M")
+                data &= Q(avery_placement_date__lte=end_date)
+            
+            if search_text:
+                if search_text.isdigit():
+                    data &= Q(rr_no__icontains=search_text) | Q(po_no__icontains=search_text)
+                else:
+                    data &= (Q(source__icontains=search_text))
+            usecase_data = RcrData.objects(data).order_by("-avery_placement_date", "-avery_completion_date")
+            count = len(usecase_data)
+            path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
+            if usecase_data:
+                try:
+                    path = os.path.join(
+                        "static_server",
+                        "gmr_ai",
+                        file,
+                        "Rcr_Avery_Report_{}.xlsx".format(
+                            datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                        ),
+                    )
+                    filename = os.path.join(os.getcwd(), path)
+                    workbook = xlsxwriter.Workbook(filename)
+                    workbook.use_zip64()
+                    cell_format2 = workbook.add_format()
+                    cell_format2.set_bold()
+                    cell_format2.set_font_size(10)
+                    cell_format2.set_align("center")
+                    cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+                    cell_format2.set_border(1)
+
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+
+                    header_format.set_align("vcenter")
+                    date_format.set_align("vcenter")
+                    report_name_format.set_align("vcenter")
+                    header_format.set_border(1)
+                    date_format.set_border(1)
+                    report_name_format.set_border(1)
+
+                    worksheet = workbook.add_worksheet()
+                    worksheet.set_column("A:AZ", 20)
+                    worksheet.set_default_row(50)
+                    cell_format = workbook.add_format()
+                    cell_format.set_font_size(10)
+                    cell_format.set_align("center")
+                    cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+                    cell_format.set_border(1)
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range("A1:AA1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    
+                    # Write the current date on the left side (A2)
+                    worksheet.write("A2", f"Date: {datetime.datetime.strptime(end_date, '%Y-%m-%dT%H:%M').strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range("C2:AA2", f"GWEL-RCR Coal Journey", report_name_format)
+
+                    headers = ["rr_no", 
+                                "rr_qty", 
+                                "po_no", 
+                                "po_date", 
+                                "line_item", 
+                                "source", 
+                                "GWEL_placement_date", 
+                                "GWEL_completion_date", 
+                                "GWEL_received_wagons", 
+                                "GWEL_pending_wagons", 
+                                "boxes_loaded", 
+                                "total_secl_gross_wt", 
+                                "total_secl_tare_wt", 
+                                "total_secl_net_wt", 
+                                "total_rly_gross_wt", 
+                                "total_rly_tare_wt", 
+                                "total_rly_net_wt", 
+                                "total_gwel_gross_wt", 
+                                "total_gwel_tare_wt", 
+                                "total_gwel_net_wt", 
+                                "source_type", 
+                                "month", 
+                                "rr_date", 
+                                "siding", 
+                                "mine", 
+                                "grade", 
+                                "created_at"
+                            ]
+                   
+                    for index, header in enumerate(headers):
+                        worksheet.write(2, index, header, cell_format2)
+
+                    for row, query in enumerate(usecase_data, start=3):
+                        result = query.averyPayloadMain()
+                        result['total_gwel_gross_wt'] = 0
+                        result['total_gwel_tare_wt'] = 0
+                        result['total_gwel_net_wt'] = 0
+                        # result["GWEL_received_wagons"] = 0
+                        # result["GWEL_pending_wagons"] = 0
+                        if query.avery_rly_data:
+                            total_wagon_gross_wt = 0
+                            total_wagon_tare_wt = 0
+                            total_wagon_net_wt = 0
+                            for singleRailData in query.avery_rly_data:
+                                # Handle wagon_gross_wt
+                                if hasattr(singleRailData, 'wagon_gross_wt'):
+                                # if singleRailData.wagon_gross_wt:
+                                    try:
+                                        total_wagon_gross_wt += float(singleRailData.wagon_gross_wt)
+                                    except ValueError:
+                                        print(f"Warning: Invalid data for wagon_gross_wt: {singleRailData.wagon_gross_wt}")
+
+                                # Handle wagon_tare_wt
+                                if hasattr(singleRailData, 'wagon_tare_wt'):
+                                # if singleRailData.wagon_tare_wt:
+                                    try:
+                                        total_wagon_tare_wt += float(singleRailData.wagon_tare_wt)
+                                    except ValueError:
+                                        print(f"Warning: Invalid data for wagon_tare_wt: {singleRailData.wagon_tare_wt}")
+
+                                # Handle wagon_net_wt
+                                # if singleRailData.wagon_net_wt:
+                                if hasattr(singleRailData, 'wagon_net_wt'):
+                                    try:
+                                        total_wagon_net_wt += float(singleRailData.wagon_net_wt)
+                                    except ValueError:
+                                        print(f"Warning: Invalid data for wagon_net_wt: {singleRailData.wagon_net_wt}")
+                                result['total_gwel_gross_wt'] = total_wagon_gross_wt
+                                result['total_gwel_tare_wt'] = total_wagon_tare_wt
+                                result['total_gwel_net_wt'] = total_wagon_net_wt
+                                # result["GWEL_received_wagons"] = gwel_received_wagons
+                                # result["GWEL_pending_wagons"] = int(query.boxes_loaded) - int(gwel_received_wagons)
+                        # result['total_wagon_gross_wt'] = 0
+                        # result['total_wagon_tare_wt'] = 0
+                        # result['total_wagon_net_wt'] = 0
+                        # result["GWEL_received_wagons"] = 0
+                        # result["GWEL_pending_wagons"] = 0
+                        # worksheet.write(row, 0, count, cell_format)     
+                        worksheet.write(row, 0, str(result["rr_no"]), cell_format)                      
+                        worksheet.write(row, 1, str(result["rr_qty"]), cell_format)                      
+                        worksheet.write(row, 2, str(result["po_no"]), cell_format)                      
+                        worksheet.write(row, 3, str(result["po_date"]), cell_format)                      
+                        worksheet.write(row, 4, str(result["line_item"]), cell_format)                      
+                        worksheet.write(row, 5, str(result["source"]), cell_format)                      
+                        worksheet.write(row, 6, str(result["GWEL_placement_date"]), cell_format)                      
+                        worksheet.write(row, 7, str(result["GWEL_completion_date"]), cell_format)
+                        worksheet.write(row, 8, str(result["GWEL_received_wagons"]), cell_format)                      
+                        worksheet.write(row, 9, str(result["GWEL_pending_wagons"]), cell_format)                      
+                        worksheet.write(row, 10, str(result["boxes_loaded"]), cell_format)                      
+                        worksheet.write(row, 11, str(result["total_secl_gross_wt"]), cell_format)                      
+                        worksheet.write(row, 12, str(result["total_secl_tare_wt"]), cell_format)                      
+                        worksheet.write(row, 13, str(result["total_secl_net_wt"]), cell_format)                    
+                        worksheet.write(row, 14, str(result["total_rly_gross_wt"]), cell_format)                      
+                        worksheet.write(row, 15, str(result["total_rly_tare_wt"]), cell_format)                      
+                        worksheet.write(row, 16, str(result["total_rly_net_wt"]), cell_format)                    
+                        worksheet.write(row, 17, str(result["total_gwel_gross_wt"]), cell_format)                      
+                        worksheet.write(row, 18, str(result["total_gwel_tare_wt"]), cell_format)                      
+                        worksheet.write(row, 19, str(result["total_gwel_net_wt"]), cell_format)                      
+                        worksheet.write(row, 20, str(result["source_type"]), cell_format)                      
+                        worksheet.write(row, 21, str(result["month"]), cell_format)                      
+                        worksheet.write(row, 22, str(result["rr_date"]), cell_format)                      
+                        worksheet.write(row, 23, str(result["siding"]), cell_format)                      
+                        worksheet.write(row, 24, str(result["mine"]), cell_format)                      
+                        worksheet.write(row, 25, str(result["grade"]), cell_format)                      
+                        worksheet.write(row, 26, str(result["created_at"]), cell_format)                   
+                        
+                        count-=1
+                        
+                    workbook.close()
+                    console_logger.debug("Successfully {} report generated".format(service_id))
+                    console_logger.debug("sent data {}".format(path))
+
+                    return {
+                            "Type": "gmr_rcr_avery_journey_download_event",
+                            "Datatype": "Report",
+                            "File_Path": path,
+                            }
+                except Exception as e:
+                    console_logger.debug(e)
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+                    console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            else:
+                console_logger.error("No data found")
+                return {
+                        "Type": "gmr_rcr_avery_journey_download_event",
+                        "Datatype": "Report",
+                        "File_Path": path,
+                        }
+    except Exception as e:
+        console_logger.debug("----- Fetch Report Name Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
 @router.get("/fetch/singlerail", tags=["Rail Map"])
 def endpoint_to_fetch_railway_data(response: Response, rrno: str):
+    """
+    Function that fetches single railway data using rrno
+    Parameters:
+        rr_no
+
+    Returns:
+        single dictionary data for particular rr_no
+    """
     try:
         fetchRailData = RailData.objects.get(rr_no=rrno)
         return fetchRailData.payload()
@@ -14982,9 +19502,34 @@ def endpoint_to_fetch_railway_data(response: Response, rrno: str):
         console_logger.debug("----- Fetch Railway Data Error -----",e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        # console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
+
+@router.get("/fetch/singlercravery", tags=["Rail Map"])
+def endpoint_to_fetch_rcravery_data(response: Response, rrno: str):
+    """
+    Function that fetches single rcravery data using rrno
+    Parameters:
+        rr_no
+
+    Returns:
+        single dictionary data for particular rr_no
+    """
+    try:
+        fetchRcrData = RcrData.objects.get(rr_no=rrno)
+        return fetchRcrData.payload()
+    except DoesNotExist as e:
+        raise HTTPException(status_code=404, detail="No data found")
+    except Exception as e:
+        console_logger.debug("----- Fetch RailwayRcr Data Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        # console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
     
 @router.get("/fetch/allminenames", tags=["Rail Map"])
 def endpoint_to_fetch_rail_mines(response: Response):
@@ -14992,13 +19537,17 @@ def endpoint_to_fetch_rail_mines(response: Response):
         # mine_names = short_mine_collection.find({},{"coal_journey":"rail"})
         mine_names = short_mine_collection.find({})
         dictData = {}
-        railData = []
-        roadData = []
+        # railData = []
+        # roadData = []
+        railData = {}
+        roadData = {}
         for single_data in mine_names:
             if single_data.get("coal_journey") == "Rail":
-                railData.append(single_data.get("mine_name"))
+                railData[single_data.get("mine_name")] = single_data.get("source_type")
+                # railData.append(single_data.get("mine_name"))
             if single_data.get("coal_journey") == "Road":
-                roadData.append(single_data.get("mine_name"))
+                # roadData.append(single_data.get("mine_name"))
+                roadData[single_data.get("mine_name")] = single_data.get("source_type")
         
         dictData["road"] = roadData
         dictData["rail"] = railData
@@ -15008,7 +19557,7 @@ def endpoint_to_fetch_rail_mines(response: Response):
         console_logger.debug("----- Fetch Rail Mines Error -----",e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        # console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
 
@@ -15046,7 +19595,7 @@ def endpoint_to_insert_rail_data(response: Response, payload: RailwayData):
         console_logger.debug("----- Fetch Report Name Error -----", e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        # console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
 
@@ -15188,7 +19737,6 @@ def calculate_rake_no(month, placement_date, existing_rake_nos):
         filtered_rake_nos = [rake for rake in existing_rake_nos if rake is not None]
         console_logger.debug(rake_no_base)
         if "rev" in rake_no_base:
-            console_logger.debug("rev is present")
             # Filter out rake numbers that start with "rev"
             rev_list = [x for x in filtered_rake_nos if x.startswith("rev")]
             if rev_list:
@@ -15217,16 +19765,18 @@ def calculate_rake_no(month, placement_date, existing_rake_nos):
 
 
 @router.post("/insert/rail", tags=["Railway"])
-def endpoint_to_insert_rail_data(response: Response, payload: RailwayData, rr_no: Optional[str] = None):
+def endpoint_to_insert_rail_data(response: Response, payload: RailwayData, id: Optional[str] = None):
     try:
         final_data = payload.dict()
         try:
-            fetchRailData = RailData.objects.get(rr_no=rr_no)
+            if id:
+                fetchRailData = RailData.objects.get(id=ObjectId(id))
+            else:
+                fetchRailData = RailData.objects.get(rr_no=final_data.get("rr_no"))
             try:
-                fetchSaprecordsRail = sapRecordsRail.objects.get(rr_no=rr_no)
+                fetchSaprecordsRail = sapRecordsRail.objects.get(rr_no=final_data.get("rr_no"))
             except DoesNotExist as e:
                 fetchSaprecordsRail = None
-            
             if fetchSaprecordsRail:
                 fetchRailData.month = datetime.datetime.strptime(fetchSaprecordsRail.month, '%b %d, %Y').strftime('%Y-%m-%d')
                 fetchRailData.rr_date = fetchSaprecordsRail.rr_date
@@ -15235,7 +19785,6 @@ def endpoint_to_insert_rail_data(response: Response, payload: RailwayData, rr_no
                 fetchRailData.grade = fetchSaprecordsRail.grade
                 fetchRailData.rr_qty = fetchSaprecordsRail.rr_qty
                 fetchRailData.po_amount = fetchSaprecordsRail.po_amount
-            
             for key, value in final_data.items():
                 if key != 'secl_rly_data' and hasattr(fetchRailData, key):
                     setattr(fetchRailData, key, value)
@@ -15314,6 +19863,408 @@ def endpoint_to_insert_rail_data(response: Response, payload: RailwayData, rr_no
                 fetchSaprecordsRail = None
 
             rail_data = RailData(
+                rr_no=final_data.get("rr_no"),
+                # rr_qty=final_data.get("rr_qty"),
+                rr_qty=fetchSaprecordsRail.rr_qty if fetchSaprecordsRail and fetchSaprecordsRail.rr_qty else "",
+                po_no=final_data.get("po_no"),
+                po_date=final_data.get("po_date"),
+                line_item=final_data.get("line_item"),
+                source=final_data.get("source"),
+                placement_date=final_data.get("placement_date"),
+                completion_date=final_data.get("completion_date"),
+                drawn_date=final_data.get("drawn_date"),
+                total_ul_wt=final_data.get("total_ul_wt"),
+                boxes_supplied=final_data.get("boxes_supplied"),
+                total_secl_gross_wt=final_data.get("total_secl_gross_wt"),
+                total_secl_tare_wt=final_data.get("total_secl_tare_wt"),
+                total_secl_net_wt=final_data.get("total_secl_net_wt"),
+                total_secl_ol_wt=final_data.get("total_secl_ol_wt"),
+                boxes_loaded=final_data.get("boxes_loaded"),
+                total_rly_gross_wt=final_data.get("total_rly_gross_wt"),
+                total_rly_tare_wt=final_data.get("total_rly_tare_wt"),
+                total_rly_net_wt=final_data.get("total_rly_net_wt"),
+                total_rly_ol_wt=final_data.get("total_rly_ol_wt"),
+                total_secl_chargable_wt=final_data.get("total_secl_chargable_wt"),
+                total_rly_chargable_wt=final_data.get("total_rly_chargable_wt"),
+                freight=final_data.get("freight"),
+                gst=final_data.get("gst"),
+                pola=final_data.get("pola"),
+                total_freight=final_data.get("total_freight"),
+                source_type=final_data.get("source_type"),
+                month = final_data.get("month"),    # modified by faisal
+                # month=datetime.datetime.strptime(fetchSaprecordsRail.month, '%b %d, %Y').strftime('%Y-%m-%d') if fetchSaprecordsRail and fetchSaprecordsRail.month else "",
+                secl_rly_data=secl_list_data,
+                avery_rly_data=avery_list_data,
+                rr_date=fetchSaprecordsRail.rr_date if fetchSaprecordsRail and fetchSaprecordsRail.rr_date else "",
+                siding=fetchSaprecordsRail.siding if fetchSaprecordsRail and fetchSaprecordsRail.siding else "",
+                mine=fetchSaprecordsRail.mine if fetchSaprecordsRail and fetchSaprecordsRail.mine else "",
+                grade=fetchSaprecordsRail.grade if fetchSaprecordsRail and fetchSaprecordsRail.grade else "",
+                # rr_qty=fetchSaprecordsRail.get("rr_qty") if fetchSaprecordsRail.get("rr_qty") else "",
+                po_amount=fetchSaprecordsRail.po_amount if fetchSaprecordsRail and fetchSaprecordsRail.po_amount else "",
+            ) 
+            existing_rake_nos = [data.rake_no for data in RailData.objects()]
+
+            if final_data.get("placement_date") and fetchSaprecordsRail and fetchSaprecordsRail.month:
+                placement_date_obj = datetime.datetime.strptime(final_data.get("placement_date"), '%Y-%m-%dT%H:%M')
+                rail_data.rake_no = calculate_rake_no(datetime.datetime.strptime(fetchSaprecordsRail.month, '%b %d, %Y').strftime('%Y-%m-%d'),
+                                                      placement_date_obj.strftime('%Y-%m-%d'),
+                                                      existing_rake_nos)
+            rail_data.save()
+            return {"message": "Data inserted successfully"}
+
+    except Exception as e:
+        console_logger.debug("----- Fetch Report Name Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.get("/fetch/rcr", tags=["Railway"])
+def endpoint_to_fetch_rcr_data(response: Response, currentPage: Optional[int] = None, perPage: Optional[int] = None, search_text: Optional[str] = None, start_timestamp: Optional[str] = None, end_timestamp: Optional[str] = None, month_date: Optional[str] = None, type: Optional[str] = "display"):
+    try:
+        result = {        
+                "labels": [],
+                "datasets": [],
+                "total" : 0,
+                "page_size": 15
+        }
+        if type and type == "display":
+            page_no = 1
+            page_len = result["page_size"]
+
+            if currentPage:
+                page_no = currentPage
+
+            if perPage:
+                page_len = perPage
+                result["page_size"] = perPage
+
+            data = Q()
+
+            # based on condition for timestamp playing with & and | 
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(placement_date__gte = start_date)
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
+                data &= Q(placement_date__lte = end_date)
+
+            if search_text:
+                if search_text.isdigit():
+                    data &= Q(rr_no__icontains=search_text) | Q(po_no__icontains=search_text)
+                else:
+                    data &= (Q(source__icontains=search_text))
+
+            if month_date:
+                start_date = f'{month_date}-01'
+                startd_date=datetime.datetime.strptime(f"{start_date}T00:00","%Y-%m-%dT%H:%M")
+                end_date = (datetime.datetime.strptime(start_date, "%Y-%m-%d") + relativedelta(day=31)).strftime("%Y-%m-%d")
+                data &= Q(placement_date__gte = startd_date.strftime("%Y-%m-%dT%H:%M"))
+                data &= Q(placement_date__lte = f"{end_date}T23:59")
+
+            offset = (page_no - 1) * page_len
+            logs = (
+                RcrData.objects(data)
+                .order_by("-placement_date")
+                .skip(offset)
+                .limit(page_len)
+            )   
+            if any(logs):
+                for log in logs:
+                    result["labels"] = list(log.simplepayload().keys())
+                    result["datasets"].append(log.simplepayload())
+                result["total"]= len(RailData.objects(data))
+            return result
+        elif type and type == "download":
+            del type
+
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+            # Constructing the base for query
+            data = Q()
+
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(created_at__gte = start_date)
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
+                data &= Q(created_at__lte = end_date)
+            
+            if search_text:
+                if search_text.isdigit():
+                    data &= Q(arv_cum_do_number__icontains = search_text) | Q(delivery_challan_number__icontains = search_text)
+                else:
+                    data &= Q(vehicle_number__icontains = search_text)
+
+            usecase_data = RcrData.objects(data).order_by("-created_at")
+            count = len(usecase_data)
+            path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
+            if usecase_data:
+                try:
+                    path = os.path.join(
+                        "static_server",
+                        "gmr_ai",
+                        file,
+                        "Rcr_Report_{}.xlsx".format(
+                            datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                        ),
+                    )
+                    filename = os.path.join(os.getcwd(), path)
+                    workbook = xlsxwriter.Workbook(filename)
+                    workbook.use_zip64()
+                    cell_format2 = workbook.add_format()
+                    cell_format2.set_bold()
+                    cell_format2.set_font_size(10)
+                    cell_format2.set_align("center")
+                    cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'left', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'left', 'font_size': 12, "bold": True})
+
+                    worksheet = workbook.add_worksheet()
+                    worksheet.set_column("A:AZ", 20)
+                    worksheet.set_default_row(50)
+                    cell_format = workbook.add_format()
+                    cell_format.set_font_size(10)
+                    cell_format.set_align("center")
+                    cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range("A1:AC1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    
+                    # Write the current date on the left side (A2)
+                    worksheet.write("A2", f"Date: {end_date.strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range("C2:H2", f"Report Name: Rail Coal Journey", report_name_format)
+
+                    headers = [
+                        "Sr.No",
+                        "RR No",
+                        "RR Qty",
+                        "Po No",
+                        "Po Date",
+                        "Line Item",
+                        "Source",
+                        "Placement Date",
+                        "Completion Date",
+                        "Drawn Date",
+                        "Total ul wt",
+                        "Boxes Supplied",
+                        "Total Secl Gross Wt",
+                        "Total Secl Tare Wt",
+                        "Total Secl Net Wt",
+                        "Total Secl Ol Wt",
+                        "Boxes Loaded",
+                        "Total Rly Gross Wt",
+                        "Total Rly_Tare Wt",
+                        "Total Rly Net Wt",
+                        "Total Rly Ol Wt",
+                        "Total Secl Chargable Wt",
+                        "Total Rly Chargable Wt",
+                        "Freight",
+                        "Gst",
+                        "Pola",
+                        "Total Freight",
+                        "Source Type",
+                        "Created At"
+                    ]
+                   
+                    for index, header in enumerate(headers):
+                        worksheet.write(2, index, header, cell_format2)
+
+                    for row, query in enumerate(usecase_data, start=3):
+                        result = query.simplepayload()
+                        worksheet.write(row, 0, count, cell_format)     
+                        worksheet.write(row, 1, str(result["rr_no"]))                      
+                        worksheet.write(row, 2, str(result["rr_qty"]))                      
+                        worksheet.write(row, 3, str(result["po_no"]))                      
+                        worksheet.write(row, 4, str(result["po_date"]))                      
+                        worksheet.write(row, 5, str(result["line_item"]))                      
+                        worksheet.write(row, 6, str(result["source"]))                      
+                        worksheet.write(row, 7, str(result["placement_date"]))                      
+                        worksheet.write(row, 8, str(result["completion_date"]))                      
+                        worksheet.write(row, 9, str(result["drawn_date"]))                      
+                        worksheet.write(row, 10, str(result["total_ul_wt"]))                      
+                        worksheet.write(row, 11, str(result["boxes_supplied"]))                      
+                        worksheet.write(row, 12, str(result["total_secl_gross_wt"]))                      
+                        worksheet.write(row, 13, str(result["total_secl_tare_wt"]))                      
+                        worksheet.write(row, 14, str(result["total_secl_net_wt"]))                      
+                        worksheet.write(row, 15, str(result["total_secl_ol_wt"]))                      
+                        worksheet.write(row, 16, str(result["boxes_loaded"]))                      
+                        worksheet.write(row, 17, str(result["total_rly_gross_wt"]))                      
+                        worksheet.write(row, 18, str(result["total_rly_tare_wt"]))                      
+                        worksheet.write(row, 19, str(result["total_rly_net_wt"]))                      
+                        worksheet.write(row, 20, str(result["total_rly_ol_wt"]))                      
+                        worksheet.write(row, 21, str(result["total_secl_chargable_wt"]))                      
+                        worksheet.write(row, 22, str(result["total_rly_chargable_wt"]))                      
+                        worksheet.write(row, 23, str(result["freight"]))                      
+                        worksheet.write(row, 24, str(result["gst"]))                      
+                        worksheet.write(row, 25, str(result["pola"]))                      
+                        worksheet.write(row, 26, str(result["total_freight"]))                      
+                        worksheet.write(row, 27, str(result["source_type"]))                      
+                        worksheet.write(row, 28, str(result["created_at"]))                   
+                        
+                        count-=1
+                        
+                    workbook.close()
+                    console_logger.debug("Successfully {} report generated".format(service_id))
+                    console_logger.debug("sent data {}".format(path))
+
+                    return {
+                            "Type": "gmr_rcr_journey_download_event",
+                            "Datatype": "Report",
+                            "File_Path": path,
+                            }
+                except Exception as e:
+                    console_logger.debug(e)
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+                    console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            else:
+                console_logger.error("No data found")
+                return {
+                        "Type": "gmr_rcr_journey_download_event",
+                        "Datatype": "Report",
+                        "File_Path": path,
+                        }
+    except Exception as e:
+        console_logger.debug("----- Fetch Rcr Name Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+@router.get("/fetch/singlercr", tags=["Railway"])
+def endpoint_to_fetch_railway_data(response: Response, rrno: str):
+    try:
+        fetchRailData = RcrData.objects.get(rr_no=rrno)
+        return fetchRailData.payload()
+    except DoesNotExist as e:
+        raise HTTPException(status_code=404, detail="No data found")
+    except Exception as e:
+        console_logger.debug("----- Fetch Railway Data Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+@router.post("/insert/rcr", tags=["Railway"])
+def endpoint_to_insert_rcr_data(response: Response, payload: RailwayData, id: Optional[str] = None):
+    try:
+        final_data = payload.dict()
+        try:
+            if id:
+                fetchRailData = RcrData.objects.get(id=ObjectId(id))
+            else:
+                fetchRailData = RcrData.objects.get(rr_no=final_data.get("rr_no"))
+            try:
+                fetchSaprecordsRail = sapRecordsRCR.objects.get(rr_no=final_data.get("rr_no"))
+            except DoesNotExist as e:
+                fetchSaprecordsRail = None
+            
+            if fetchSaprecordsRail:
+                fetchRailData.month = datetime.datetime.strptime(fetchSaprecordsRail.month, '%b %d, %Y').strftime('%Y-%m-%d')
+                fetchRailData.rr_date = fetchSaprecordsRail.rr_date
+                fetchRailData.area = fetchSaprecordsRail.area
+                fetchRailData.mine = fetchSaprecordsRail.mine
+                fetchRailData.grade = fetchSaprecordsRail.grade
+                fetchRailData.rr_qty = fetchSaprecordsRail.rr_qty
+                fetchRailData.po_amount = fetchSaprecordsRail.po_amount
+            
+            for key, value in final_data.items():
+                if key != 'secl_rly_data' and hasattr(fetchRailData, key):
+                    setattr(fetchRailData, key, value)
+            
+            # if fetchRailData.placement_date:
+            #     console_logger.debug(fetchRailData.placement_date)
+            #     console_logger.debug(datetime.datetime.strptime(fetchSaprecordsRail.month, '%b %d, %Y').strftime('%Y-%m-%d'))
+            #     console_logger.debug(datetime.datetime.strptime(fetchRailData.placement_date, '%Y-%m-%dT%H:%M').strftime('%Y-%m-%d'))
+            #     # Set rake_no based on month and placement_date
+            #     fetchRailData.rake_no = calculate_rake_no(datetime.datetime.strptime(fetchSaprecordsRail.month, '%b %d, %Y').strftime('%Y-%m-%d'), fetchRailData.placement_date.strftime('%Y-%m-%d'))
+
+            for new_data in final_data.get('secl_rly_data', []):
+                updated = False
+                for secl_data in fetchRailData.secl_rly_data:
+                    if secl_data.wagon_no == new_data['wagon_no']:
+                        for key, value in new_data.items():
+                            setattr(secl_data, key, value)
+                        updated = True
+                        break
+                if not updated:
+                    fetchRailData.secl_rly_data.append(SeclRailData(**new_data))
+            listAveryData = []
+            for new_data in final_data.get('secl_rly_data', []):
+                dictAveryData = {}
+                dictAveryData["indexing"] = new_data.get("indexing")
+                dictAveryData["wagon_owner"] = new_data.get("wagon_owner")
+                dictAveryData["wagon_type"] = new_data.get("wagon_type")
+                dictAveryData["wagon_no"] = new_data.get("wagon_no")
+                listAveryData.append(AveryRailData(**dictAveryData))
+        
+            fetchRailData.avery_rly_data = listAveryData
+            fetchRailData.save()
+
+            return {"detail": "success"}
+        except DoesNotExist as e:
+            final_data = payload.dict()
+            secl_list_data = []
+            for single_data in final_data.get("secl_rly_data"):
+                secl_rly_dict_data = {
+                    "indexing": single_data.get("indexing"),
+                    "wagon_owner": single_data.get("wagon_owner"),
+                    "wagon_type": single_data.get("wagon_type"),
+                    "wagon_no": single_data.get("wagon_no"),
+                    "secl_cc_wt": single_data.get("secl_cc_wt"),
+                    "secl_gross_wt": single_data.get("secl_gross_wt"),
+                    "secl_tare_wt": single_data.get("secl_tare_wt"),
+                    "secl_net_wt": single_data.get("secl_net_wt"),
+                    "secl_ol_wt": single_data.get("secl_ol_wt"),
+                    "secl_ul_wt":single_data.get("secl_ul_wt"),
+                    "secl_chargable_wt": single_data.get("secl_chargable_wt"),
+                    "rly_cc_wt": single_data.get("rly_cc_wt"),
+                    "rly_gross_wt": single_data.get("rly_gross_wt"),
+                    "rly_tare_wt": single_data.get("rly_tare_wt"),
+                    "rly_net_wt": single_data.get("rly_net_wt"),
+                    "rly_permissible_cc_wt": single_data.get("rly_permissible_cc_wt"),
+                    "rly_ol_wt": single_data.get("rly_ol_wt"),
+                    "rly_norm_rate": single_data.get("rly_norm_rate"),
+                    "rly_pun_rate": single_data.get("rly_pun_rate"),
+                    "rly_chargable_wt": single_data.get("rly_chargable_wt"),
+                    "rly_sliding_adjustment": single_data.get("rly_sliding_adjustment"),
+                }
+                secl_list_data.append(secl_rly_dict_data)
+
+            avery_list_data = []
+            for single_data in final_data.get("secl_rly_data"):
+                avery_rly_dict_data = {
+                    "indexing": single_data.get("indexing"),
+                    "wagon_owner": single_data.get("wagon_owner"),
+                    "wagon_type": single_data.get("wagon_type"),
+                    "wagon_no": single_data.get("wagon_no"),
+                }
+                avery_list_data.append(avery_rly_dict_data)
+            try:
+                fetchSaprecordsRail = sapRecordsRCR.objects.get(rr_no=final_data.get("rr_no"))
+            except DoesNotExist as e:
+                fetchSaprecordsRail = None
+
+            rail_data = RcrData(
                 rr_no=final_data.get("rr_no"),
                 # rr_qty=final_data.get("rr_qty"),
                 rr_qty=fetchSaprecordsRail.rr_qty if fetchSaprecordsRail and fetchSaprecordsRail.rr_qty else "",
@@ -15725,11 +20676,358 @@ def update_coal_bunker_data(response: Response, Data: BunkerAnalysisData):
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         success = e
 
+def get_current_financial_year_data(Month):
+    current_date = datetime.datetime.now(datetime.timezone.utc)    
+    start_month = current_date.replace(month=Month,day=1, hour=0,minute=0,second=0,microsecond=0)
+    end_month = start_month.replace(month=Month+1) - datetime.timedelta(days=1)
+    
+    return start_month, end_month
+
+def bunkerQualityAnanlysis():
+    try:
+        if "BunkerQualityAnalysis" not in collectionList:
+            BQA = gmrDB.create_collection("BunkerQualityAnalysis")
+        else:
+            BQA = gmrDB.get_collection("BunkerQualityAnalysis")
+        index_name = "po_index"
+        BQA.create_index(index_name)
+
+        for month in range(1,12):
+            start_day, end_day = get_current_financial_year_data(month)
+            # logger.debug((start_day,end_day))
+            filter={
+                'sample_date': {
+                    '$gte': start_day, 
+                    '$lte': end_day
+                }
+            }
+            result = BQA.find(
+            filter=filter
+            )
+            df = pd.DataFrame(list(result))
+            if df.empty:
+                continue
+            # Create a column for Cumulative WT, where the first row starts as WT
+            df['cumulative_wt'] = 0.0  # Initialize the column with zeros
+            df['cumulative_wt'].iloc[0] = df['bunkered_qty'].iloc[0]  # First value matches WT
+            
+            df['wt_gcv'] = 0.0
+            df['wt_gcv'].iloc[0] = df['bunkered_qty'].iloc[0] * df['arb_gcv'].iloc[0]
+            
+            df['cumulative_wt_gcv'] = 0.0
+            df['cumulative_wt_gcv'].iloc[0] = df['wt_gcv'].iloc[0]
+            
+            df['bunker_wt_gcv'] = 0.0
+            df['bunker_wt_gcv'].iloc[0] = df['cumulative_wt_gcv'].iloc[0] / df['cumulative_wt'].iloc[0]
+            
+            # Loop over the rows starting from the second row to calculate cumulative values
+            for i in range(1, len(df)):
+                df['cumulative_wt'].iloc[i] = df['bunkered_qty'].iloc[i] + df['cumulative_wt'].iloc[i-1]
+                df['wt_gcv'].iloc[i] = df['bunkered_qty'].iloc[i] * df['arb_gcv'].iloc[i]
+                df['cumulative_wt_gcv'].iloc[i] = df['wt_gcv'].iloc[i] + df['cumulative_wt_gcv'].iloc[i-1]
+                df['bunker_wt_gcv'].iloc[i] = df['cumulative_wt_gcv'].iloc[i] / df['cumulative_wt'].iloc[i]
+            
+            bulk = []
+            
+            for idx, row in df.iterrows():
+                filter_query = {'sample_date':row['sample_date'],'unit_no':row['unit_no']}
+                update_query = {
+                '$set': {
+                    'cumulative_wt': row['cumulative_wt'],
+                    'wt_gcv': row['wt_gcv'],
+                    'cumulative_wt_gcv': row['cumulative_wt_gcv'],
+                    'bunker_wt_gcv': row['bunker_wt_gcv']  # Insert or update the 'wt_gcv' field
+                    }
+                }
+                bulk.append(UpdateOne(filter_query,update_query))
+                BQA.update_many(filter_query, update_query, upsert=True)
+            BQA.bulk_write(bulk) 
+
+    except Exception as e:
+        success = False
+        console_logger.debug("----- Coal Testing Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e
+
+def get_month_ends_data(Month):
+    current_date = datetime.datetime.now(datetime.timezone.utc)
+    start_month = current_date.replace(month=Month, day=1, hour=0, minute=0, second=0, microsecond=0)
+    end_month = start_month.replace(month=Month + 1) - datetime.timedelta(days=1)
+    
+    return end_month
+    
+
+
+def summarybyMonth():
+    try:
+        if "BunkerQualityAnalysis" not in collectionList or "BunkerQualitySummary" not in collectionList:
+            BQA = gmrDB.create_collection("BunkerQualityAnalysis")
+            BQS = gmrDB.create_collection("BunkerQualitySummary")
+        else:
+            BQA = gmrDB.get_collection("BunkerQualityAnalysis")
+            BQS = gmrDB.get_collection("BunkerQualitySummary")
+            index_name = "po_index"
+            BQA.create_index(index_name)
+        
+        monthends = []
+        for month in range(1, 12):
+            monthends.append(get_month_ends_data(month))
+        
+        # result = BQA.aggregate([ 
+        #     { 
+        #         "$facet": {
+        #             "WeightedGCV": [
+        #                 {
+        #                     '$match': {
+        #                         'sample_date': {
+        #                             '$in': monthends,
+        #                         }
+        #                     }
+        #                 },
+        #                 {
+        #                     '$sort': {
+        #                         'bunker_wt_gcv': -1
+        #                     }
+        #                 },
+        #                 {
+        #                     '$group': {
+        #                         '_id': {
+        #                             'sample_date': '$sample_date'
+        #                         },
+        #                         'bunker_wt_gcv': {
+        #                             '$max': '$bunker_wt_gcv'
+        #                         }
+        #                     }
+        #                 },
+        #             ],
+        #             "DomesticQty": [
+        #                 {
+        #                     '$project': {
+        #                         'sample_date': 1,  
+        #                         'bunkered_qty': 1  
+        #                     }
+        #                 },
+        #                 {
+        #                     '$group': {
+        #                         '_id': {
+        #                             '$dateToString': {
+        #                                 'date': '$sample_date',
+        #                                 'format': '%Y-%m'
+        #                             }
+        #                         },
+        #                         'domestic_qty': {
+        #                             '$sum': '$bunkered_qty' 
+        #                         }
+        #                     }
+        #                 }
+        #             ]
+        #         }
+        #     }
+        # ])
+        
+        # wgcv = []
+        # dqty = []
+        
+        # for col in result:
+        #     wgcv.extend(col.get("WeightedGCV", []))
+        #     dqty.extend(col.get("DomesticQty", []))
+        
+        # data = []
+        # for i in wgcv:
+        #     for s in dqty:
+        #         if s.get("_id") == i.get("_id").get("sample_date").strftime("%Y-%m"):
+        #             data.append({
+        #                 "date": i.get("_id").get("sample_date"), 
+        #                 "domestic_qty": s.get("domestic_qty"), 
+        #                 "wt_gcv": i.get("bunker_wt_gcv"),
+        #                 "imported_qty": 0, 
+        #                 "total_qty": s.get("domestic_qty") + 0, 
+        #                 "cum_total_qty": s.get("domestic_qty") + 0
+        #             })
+
+        pipeline = [
+                {
+                    "$facet": {
+                    "WeightedGCV": [
+                        {
+                        "$sort": { "sample_date": -1 }
+                        },
+                        {
+                        "$group": {
+                            "_id": {
+                            "year": { "$year": "$sample_date" },
+                            "month": { "$month": "$sample_date" }
+                            },
+                            "last_document": { "$first": "$$ROOT" }
+                        }
+                        },
+                        {
+                        "$replaceRoot": { "newRoot": "$last_document" }
+                        },
+                        {
+                        "$sort": { "sample_date": 1 }  
+                        }
+                    ],
+                    "DomesticQty": [
+                        {
+                        "$project": {
+                            "sample_date": 1,
+                            "bunkered_qty": 1
+                        }
+                        },
+                        {
+                        "$group": {
+                            "_id": { "$dateToString": { "date": "$sample_date", "format": "%Y-%m" } },
+                            "domestic_qty": { "$sum": "$bunkered_qty" }
+                        }
+                        }
+                    ]
+                    }
+                }
+                ]
+
+        result = BQA.aggregate(pipeline=pipeline)
+        d = []
+        
+        for col in result:    
+            wgcv =  col.get("WeightedGCV")
+            dqty = col.get("DomesticQty")
+                
+        
+        data = []
+        for i in wgcv:
+            for s in dqty:
+                if s.get("_id") == i.get("sample_date").strftime("%Y-%m"):
+                    data.append({"date": i.get("sample_date") if i.get("sample_date") in monthends else i.get("sample_date").replace(day=1, month=(i.get("sample_date").month) + 1) - datetime.timedelta(days=1), 
+                                "domestic_qty":s.get("domestic_qty"),
+                                "wt_gcv":i.get("bunker_wt_gcv"), 
+                                "imported_qty":0, 
+                                "total_qty":s.get("domestic_qty")+0, 
+                                "cum_total_qty":s.get("domestic_qty")+0 
+                            })
+                    if data[-1]["date"] > datetime.datetime.now():
+                        data[-1]["date"] = i.get("sample_date")
+                        
+        df = pl.DataFrame(data).sort(by='date', descending=False)
+
+        df = df.with_columns([
+            pl.lit(0.0).alias("cum_total_qty"),
+            pl.lit(0.0).alias("weighted_domestic_gcv"),
+            pl.lit(0.0).alias("cum_weighted_domestic_gcv"),
+            pl.lit(0.0).alias("weighted_gcv")
+        ])
+        
+        
+        df = df.with_columns([
+            pl.lit(df['total_qty'][0]).alias("cum_total_qty"),
+            pl.lit(df['wt_gcv'][0] * df['total_qty'][0]).alias("weighted_domestic_gcv"),
+            pl.lit(df['wt_gcv'][0] * df['total_qty'][0]).alias("cum_weighted_domestic_gcv"),
+            pl.lit((df['wt_gcv'][0] * df['total_qty'][0]) / df['total_qty'][0]).alias("weighted_gcv")
+        ])
+        
+        # Perform calculations for cumulative columns
+        cum_total_qty_list = [df['cum_total_qty'][0]]
+        weighted_domestic_gcv_list = [df['weighted_domestic_gcv'][0]]
+        cum_weighted_domestic_gcv_list = [df['cum_weighted_domestic_gcv'][0]]
+        weighted_gcv_list = [df['weighted_gcv'][0]]
+
+        for i in range(1, len(df)):
+            cum_total_qty = df['total_qty'][i] + cum_total_qty_list[i-1]
+            weighted_domestic_gcv = df['wt_gcv'][i] * df['total_qty'][i]
+            cum_weighted_domestic_gcv = weighted_domestic_gcv + cum_weighted_domestic_gcv_list[i-1]
+            weighted_gcv = cum_weighted_domestic_gcv / cum_total_qty
+
+            cum_total_qty_list.append(cum_total_qty)
+            weighted_domestic_gcv_list.append(weighted_domestic_gcv)
+            cum_weighted_domestic_gcv_list.append(cum_weighted_domestic_gcv)
+            weighted_gcv_list.append(weighted_gcv)
+
+        # Update the DataFrame with the calculated lists
+        df = df.with_columns([
+            pl.Series("cum_total_qty", cum_total_qty_list),
+            pl.Series("weighted_domestic_gcv", weighted_domestic_gcv_list),
+            pl.Series("cum_weighted_domestic_gcv", cum_weighted_domestic_gcv_list),
+            pl.Series("weighted_gcv", weighted_gcv_list)
+        ])
+
+        bulk = []
+        
+        for row in df.iter_rows(named=True):
+            filter_query = {"date": row["date"]}
+
+            date_obj = row["date"].date()
+    
+            first_day_of_month = datetime.datetime.combine(date_obj.replace(day=1), datetime.datetime.min.time())
+            last_day_of_month = datetime.datetime.combine(date_obj.replace(day=monthrange(date_obj.year, date_obj.month)[1]), datetime.datetime.min.time())
+
+            month_filter_query = {
+                "date": {
+                    "$gte": first_day_of_month,
+                    "$lte": last_day_of_month
+                }
+            }
+
+            bulk.append(DeleteMany(month_filter_query))
+
+            update_query = {
+                "$set": {
+                    "domestic_qty": row['domestic_qty'],
+                    "wt_gcv": row['wt_gcv'],
+                    "imported_qty": row['imported_qty'],
+                    "total_qty": row['total_qty'],
+                    "cum_total_qty": row['cum_total_qty'],
+                    "weighted_domestic_gcv": row['weighted_domestic_gcv'],
+                    "cum_weighted_domestic_gcv": row['cum_weighted_domestic_gcv'],
+                    "weighted_gcv": row['weighted_gcv']
+                }
+            }
+            bulk.append(UpdateOne(filter_query, update_query, upsert=True))
+        
+        # print(bulk)
+        BQS.bulk_write(bulk)
+
+    except Exception as e:
+        success = False
+        console_logger.debug("----- Coal Testing Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e
+
+def gcvAnalysisCoalReceiptSummary():
+    try:
+        if "RecieptCoalQualityAnalysis" not in collectionList:
+            RCA = gmrDB.create_collection("RecieptCoalQualityAnalysis")
+        else:
+            RCA = gmrDB.get_collection("RecieptCoalQualityAnalysis")
+            BQS = gmrDB.get_collection("BunkerQualitySummary")
+        
+    except Exception as e:
+        success = False
+        console_logger.debug("----- Coal Testing Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e
+
+
 @router.get("/load_coal_bunker_data", tags=["Coal bunker"])
-def extract_bunker_data(response: Response, start_date: Optional[str] = None, end_date: Optional[str] = None):
+def extract_bunker_data(start_date: Optional[str] = None, end_date: Optional[str] = None):
     try:
         DataExecutionsHandler = DataExecutions()
         response = DataExecutionsHandler.fetchcoalBunkerData(start_date=start_date, end_date=end_date)
+        bunkerQualityAnanlysis()
+        summarybyMonth()
+        
+        # summarybyWeek()
+        # endpoint_to_fetch_coal_recipt_summary()
+
+        endpoint_to_insert_gcv_analysis()
         return {"detail": "success"}
     except Exception as e:
         success = False
@@ -15815,22 +21113,18 @@ async def extract_data_railway(response: Response, pdf_upload: Optional[UploadFi
 
         rr_no = upper_data.get('RR_NO')
         if rr_no:
-            sap_record = SapRecords.objects(do_no=rr_no).first()
+            sap_record = sapRecordsRail.objects(rr_no=rr_no).first()
             if sap_record:
                 upper_data.update({
                     "LINE_ITEM": sap_record.line_item,
-                    "RR_Qty": sap_record.do_qty,
-                    "SOURCE": sap_record.source,
+                    "RR_Qty": sap_record.rr_qty,
                     "PO_NO": sap_record.sap_po,
-                    "RR_Qty": sap_record.do_qty
                 })
             else:
                 upper_data.update({
                     "LINE_ITEM": None,
                     "RR_Qty":None,
-                    "SOURCE":None,
                     "PO_NO":None,
-                    "RR_Qty":None, 
                 })
 
         key_mappings = {
@@ -15886,10 +21180,114 @@ async def extract_data_railway(response: Response, pdf_upload: Optional[UploadFi
         success = e
 
 
+@router.post("/pdf_rcr_data_upload", tags=["Extra"])
+async def extract_data_railway_rcr(response: Response, pdf_upload: Optional[UploadFile] = File(None)):
+    try:
+        if pdf_upload is None:
+            return {"error": "No file uploaded"}
+        contents = await pdf_upload.read()
+
+        # Check if the file is empty
+        if not contents:
+            return {"error": "Uploaded file is empty"}
+        
+        # Verify file format (PDF)
+        if not pdf_upload.filename.endswith('.pdf'):
+            return {"error": "Uploaded file is not a PDF"}
+
+        file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+        target_directory = f"static_server/gmr_ai/{file}"
+        os.umask(0)
+        os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+        file_extension = pdf_upload.filename.split(".")[-1]
+        file_name = f'pdf_{datetime.datetime.now().strftime("%Y-%m-%d:%H:%M")}.{file_extension}'
+        full_path = os.path.join(os.getcwd(), target_directory, file_name)
+        with open(full_path, "wb") as file_object:
+            file_object.write(contents)
+
+        outdata = outbond(full_path)
+        upper_data = extract_pdf_data(full_path)
+
+        rr_no = upper_data.get('RR_NO')
+        if rr_no:
+            sap_record = sapRecordsRCR.objects(rr_no=rr_no).first()
+            if sap_record:
+                # upper_data.update({
+                #     "LINE_ITEM": sap_record.line_item,
+                #     "RR_Qty": sap_record.do_qty,
+                #     "SOURCE": sap_record.source,
+                #     "PO_NO": sap_record.sap_po,
+                #     "RR_Qty": sap_record.do_qty
+                # })
+                upper_data.update({
+                    "LINE_ITEM": sap_record.line_item,
+                    "RR_Qty": sap_record.rr_qty,
+                    "PO_NO": sap_record.sap_po,
+                })
+            else:
+                upper_data.update({
+                    "LINE_ITEM": None,
+                    "RR_Qty":None,
+                    "PO_NO":None,
+                })
+
+        key_mappings = {
+            0: "sr_no",
+            1: "wagon_owner",
+            2: "wagon_type",
+            3: "wagon_no",
+            4: "rly_cc_wt",
+            5: "rly_tare_wt",
+            6: "no_of_art",
+            7: "cmdt_code",
+            8: "rly_gross_wt",
+            9: "rly_sliding_adjustment",
+            10: "dip_wt",
+            11: "actl_wt",
+            12: "rly_permissible_cc_wt",
+            13: "rly_ol_wt",
+            14: "rly_norm_rate",
+            15: "rly_pun_rate",
+            16: "rly_chargable_wt",
+        }
+        # Extract the relevant records starting from the specified entry
+        start_index = None
+        for i, record in enumerate(outdata):
+            # finding and printing starting where value start from 1
+            if record.get(0) == "1":
+                start_index = i
+                break
+
+        if start_index is None:
+            raise ValueError("Starting record not found in the data")
+
+        # Process and transform the records
+        transformed_data = []
+        for record in outdata[start_index:]:
+            updated_record_data = update_dictionary(record)
+            transformed_record = {key_mappings[k]: v for k, v in updated_record_data.items()}
+            transformed_data.append(transformed_record)
+
+        header_data = {
+            "header_data": upper_data,
+            "table_data": transformed_data,
+        }
+
+        return header_data
+    except Exception as e:
+        success = False
+        console_logger.debug("----- Sap Records Rcr Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e
+
+
 @router.get("/rail/rake/count", tags=["Rail Map"])
 def daywise_rake_scanned_count(response:Response):
     try:
-
         DataExecutionsHandler = DataExecutions()
         response = DataExecutionsHandler.rakeScannedOutData()
         return response
@@ -15952,10 +21350,10 @@ def fetch_data_rail_logistics(response:Response, specified_date: str):
 
 
 @router.get("/bunker/report", tags=["bunker"])
-def fetch_pdf_report_bunker(response:Response, sample_id: str):
+def fetch_pdf_report_bunker(response:Response, certificate_no: str):
     try:
         DataExecutionsHandler = DataExecutions()
-        response = DataExecutionsHandler.display_pdf_report_bunker_addons(sample_id=sample_id)
+        response = DataExecutionsHandler.display_pdf_report_bunker_addons(certificate_no=certificate_no)
         return response
     except Exception as e:
         console_logger.debug("----- Vehicle Scanned Count Error -----",e)
@@ -16317,7 +21715,7 @@ def generate_truck_tare_email_alert(response: Response, data: geofenceEmailTrigg
 # @router.post("/insert/shift/schedule", tags=["scheduler"])
 # def endpoint_to_insert_shift_schedule(response: Response, data: ShiftMainData, report_name: str):
 #     try:
-#         inputData = data.dict()
+#         inputData = data.dict()pyongo
 #         fetchAllScheduler = shiftScheduler.objects(report_name=report_name)
 #         if fetchAllScheduler:
 #             fetchAllScheduler.delete()
@@ -16463,17 +21861,25 @@ def endpoint_to_insert_shift_schedule(response: Response, data: ShiftMainData, r
 def shiftSchedulerfunc(**kwargs):
     try:
         console_logger.debug(("scheduler report generate",kwargs))
-        if kwargs["report_name"] == "save_coalextract_data":
+        if kwargs["report_name"] == "receipt_coal_quality_analysis":
             durationSplit = kwargs["duration"].split(":")
             end_date = datetime.date.today().strftime("%Y-%m-%d")
             start_date = (datetime.date.today() - timedelta(int(f"{durationSplit[0]}"))).strftime("%Y-%m-%d")
             coal_test(start_date=start_date, end_date=end_date)
-        elif kwargs["report_name"] == "update_coalgcv_data":
+        elif kwargs["report_name"] == "bombcalorimeter_fetch_gcv":
             endpoint_to_fetch_coal_quality_gcv()
-        elif kwargs["report_name"] == "extract_bunker_data":
+        elif kwargs["report_name"] == "bunker_quality_analysis":
             todays_date = datetime.date.today().strftime("%Y-%m-%d")
-            DataExecutionsHandler = DataExecutions()
-            DataExecutionsHandler.fetchcoalBunkerData(start_date=todays_date, end_date=todays_date)
+            two_months_back = datetime.date.today() - relativedelta(months=2)
+            two_months_back_formatted = two_months_back.strftime("%Y-%m-%d")
+            # DataExecutionsHandler = DataExecutions()
+            # DataExecutionsHandler.fetchcoalBunkerData(start_date=two_months_back_formatted, end_date=todays_date)
+            extract_bunker_data(start_date=two_months_back_formatted, end_date=todays_date)
+        elif kwargs["report_name"] == "rail_avery_data":
+            start_date = datetime.date.today().strftime("%Y/%m/%d")
+            one_months_back = datetime.date.today() - relativedelta(months=1)
+            end_date = one_months_back.strftime("%Y/%m/%d")
+            endpoint_to_update_averydata(start_date=start_date, end_date=end_date)
     
         return "success"
 
@@ -16486,7 +21892,7 @@ def shiftSchedulerfunc(**kwargs):
         return e
 
 @router.get("/sync/limbs/bombcalorimeter", tags=["Coal Testing"])
-def endpoint_to_sync_limbs_bombcalorimter(response: Response, start_date: Optional[str] = None, end_date: Optional[str] = None):
+def endpoint_to_sync_limbs_bombcalorimter(start_date: Optional[str] = None, end_date: Optional[str] = None):
     try:
 
         coal_test(start_date=start_date, end_date=end_date)
@@ -16833,7 +22239,7 @@ def process_today_data(specified_date):
         for result in results:
             hour = result["_id"]["ts"]
             tag_id = result["_id"]["tagid"]
-            sum_values = result["data"][0]  # This will now contain the sum
+            sum_values = result["data"][0]  # This will now contain the sum 
 
             if tag_id == 2:
                 unit_data["Unit 1"]["generation_tag"][hour] = sum_values
@@ -16850,15 +22256,22 @@ def process_today_data(specified_date):
         
         # Calculate specific coal consumption based on generation and consumption
         for unit in ["Unit 1", "Unit 2"]:
+            non_zero_hours = 0
             for hour in range(24):
                 generation = unit_data[unit]["generation_tag"][hour]
                 consumption = unit_data[unit]["consumption_tag"][hour]
                 if generation > 0:
                     unit_data[unit]["specific_coal"][hour] = round(consumption / generation, 2)
                     unit_data[unit]["total_specific_coal"] += round(consumption / generation, 2)
+                    non_zero_hours += 1
                 else:
                     unit_data[unit]["specific_coal"][hour] = 0
                     unit_data[unit]["total_specific_coal"] += 0
+
+            if non_zero_hours > 0:
+                unit_data[unit]["average_generation"] = round(unit_data[unit]["total_generation_sum"] / non_zero_hours, 2)
+                unit_data[unit]["average_consumption"] = round(unit_data[unit]["total_consumption_sum"] / non_zero_hours, 2)
+                unit_data[unit]["average_specific_coal"] = round(unit_data[unit]["total_specific_coal"] / non_zero_hours, 2)
 
         return unit_data
     except Exception as e:
@@ -16979,6 +22392,10 @@ def endpoint_to_send_tare_email_alert(response: Response, data: RequestData):
 # Helper function to handle regex extraction with error handling
 def extract_with_regex(pattern, text, group_index=1):
     try:
+        # match = re.search(pattern, text, re.MULTILINE)
+        # if match:
+        #     return match.group(group_index).strip()
+        # return None
         match = re.search(pattern, text, re.MULTILINE)
         if match:
             return match.group(group_index).strip()
@@ -16993,6 +22410,12 @@ def extract_with_regex(pattern, text, group_index=1):
 
 def extract_with_regex_scheme(text):
     try:
+        # pattern = r"([\w\s\(\)\-]+)\s*Scheme Name\s*:"
+        # match = re.search(pattern, text, re.DOTALL)
+        # if match:
+        #     text=' '.join(match.group(1).split()).strip()
+        #     return text
+        # return None
         pattern = r"([\w\s\(\)\-]+)\s*Scheme Name\s*:"
         match = re.search(pattern, text, re.DOTALL)
         if match:
@@ -17007,8 +22430,114 @@ def extract_with_regex_scheme(text):
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
 
+# def extract_invoice_data(text):
+#     data = {}    
+#     pattern = r'([\w\s]+(?:\([^)]*\))?)\s+([\d.]+)\s+([\d.]+)'   
+
+#     matches = re.findall(pattern, text)
+#     for match in matches:
+#         description, rate, amount = match
+        
+#         key = description.lower().replace(' ', '_').replace('(', '').replace(')', '').strip('_')
+
+#         key = key.replace('\n', '')
+        
+#         if 'basic_price' in key and not 'royalty_charges__14_of_basic_price':
+#             key = 'basic_price'
+#         elif 'sizing_charges' in key:
+#             key = 'sizing_charges'
+#         elif 'stc_charges' in key:
+#             key = 'stc_charges'
+#         elif 'evac_facility_charge' in key:
+#             key = 'evac_facility_charge'
+#         elif 'royalty_charges' in key:
+#             key = 'royalty_charges'
+#         elif 'nmet_charges' in key:
+#             key = 'nmet'
+#         elif 'dmf' in key:
+#             key = 'dmf'
+#         elif 'cgst' in key:
+#             key = 'cgst'
+#         elif 'sgst' in key:
+#             key = 'sgst'
+#         elif 'gst_comp_cess' in key:
+#             key = 'gst'
+#         elif 'so_value' in key and 'grand_total' in key:
+#             key = 'so_value'
+#         elif 'less_emd' in key:
+#             key = 'emd'
+#         elif 'so_value' in key and 'rounded' in key:
+#             key = 'so_rounded'
+        
+#         data[f'{key}_rate'] = float(rate)
+#         data[f'{key}_amount'] = float(amount)
+    
+#     return data
+
 
 # Function to extract specific fields using regex
+# def extract_fields(pdf_path):
+#     try:
+#         reader = PdfReader(pdf_path)
+#         text = ""
+#         for page in reader.pages:
+#             text += page.extract_text()
+#         fields = {}
+#         # Adjusted regex patterns for more accurate extraction
+#         fields["do_no"] = extract_with_regex(r'(\d+)\s*Sales Order Number', text)
+#         if fields["do_no"]:        
+#             fields["do_date"] = extract_with_regex(r"([\w\s,]+)(?=\s*Sales Order Date)", text)
+#             fields["start_date"] = extract_with_regex(r"([\w\s,]+)(?=\s*Sales Order Valid From)", text)
+#             fields["end_date"] = extract_with_regex(r"([\w\s,]+)(?=\s*Sales Order Valid To)", text)
+#             fields["slno"] = extract_with_regex(r"([\w\s,]+)(?=\s*Month)", text)
+#             if fields["slno"]:
+#                 fields["slno"]
+#             else:
+#                 fields["slno"] = extract_with_regex(r'Month\s*:\s*(\d+)', text)
+#             # fields["Scheme Name"] = extract_with_regex(r"(.*?)\s*Scheme Name\s*:", text) 
+#             fields["consumer_type"] = extract_with_regex_scheme(text) 
+
+#             fields["grade"] = extract_with_regex(r"(\w+)\s+Grade Desc\s*:", text)
+#             fields["Size"] = extract_with_regex(r"([\-\d\s\w]+)\s+Size\s*:", text)        
+#             # Improved pattern for Plant extraction
+#             fields["mine"] = extract_with_regex(r'Line Item Plant Material Material Description HSN Code Unit of Measure Quantity\s*\n10\s+([^\d]+)', text)
+            
+#             # Extract Line Item and Quantity more generally
+#             fields["line_item"] = extract_with_regex(r'Line Item\s+Plant\s+Material.*\n(\d+)', text)
+#             fields["do_qty"] = extract_with_regex(r'\b(\d{1,3}(?:,\d{3})*)\b\s*$', text)        
+#             # New field: Total Net Amount
+#             fields["po_amount"] = extract_with_regex(r"Total\s+([\d,]+\.\d{2})", text)   
+#         else:        
+#             fields["do_no"] = extract_with_regex(r'Sales Order Number\s+:\s+(\d+)', text)
+#             fields["do_date"] = extract_with_regex(r'Sales Order Date\s+:\s+([A-Za-z]+\s+\d{1,2},\s+\d{4})', text)
+#             fields["start_date"] = extract_with_regex(r'Sales Order Valid From\s+:\s+([A-Za-z]+\s+\d{1,2},\s+\d{4})', text)
+#             fields["end_date"] = extract_with_regex(r'Sales Order Valid To\s+:\s+([A-Za-z]+\s+\d{1,2},\s+\d{4})', text)
+#             fields["slno"] = extract_with_regex(r"([\w\s,]+)(?=\s*Month)", text)
+#             if fields["slno"]:
+#                 fields["slno"]
+#             else:
+#                 fields["slno"] = extract_with_regex(r'Month\s*:\s*(\d+)', text)
+#             fields["consumer_type"] = extract_with_regex(r"Scheme Name\s*:\s*(.*\s*.*)", text) 
+#             fields["consumer_type"] = re.sub(r'\n', '', fields["consumer_type"])
+#             fields["grade"] = extract_with_regex(r"(?i)Grade Desc\s*:\s*(.*)" , text)
+#             fields["Size"] = extract_with_regex(r"Size\s*:\s*(\S+)\s*", text)+" MM"        
+#             # Improved pattern for Plant extraction
+#             fields["mine"] = extract_with_regex(r'Line Item Plant Material Material Description HSN Code Unit of Measure Quantity\s*\n10\s+([^\d]+)', text)
+#             # Extract Line Item and Quantity more generally
+#             fields["line_item"] = extract_with_regex(r'Line Item\s+Plant\s+Material.*\n(\d+)', text)
+#             fields["do_qty"] = extract_with_regex(r'\b(\d{1,3}(?:,\d{3})*)\b\s*$', text)        
+#             # New field: Total Net Amount
+#             fields["po_amount"] = extract_with_regex(r"Total\s+([\d,]+\.\d{2})", text)
+#         return fields
+#     except Exception as e:
+#         console_logger.debug("----- Error ----- {}".format(e))
+#         exc_type, exc_obj, exc_tb = sys.exc_info()
+#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#         return e
+
+# new
 def extract_fields(pdf_path):
     try:
         reader = PdfReader(pdf_path)
@@ -17016,7 +22545,7 @@ def extract_fields(pdf_path):
         for page in reader.pages:
             text += page.extract_text()
         fields = {}
-        # Adjusted regex patterns for more accurate extraction
+
         fields["do_no"] = extract_with_regex(r'(\d+)\s*Sales Order Number', text)
         if fields["do_no"]:        
             fields["do_date"] = extract_with_regex(r"([\w\s,]+)(?=\s*Sales Order Date)", text)
@@ -17029,41 +22558,25 @@ def extract_fields(pdf_path):
                 fields["slno"] = extract_with_regex(r'Month\s*:\s*(\d+)', text)
             # fields["Scheme Name"] = extract_with_regex(r"(.*?)\s*Scheme Name\s*:", text) 
             fields["consumer_type"] = extract_with_regex_scheme(text) 
-
+            fields["mode_of_transport"] = extract_with_regex(r'(\w+)\s+Mode of Transport\s*:', text)
             fields["grade"] = extract_with_regex(r"(\w+)\s+Grade Desc\s*:", text)
-            fields["Size"] = extract_with_regex(r"([\-\d\s\w]+)\s+Size\s*:", text)        
+            fields["size"] = extract_with_regex(r"([\-\d\s\w]+)\s+Size\s*:", text)    
             # Improved pattern for Plant extraction
             fields["mine"] = extract_with_regex(r'Line Item Plant Material Material Description HSN Code Unit of Measure Quantity\s*\n10\s+([^\d]+)', text)
             
             # Extract Line Item and Quantity more generally
             fields["line_item"] = extract_with_regex(r'Line Item\s+Plant\s+Material.*\n(\d+)', text)
+            fields["Material Description"] = extract_with_regex(r'(\S+\s+[-~]\d+\s*MM)', text)
+            if fields["Material Description"]:
+                fields["Material Description"]=fields["Material Description"].replace('\n', '')
             fields["do_qty"] = extract_with_regex(r'\b(\d{1,3}(?:,\d{3})*)\b\s*$', text)        
             # New field: Total Net Amount
             fields["po_amount"] = extract_with_regex(r"Total\s+([\d,]+\.\d{2})", text)   
-        else:        
-            fields["do_no"] = extract_with_regex(r'Sales Order Number\s+:\s+(\d+)', text)
-            fields["do_date"] = extract_with_regex(r'Sales Order Date\s+:\s+([A-Za-z]+\s+\d{1,2},\s+\d{4})', text)
-            fields["start_date"] = extract_with_regex(r'Sales Order Valid From\s+:\s+([A-Za-z]+\s+\d{1,2},\s+\d{4})', text)
-            fields["end_date"] = extract_with_regex(r'Sales Order Valid To\s+:\s+([A-Za-z]+\s+\d{1,2},\s+\d{4})', text)
-            fields["slno"] = extract_with_regex(r"([\w\s,]+)(?=\s*Month)", text)
-            if fields["slno"]:
-                fields["slno"]
-            else:
-                fields["slno"] = extract_with_regex(r'Month\s*:\s*(\d+)', text)
-            fields["consumer_type"] = extract_with_regex(r"Scheme Name\s*:\s*(.*\s*.*)", text) 
-            fields["consumer_type"] = re.sub(r'\n', '', fields["consumer_type"])
-            fields["grade"] = extract_with_regex(r"(?i)Grade Desc\s*:\s*(.*)" , text)
-            fields["Size"] = extract_with_regex(r"Size\s*:\s*(\S+)\s*", text)+" MM"        
-            # Improved pattern for Plant extraction
-            fields["mine"] = extract_with_regex(r'Line Item Plant Material Material Description HSN Code Unit of Measure Quantity\s*\n10\s+([^\d]+)', text)
-            # Extract Line Item and Quantity more generally
-            fields["line_item"] = extract_with_regex(r'Line Item\s+Plant\s+Material.*\n(\d+)', text)
-            fields["do_qty"] = extract_with_regex(r'\b(\d{1,3}(?:,\d{3})*)\b\s*$', text)        
-            # New field: Total Net Amount
-            fields["po_amount"] = extract_with_regex(r"Total\s+([\d,]+\.\d{2})", text)
+            fields['table'] = extract_invoice_data(text)
         return fields
     except Exception as e:
-        console_logger.debug("----- Error ----- {}".format(e))
+        console_logger.debug("----- Road Sap Upload Error -----",e)
+        # response.status_code = 400
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
@@ -17071,16 +22584,221 @@ def extract_fields(pdf_path):
         return e
 
 
+def extract_invoice_data(pdf_path):
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            content = ""
+            for page in pdf.pages:
+                content += page.extract_text() + "\n"
+        # Extract required information
+        fields = {
+            'do_no': r'Sales Order Number\s*:\s*(\d+)',
+            'consumer_type': r'Scheme Name\s*:\s*([A-Za-z0-9 ,\-]+)(?=\s*Area\s*:)',
+            'do_date':r'Sales Order Date\s*:\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{4})',
+            'grade': r'Grade Desc\s*:\s*(.+)',
+            'start_date': r'Sales Order Valid From\s*:\s*([A-Za-z0-9 ,]+?)(?=\s*[A-Z][a-zA-Z\s]+:)',
+            'end_date': r'Sales Order Valid To\s*:\s*([A-Za-z0-9 ,]+?)(?=\s*[A-Z][a-zA-Z\s]+:)',
+            'size': r'Size\s*:(.+)',
+            'bid_id': r'Bid ID\s*:\s*(.+?)(?=\s+Mode)',
+            'mode_of_transport': r'Mode of Transport\s*:\s*(.+?)(?=\s+Name)',
+            'slno': r'Month\s*:\s*(\d+)',
+            'type_of_consumer': r'Type of Consumer\s*:\s*(.+?)(?=\s+No\.)',
+            'mine': r'Line Item.*?\n\d+\s+(.*?)\s+(\d{10})',
+            'material_description': r'\d{10}\s+(.+?)(?=\s+27011200)',
+            'do_qty': r'TE\s+([\d,]+)',
+            'line_item': r'Line Item.*?Quantity\s*\n(\d+)'
+        }
+        extracted_data = {}
+        for key, pattern in fields.items():
+            match = re.search(pattern, content, re.IGNORECASE)
+            if match:
+                extracted_data[key] = match.group(1).strip()
+            else:
+                extracted_data[key] = "Not found"
+        
+        # Extract table data
+        table_pattern = r'(Pricing Description.+?)(?=\nLess EMD|\Z)'
+        table_match = re.search(table_pattern, content, re.DOTALL)
+        
+        if table_match:
+            table_text = table_match.group(1)
+            rows = re.findall(r'(.+?)\s+([\d.]+)\s+([\d.]+)', table_text)
+            df = pd.DataFrame(rows, columns=['Pricing Description', 'Rate Per Ton(INR)', 'Amount(INR)'])
+            extracted_data['Table'] = df
+        else:
+            extracted_data['Table'] = "Table not found"
+        
+        bank_details_pattern = r'BANK DETAILS.*?Total\s+([\d.]+)'
+        bank_details_match = re.search(bank_details_pattern, content, re.DOTALL | re.IGNORECASE)
+        if bank_details_match:
+            extracted_data['po_amount'] = bank_details_match.group(1)
+        else:
+            extracted_data['po_amount'] = "Not found"
+        
+        return extracted_data
+    except Exception as e:
+        console_logger.debug("----- Road Sap Upload Error -----",e)
+        # response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+
+def get_saprecordstable_data(loopdata, data_name):
+    try:
+        for key, value in loopdata.items():
+            if key == data_name:
+                return value
+        return None
+    except Exception as e:
+        console_logger.debug("----- Road Sap Upload Error -----",e)
+        # response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+
+# @router.post("/road/sapupload", tags=["Coal Testing"])
+# async def endpoint_to_upload_sap_data(response: Response, pdf_upload: List[UploadFile] = File(...)):
+#     try:
+#         for UploadedFile in pdf_upload:
+
+#             f_name = UploadedFile.filename
+#             contents = UploadedFile.file
+#             #     if pdf_upload is None:
+#             #         return {"error": "No file uploaded"}
+#             # contents = await pdf_upload.read()
+
+#             # Check if the file is empty
+#             if not contents:
+#                 return {"error": "Uploaded file is empty"}
+
+#             # Verify file format (PDF)
+#             if not f_name.endswith(('.pdf','.PDF')):
+#                 response.status_code = 400
+#                 return {"error": "Uploaded file is not a PDF"}
+            
+#             file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+#             target_directory = f"static_server/gmr_ai/{file}"
+#             os.umask(0)
+#             os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+#             file_extension = f_name.split(".")[-1]
+#             file_name = f'sap_upload_{datetime.datetime.now().strftime("%Y-%m-%d:%H:%M")}.{file_extension}'
+#             full_path = os.path.join(os.getcwd(), target_directory, file_name)
+#             with open(full_path, "wb") as file_object:
+#                 # file_object.write(file.file)
+#                 shutil.copyfileobj(contents, file_object)
+
+#             # fetchPdfData = extract_fields(full_path)
+
+#             fetchPdfData = extract_invoice_data(full_path)
+
+#             console_logger.debug(fetchPdfData)
+
+
+#             if fetchPdfData:
+#                 try:
+#                     checkSaprecords = SapRecords.objects.get(do_no=fetchPdfData.get("do_no"))
+#                     checkSaprecords.do_date = datetime.datetime.strptime(fetchPdfData.get("do_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+#                     checkSaprecords.start_date = datetime.datetime.strptime(fetchPdfData.get("start_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+#                     checkSaprecords.end_date = datetime.datetime.strptime(fetchPdfData.get("end_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+#                     checkSaprecords.slno = fetchPdfData.get("slno")
+#                     if fetchPdfData.get("do_no")[:3] == "111":
+#                         checkSaprecords.consumer_type = "WCL FSA Coal"
+#                     elif fetchPdfData.get("do_no")[:3] == "112":
+#                         checkSaprecords.consumer_type = "WCL E Auction Coal"
+#                     elif fetchPdfData.get("do_no")[:3] == "114":
+#                         if "Linkage" in fetchPdfData.get("consumer_type"):
+#                             checkSaprecords.consumer_type = "WCL Shakti B(iii) Round 5 Coal"
+#                         else:
+#                             checkSaprecords.consumer_type = "WCL Shakti Auction Coal"
+#                     checkSaprecords.grade = f'{fetchPdfData.get("grade")}{fetchPdfData.get("size")}'
+#                     checkSaprecords.mine_name = fetchPdfData.get("mine")
+#                     # checkSaprecords.line_item = fetchPdfData.get("line_item")
+#                     checkSaprecords.do_qty = fetchPdfData.get("do_qty").replace(",", "")
+#                     checkSaprecords.po_amount = fetchPdfData.get("po_amount")
+#                     checkSaprecords.save()
+
+#                 except DoesNotExist as e:
+#                     # insertSapRecords = SapRecords(do_no=fetchPdfData.get("do_no"), do_date=fetchPdfData.get("do_date"), start_date=datetime.datetime.strptime(fetchPdfData.get("start_date"), '%b %d, %Y').strftime('%Y-%m-%d'), end_date=datetime.datetime.strptime(fetchPdfData.get("end_date"), '%b %d, %Y').strftime('%Y-%m-%d'), slno=fetchPdfData.get("slno"), consumer_type=fetchPdfData.get("consumer_type"), grade=f'{fetchPdfData.get("grade")} {fetchPdfData.get("size")}', mine_name=fetchPdfData.get("mine"), line_item=fetchPdfData.get("line_item"), do_qty=fetchPdfData.get("do_qty").replace(",", ""), po_amount=fetchPdfData.get("po_amount"))
+#                     if fetchPdfData.get("do_no") is not None:
+#                         if fetchPdfData.get("do_no")[:3] == "111":
+#                             consumer_type = "WCL FSA Coal"
+#                         elif fetchPdfData.get("do_no")[:3] == "112":
+#                             consumer_type = "WCL E Auction Coal"
+#                         elif fetchPdfData.get("do_no")[:3] == "114":
+#                             if "Linkage" in fetchPdfData.get("consumer_type"):
+#                                 consumer_type = "WCL Shakti B(iii) Round 5 Coal"
+#                             else:
+#                                 consumer_type = "WCL Shakti Auction Coal"
+                        
+#                         insertSapRecords = SapRecords(
+#                             do_no=fetchPdfData.get("do_no"),
+#                             do_date=datetime.datetime.strptime(fetchPdfData.get("do_date"), '%b %d, %Y').strftime('%Y-%m-%d'),
+#                             start_date=datetime.datetime.strptime(fetchPdfData.get("start_date"), '%b %d, %Y').strftime('%Y-%m-%d'), 
+#                             end_date=datetime.datetime.strptime(fetchPdfData.get("end_date"), '%b %d, %Y').strftime('%Y-%m-%d'), 
+#                             slno=fetchPdfData.get("slno"), 
+#                             consumer_type=consumer_type, 
+#                             grade=f'{fetchPdfData.get("grade")}{fetchPdfData.get("size")}', 
+#                             mine_name=fetchPdfData.get("mine"), 
+#                             do_qty=fetchPdfData.get("do_qty").replace(",", ""), 
+#                             po_amount=fetchPdfData.get("po_amount")
+#                         )
+#                         insertSapRecords.save()
+
+                
+#                 try:
+#                     checkGmrData = Gmrdata.objects(arv_cum_do_number=fetchPdfData.get("do_no"))
+#                     for singleCheckGmrData in checkGmrData:
+#                         singleCheckGmrData.do_date = datetime.datetime.strptime(fetchPdfData.get("do_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+#                         singleCheckGmrData.start_date = datetime.datetime.strptime(fetchPdfData.get("start_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+#                         singleCheckGmrData.end_date = datetime.datetime.strptime(fetchPdfData.get("end_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+#                         singleCheckGmrData.slno = fetchPdfData.get("slno")
+#                         if fetchPdfData.get("do_no")[:3] == "111":
+#                             singleCheckGmrData.type_consumer = "WCL FSA Coal"
+#                         elif fetchPdfData.get("do_no")[:3] == "112":
+#                             singleCheckGmrData.type_consumer = "WCL E Auction Coal"
+#                         elif fetchPdfData.get("do_no")[:3] == "114":
+#                             if "Linkage" in fetchPdfData.get("consumer_type"):
+#                                 singleCheckGmrData.type_consumer = "WCL Shakti B(iii) Round 5 Coal"
+#                             else:
+#                                 singleCheckGmrData.type_consumer = "WCL Shakti Auction Coal"
+#                         singleCheckGmrData.type_consumer = fetchPdfData.get("consumer_type")
+#                         singleCheckGmrData.grade = f'{fetchPdfData.get("grade")}{fetchPdfData.get("size")}'
+#                         singleCheckGmrData.mine = fetchPdfData.get("mine")
+#                         # singleCheckGmrData.line_item = fetchPdfData.get("line_item")
+#                         singleCheckGmrData.po_qty = fetchPdfData.get("do_qty").replace(",", "")
+#                         singleCheckGmrData.po_amount = fetchPdfData.get("po_amount")
+#                         singleCheckGmrData.save()
+#                 except DoesNotExist as e:
+#                     pass
+
+#         return {"detail": "success"}
+#     except Exception as e:
+#         console_logger.debug("----- Road Sap Upload Error -----",e)
+#         response.status_code = 400
+#         exc_type, exc_obj, exc_tb = sys.exc_info()
+#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#         return e
+
+
 @router.post("/road/sapupload", tags=["Coal Testing"])
 async def endpoint_to_upload_sap_data(response: Response, pdf_upload: List[UploadFile] = File(...)):
     try:
+        listData = []
         for UploadedFile in pdf_upload:
 
             f_name = UploadedFile.filename
             contents = UploadedFile.file
-            #     if pdf_upload is None:
-            #         return {"error": "No file uploaded"}
-            # contents = await pdf_upload.read()
 
             # Check if the file is empty
             if not contents:
@@ -17100,50 +22818,13 @@ async def endpoint_to_upload_sap_data(response: Response, pdf_upload: List[Uploa
             file_name = f'sap_upload_{datetime.datetime.now().strftime("%Y-%m-%d:%H:%M")}.{file_extension}'
             full_path = os.path.join(os.getcwd(), target_directory, file_name)
             with open(full_path, "wb") as file_object:
-                # file_object.write(file.file)
                 shutil.copyfileobj(contents, file_object)
 
-            fetchPdfData = extract_fields(full_path)
+            fetchPdfData = extract_invoice_data(full_path)
 
-            if fetchPdfData:
-                try:
-                    checkSaprecords = SapRecords.objects.get(do_no=fetchPdfData.get("do_no"))
-                    checkSaprecords.do_date = datetime.datetime.strptime(fetchPdfData.get("do_date"), '%b %d, %Y').strftime('%Y-%m-%d')
-                    checkSaprecords.start_date = datetime.datetime.strptime(fetchPdfData.get("start_date"), '%b %d, %Y').strftime('%Y-%m-%d')
-                    checkSaprecords.end_date = datetime.datetime.strptime(fetchPdfData.get("end_date"), '%b %d, %Y').strftime('%Y-%m-%d')
-                    checkSaprecords.slno = fetchPdfData.get("slno")
-                    checkSaprecords.consumer_type = fetchPdfData.get("consumer_type")
-                    checkSaprecords.grade = f'{fetchPdfData.get("grade")} {fetchPdfData.get("size")}'
-                    checkSaprecords.mine_name = fetchPdfData.get("mine")
-                    # checkSaprecords.line_item = fetchPdfData.get("line_item")
-                    checkSaprecords.do_qty = fetchPdfData.get("do_qty").replace(",", "")
-                    checkSaprecords.po_amount = fetchPdfData.get("po_amount")
-                    checkSaprecords.save()
+            listData.append(fetchPdfData)
 
-                except DoesNotExist as e:
-                    # insertSapRecords = SapRecords(do_no=fetchPdfData.get("do_no"), do_date=fetchPdfData.get("do_date"), start_date=datetime.datetime.strptime(fetchPdfData.get("start_date"), '%b %d, %Y').strftime('%Y-%m-%d'), end_date=datetime.datetime.strptime(fetchPdfData.get("end_date"), '%b %d, %Y').strftime('%Y-%m-%d'), slno=fetchPdfData.get("slno"), consumer_type=fetchPdfData.get("consumer_type"), grade=f'{fetchPdfData.get("grade")} {fetchPdfData.get("size")}', mine_name=fetchPdfData.get("mine"), line_item=fetchPdfData.get("line_item"), do_qty=fetchPdfData.get("do_qty").replace(",", ""), po_amount=fetchPdfData.get("po_amount"))
-                    insertSapRecords = SapRecords(do_no=fetchPdfData.get("do_no"), do_date=fetchPdfData.get("do_date"), start_date=datetime.datetime.strptime(fetchPdfData.get("start_date"), '%b %d, %Y').strftime('%Y-%m-%d'), end_date=datetime.datetime.strptime(fetchPdfData.get("end_date"), '%b %d, %Y').strftime('%Y-%m-%d'), slno=fetchPdfData.get("slno"), consumer_type=fetchPdfData.get("consumer_type"), grade=f'{fetchPdfData.get("grade")} {fetchPdfData.get("size")}', mine_name=fetchPdfData.get("mine"), do_qty=fetchPdfData.get("do_qty").replace(",", ""), po_amount=fetchPdfData.get("po_amount"))
-                    insertSapRecords.save()
-
-                
-                try:
-                    checkGmrData = Gmrdata.objects(arv_cum_do_number=fetchPdfData.get("do_no"))
-                    for singleCheckGmrData in checkGmrData:
-                        singleCheckGmrData.do_date = datetime.datetime.strptime(fetchPdfData.get("do_date"), '%b %d, %Y').strftime('%Y-%m-%d')
-                        singleCheckGmrData.start_date = datetime.datetime.strptime(fetchPdfData.get("start_date"), '%b %d, %Y').strftime('%Y-%m-%d')
-                        singleCheckGmrData.end_date = datetime.datetime.strptime(fetchPdfData.get("end_date"), '%b %d, %Y').strftime('%Y-%m-%d')
-                        singleCheckGmrData.slno = fetchPdfData.get("slno")
-                        singleCheckGmrData.type_consumer = fetchPdfData.get("consumer_type")
-                        singleCheckGmrData.grade = f'{fetchPdfData.get("grade")} {fetchPdfData.get("size")}'
-                        singleCheckGmrData.mine = fetchPdfData.get("mine")
-                        # singleCheckGmrData.line_item = fetchPdfData.get("line_item")
-                        singleCheckGmrData.po_qty = fetchPdfData.get("do_qty").replace(",", "")
-                        singleCheckGmrData.po_amount = fetchPdfData.get("po_amount")
-                        singleCheckGmrData.save()
-                except DoesNotExist as e:
-                    pass
-
-        return {"detail": "success"}
+        return listData
     except Exception as e:
         console_logger.debug("----- Road Sap Upload Error -----",e)
         response.status_code = 400
@@ -17152,6 +22833,65 @@ async def endpoint_to_upload_sap_data(response: Response, pdf_upload: List[Uploa
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
+
+
+@router.post("/upload/road/sapupload", tags=["Coal Testing"])
+def endpoint_to_update_road_sap_upload(response: Response, data: roadSapUpload):
+    try:
+        multyData = data.dict()
+        for dataLoad in multyData["data"]:
+            try:
+                checkSaprecords = SapRecords.objects.get(do_no=dataLoad.get("do_no"))
+                checkSaprecords.do_date = datetime.datetime.strptime(dataLoad.get("do_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+                checkSaprecords.start_date = datetime.datetime.strptime(dataLoad.get("start_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+                checkSaprecords.end_date = datetime.datetime.strptime(dataLoad.get("end_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+                checkSaprecords.slno = dataLoad.get("slno")
+                checkSaprecords.consumer_type = dataLoad.get("consumer_type")
+                checkSaprecords.grade = dataLoad.get("grade")
+                checkSaprecords.mine_name = dataLoad.get("mine")
+                checkSaprecords.do_qty = dataLoad.get("do_qty")
+                checkSaprecords.po_amount = dataLoad.get("po_amount")
+                checkSaprecords.save()
+            except DoesNotExist as e:
+                insertSapRecords = SapRecords(
+                    do_no=dataLoad.get("do_no"),
+                    do_date=datetime.datetime.strptime(dataLoad.get("do_date"), '%b %d, %Y').strftime('%Y-%m-%d'),
+                    start_date=datetime.datetime.strptime(dataLoad.get("start_date"), '%b %d, %Y').strftime('%Y-%m-%d'), 
+                    end_date=datetime.datetime.strptime(dataLoad.get("end_date"), '%b %d, %Y').strftime('%Y-%m-%d'), 
+                    slno=dataLoad.get("slno"), 
+                    consumer_type=dataLoad.get("consumer_type"), 
+                    grade=dataLoad.get("grade"), 
+                    mine_name=dataLoad.get("mine"), 
+                    do_qty=dataLoad.get("do_qty"), 
+                    po_amount=dataLoad.get("po_amount")
+                )
+                insertSapRecords.save() 
+
+            try:
+                checkGmrData = Gmrdata.objects(arv_cum_do_number=dataLoad.get("do_no"))
+                for singleCheckGmrData in checkGmrData:
+                    singleCheckGmrData.do_date = datetime.datetime.strptime(dataLoad.get("do_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+                    singleCheckGmrData.start_date = datetime.datetime.strptime(dataLoad.get("start_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+                    singleCheckGmrData.end_date = datetime.datetime.strptime(dataLoad.get("end_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+                    singleCheckGmrData.slno = dataLoad.get("slno")
+                    singleCheckGmrData.type_consumer = dataLoad.get("consumer_type")
+                    singleCheckGmrData.grade = dataLoad.get("grade")
+                    singleCheckGmrData.mine = dataLoad.get("mine")
+                    singleCheckGmrData.po_qty = dataLoad.get("do_qty")
+                    singleCheckGmrData.po_amount = dataLoad.get("po_amount")
+                    singleCheckGmrData.save()
+            except DoesNotExist as e:
+                pass
+    except Exception as e:
+        console_logger.debug("----- Update Road Sap Upload Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
 
 
 # @router.get("/fetch/rake/quota", tags=["Rail Map"])
@@ -17573,8 +23313,10 @@ def end_point_to_fetch_rake_quota_test_old(response: Response,
                     formatted_date = date_obj.strftime("%Y-%m")
                     rail_logs = RailData.objects.filter(placement_date__icontains=formatted_date)
                     dictData["month"] = datetime.datetime.strptime(log.month, "%m-%Y").strftime("%b-%Y")
-                    dictData["valid_upto"] = log.valid_upto
+                    # dictData["valid_upto"] = log.valid_upto
                     dictData["rake_planned_for_the_month"] = int(log.rake_alloted)
+                    if log.source_type:
+                        dictData["source_type"] = log.source_type
                     if log.expected_rakes:
                         dictData["expected_rakes_date"] = list(log.expected_rakes.keys())[0]
                         dictData["expected_rakes_value"] = list(log.expected_rakes.values())[0]
@@ -17587,11 +23329,11 @@ def end_point_to_fetch_rake_quota_test_old(response: Response,
                     # Get the last day of the current month
                     _, last_day = calendar.monthrange(currentDate.year, currentDate.month)
                     end_date_time = datetime.datetime(currentDate.year, currentDate.month, last_day, 23, 59, 59)
-
                     # Ensure 'avery_placement_date' is stored as a string, then cast it to a datetime object for comparison
                     dictData["total_rakes_received_for_month"] = RailData.objects.filter(
                         Q(month__icontains=formatted_date) & 
-                        Q(avery_placement_date__ne=None)
+                        Q(avery_placement_date__ne=None) &
+                        Q(source_type__iexact = log.source_type)
                         # Q(avery_placement_date__gte=start_date_time.strftime("%Y-%m-%d %H:%M:%S")) &
                         # Q(avery_placement_date__lte=end_date_time.strftime("%Y-%m-%d %H:%M:%S"))
                     ).count()
@@ -17615,14 +23357,15 @@ def end_point_to_fetch_rake_quota_test_old(response: Response,
 
                     if rail_logs:
                         for rail_log in rail_logs:
-                            if rail_log.source_type != "":
-                                dictData["source_type"] = rail_log.source_type
+                            # if rail_log.source_type != "":
+                            #     dictData["source_type"] = rail_log.source_type
                             
                             today_utc = datetime.datetime.utcnow().replace(hour=0, minute=0, second=0)
                             end_of_day_utc = today_utc + timedelta(hours=23, minutes=59, seconds=59)
 
                             dictData["rakes_loaded_till_date"] = RailData.objects.filter(
-                                month__icontains=formatted_date
+                                month__icontains=formatted_date,
+                                source_type__iexact = log.source_type
                             ).count()
 
                             # console_logger.debug(today_utc.strftime("%Y-%m-%d %H:%M:%S"))
@@ -17632,17 +23375,18 @@ def end_point_to_fetch_rake_quota_test_old(response: Response,
                                 month__icontains=formatted_date,
                                 avery_placement_date__gte=today_utc.strftime("%Y-%m-%d %H:%M:%S"),
                                 avery_placement_date__lte=end_of_day_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                                source_type__iexact = log.source_type
                             ).count()
 
                             dictData["rakes_loaded_on_date"] = RailData.objects.filter(
                                 drawn_date__gte=today_utc,
                                 drawn_date__lte=end_of_day_utc,
                                 month__icontains=formatted_date,
+                                source_type__iexact = log.source_type
                             ).count()
                             dictData["no_of_rakes_in_transist"] = dictData["rakes_loaded_till_date"] - dictData["total_rakes_received_for_month"]
 
                     listData.append(dictData)
-                console_logger.debug(listData)
                 # for i, current_month_data in enumerate(listData):
                 #     for j in range(i + 1, len(listData)):
                 #         next_month_data = listData[j]
@@ -17785,12 +23529,15 @@ def end_point_to_fetch_rake_quota_test_old(response: Response,
                                 if rail_log.source_type != "":
                                     dictData["source_type"] = rail_log.source_type
                                 rakes_loaded_till_date = RailData.objects.filter(
-                                    month__icontains=formatted_date
+                                    month__icontains=formatted_date,
+                                    source_type__iexact = log.source_type
                                 ).count()
                                 dictData["rakes_loaded_till_date"] = rakes_loaded_till_date
                                 rakes_loaded_on_date = RailData.objects.filter(
                                     drawn_date__gte=f"{datetime.datetime.today().strftime('%Y-%m-%d')}T00:00",
-                                    drawn_date__lte=f"{datetime.datetime.today().strftime('%Y-%m-%d')}T23:59"
+                                    drawn_date__lte=f"{datetime.datetime.today().strftime('%Y-%m-%d')}T23:59",
+                                    month__icontains=formatted_date,
+                                    source_type__iexact = log.source_type
                                 ).count()
                                 dictData["rakes_loaded_on_date"] = rakes_loaded_on_date
                                 dictData["no_of_rakes_in_transist"] = rakes_loaded_till_date - dictData["total_rakes_received_for_month"]
@@ -17853,6 +23600,394 @@ def end_point_to_fetch_rake_quota_test_old(response: Response,
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
+
+
+@router.get("/fetch/rcrrake/quota", tags=["Rail Map"])
+def end_point_to_fetch_rcr_rake_quota(response: Response, 
+                currentPage: Optional[int] = None,
+                perPage: Optional[int] = None,
+                # search_text: Optional[str] = None,
+                # month_date: Optional[str] = None,
+                start_timestamp: Optional[str] = None,
+                end_timestamp: Optional[str] = None,
+                type: Optional[str] = "display"):
+    try:
+        data = Q()
+        result = {        
+                "labels": [],
+                "datasets": [],
+                "total": 0,
+                "page_size": 15
+        }
+
+        if type and type == "display":
+
+            page_no = 1
+            page_len = result["page_size"]
+
+            if currentPage:
+                page_no = currentPage
+
+            if perPage:
+                page_len = perPage
+                result["page_size"] = perPage
+
+            # if month_date:
+            #     month_start = datetime.datetime.strptime(month_date, "%Y-%m").replace(day=4)
+            #     month_end = (month_start + timedelta(days=31)).replace(day=3)
+            #     month_end = month_end.replace(hour=23, minute=59, second=59)
+
+            #     rail_logs = RailData.objects(
+            #         placement_date__gte=month_start.strftime("%Y-%m-%dT%H:%M"),
+            #         placement_date__lte=month_end.strftime("%Y-%m-%dT%H:%M"),
+            #     )
+            #     month_check = []
+            #     placement_dates = []
+                
+            #     for log in rail_logs:
+            #         if log.month:
+            #             if len(log.month) == 7:
+            #                 date = datetime.datetime.strptime(log.month, "%Y-%m").strftime("%Y-%m")
+            #             elif len(log.month) == 10:
+            #                 date = datetime.datetime.strptime(log.month, "%Y-%m-%d").strftime("%Y-%m")
+            #             placement_dates.append(date)
+
+            #         month_check.extend(list(set(placement_dates)))
+            #     current_month = month_start.strftime("%m-%Y")
+            #     month_check.append(current_month)
+            #     data &= Q(month__in=month_check)
+
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M", "Asia/Kolkata", False)
+                data &= Q(created_at__gte=start_date)
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M", "Asia/Kolkata", False)
+                data &= Q(created_at__lte=end_date)
+
+            offset = (page_no - 1) * page_len
+            logs = (
+                rcrrakeQuota.objects(data)
+                .order_by("year", "-month")
+                .skip(offset)
+                .limit(page_len)
+            )
+            listData = []
+            if logs:
+                for log in logs:
+                    dictData = {"month": "", "source_type": "", "rakes_previous_month_quota_received": 0, 
+                                "rake_planned_for_the_month": "","rakes_loaded_till_date": 0, 
+                                "rakes_loaded_on_date": 0, "rakes_received_on_date": 0, 
+                                "total_rakes_received_for_month": 0, "balance_rakes_to_receive": 0, 
+                                "no_of_rakes_in_transist": 0, "expected_rakes_date": 0, 
+                                "expected_rakes_value": 0}
+                    rake_year = log.year
+                    rake_month = log.month
+
+                    month_year = f"{rake_year}-{rake_month[:2].upper()}"
+                    date_obj = datetime.datetime.strptime(month_year, "%Y-%m")
+                    prev_date_obj = date_obj - datetime.timedelta(days=1)
+                    prev_month_year = prev_date_obj.strftime("%Y-%m")
+
+                    formatted_date = date_obj.strftime("%Y-%m")
+                    rail_logs = RcrData.objects.filter(placement_date__icontains=formatted_date)
+                    dictData["month"] = datetime.datetime.strptime(log.month, "%m-%Y").strftime("%b-%Y")
+                    # dictData["valid_upto"] = log.valid_upto
+                    dictData["rake_planned_for_the_month"] = int(log.rake_alloted)
+                    if log.source_type:
+                        dictData["source_type"] = log.source_type
+                    if log.expected_rakes:
+                        dictData["expected_rakes_date"] = list(log.expected_rakes.keys())[0]
+                        dictData["expected_rakes_value"] = list(log.expected_rakes.values())[0]
+                    
+                    currentDate = datetime.datetime.now()
+
+                    # Get the first day of the current month
+                    start_date_time = datetime.datetime(currentDate.year, currentDate.month, 1)
+
+                    # Get the last day of the current month
+                    _, last_day = calendar.monthrange(currentDate.year, currentDate.month)
+                    end_date_time = datetime.datetime(currentDate.year, currentDate.month, last_day, 23, 59, 59)
+                    # Ensure 'avery_placement_date' is stored as a string, then cast it to a datetime object for comparison
+                    dictData["total_rakes_received_for_month"] = RcrData.objects.filter(
+                        Q(month__icontains=formatted_date) & 
+                        Q(avery_placement_date__ne=None) &
+                        Q(source_type__iexact = log.source_type)
+                        # Q(avery_placement_date__gte=start_date_time.strftime("%Y-%m-%d %H:%M:%S")) &
+                        # Q(avery_placement_date__lte=end_date_time.strftime("%Y-%m-%d %H:%M:%S"))
+                    ).count()
+
+                    balance_rakes_to_receive = int(log.rake_alloted) - int(dictData["total_rakes_received_for_month"])
+                    dictData["balance_rakes_to_receive"] = balance_rakes_to_receive
+
+                    prev_date_obj = datetime.datetime.strptime(log.month, "%m-%Y")
+
+                    last_month = date_obj.month-1
+                    last_year = date_obj.year
+
+                    if last_month == 0:
+                        last_month = 12
+                        last_year -= 1
+
+                    last_month_date_obj = datetime.datetime(last_year, last_month, 1)
+
+                    last_month_str = last_month_date_obj.strftime("%m-%Y")
+                    last_month = datetime.datetime.strptime(last_month_str, "%m-%Y")
+
+                    if rail_logs:
+                        for rail_log in rail_logs:
+                            # if rail_log.source_type != "":
+                            #     dictData["source_type"] = rail_log.source_type
+                            
+                            today_utc = datetime.datetime.utcnow().replace(hour=0, minute=0, second=0)
+                            end_of_day_utc = today_utc + timedelta(hours=23, minutes=59, seconds=59)
+
+                            dictData["rakes_loaded_till_date"] = RcrData.objects.filter(
+                                month__icontains=formatted_date,
+                                source_type__iexact = log.source_type
+                            ).count()
+
+                            dictData["rakes_received_on_date"] = RcrData.objects.filter(
+                                month__icontains=formatted_date,
+                                avery_placement_date__gte=today_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                                avery_placement_date__lte=end_of_day_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                                source_type__iexact = log.source_type
+                            ).count()
+
+                            dictData["rakes_loaded_on_date"] = RcrData.objects.filter(
+                                drawn_date__gte=today_utc,
+                                drawn_date__lte=end_of_day_utc,
+                                month__icontains=formatted_date,
+                                source_type__iexact = log.source_type
+                            ).count()
+                            dictData["no_of_rakes_in_transist"] = dictData["rakes_loaded_till_date"] - dictData["total_rakes_received_for_month"]
+
+                    listData.append(dictData)
+                # for i, current_month_data in enumerate(listData):
+                #     for j in range(i + 1, len(listData)):
+                #         next_month_data = listData[j]
+                #         if next_month_data["month"] > current_month_data["month"]:
+                #             next_month_data["rakes_previous_month_quota_received"] = current_month_data["balance_rakes_to_receive"]
+                #             break
+
+                listData.sort(key=lambda x: convert_to_date(x['month']))
+
+                # Filter out entries where balance_rakes_to_receive is 0 or less
+                filtered_data = [entry for entry in listData if entry['balance_rakes_to_receive'] > 0]
+
+
+                # Update rakes_previous_month_quota_received with balance_rakes_to_receive from previous month
+                for i in range(1, len(filtered_data)):
+                    filtered_data[i]['rakes_previous_month_quota_received'] = filtered_data[i - 1]['balance_rakes_to_receive']
+
+                filtered_data.reverse()
+
+                dataList = {}
+
+                dataList['data'] = filtered_data
+
+                # Initialize a dictionary to store the totals
+                totals = {
+                    'rakes_previous_month_quota_received': 0,
+                    'rake_planned_for_the_month': 0,
+                    'rakes_loaded_till_date': 0,
+                    'rakes_loaded_on_date': 0,
+                    'rakes_received_on_date': 0,
+                    'total_rakes_received_for_month': 0,
+                    'balance_rakes_to_receive': 0,
+                    'no_of_rakes_in_transist': 0,
+                    'expected_rakes_date': 0,
+                    'expected_rakes_value': 0,
+                }
+
+                # Loop through each record in data and accumulate totals
+                for record in listData:
+                    totals['rakes_previous_month_quota_received'] += record['rakes_previous_month_quota_received']
+                    totals['rake_planned_for_the_month'] += int(record['rake_planned_for_the_month'])
+                    totals['rakes_loaded_till_date'] += record['rakes_loaded_till_date']
+                    totals['rakes_loaded_on_date'] += record['rakes_loaded_on_date']
+                    totals['rakes_received_on_date'] += record['rakes_received_on_date']
+                    totals['total_rakes_received_for_month'] += record['total_rakes_received_for_month']
+                    totals['balance_rakes_to_receive'] += record['balance_rakes_to_receive']
+                    totals['no_of_rakes_in_transist'] += record['no_of_rakes_in_transist']
+                    totals['expected_rakes_value'] += record['expected_rakes_value']
+
+                # Add the totals to dataList
+                dataList['rake_total'] = totals
+
+                # result["labels"] = list(dictData.keys())
+                result["labels"] = [
+                    "month",
+                    "source_type",
+                    "rakes_previous_month_quota_received",
+                    "rake_planned_for_the_month",
+                    "rakes_loaded_till_date",
+                    "rakes_loaded_on_date",
+                    "rakes_received_on_date",
+                    "total_rakes_received_for_month",
+                    "balance_rakes_to_receive",
+                    "no_of_rakes_in_transist",
+                    "expected_rakes_date",
+                    "expected_rakes_value"
+                ]
+                result["datasets"] = dataList
+                result["total"] = len(rcrrakeQuota.objects(data))
+            return result
+
+        elif type == "download":
+            file = datetime.datetime.now().strftime("%d-%m-%Y")
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+            headers = ["month", "source_type", "rakes_previous_month_quota_received", "rake_planned_for_the_month",
+                    "rakes_loaded_till_date", "rakes_loaded_on_date", "rakes_received_on_date", "total_rakes_received_for_month",
+                    "balance_rakes_to_receive", "no_of_rakes_in_transist", "expected_rakes_date", "expected_rakes_value"]
+            # if month_date:
+            #     month_start = datetime.datetime.strptime(month_date, "%Y-%m").replace(day=4)
+            #     month_end = (month_start + timedelta(days=31)).replace(day=3)
+            #     month_end = month_end.replace(hour=23, minute=59, second=59)
+
+            #     rail_logs = RailData.objects(
+            #         placement_date__gte=month_start.strftime("%Y-%m-%dT%H:%M"),
+            #         placement_date__lte=month_end.strftime("%Y-%m-%dT%H:%M"),
+            #     )
+            #     month_check = []
+            #     placement_dates = []
+                
+            #     for log in rail_logs:
+            #         if log.month:
+            #             if len(log.month) == 7:
+            #                 date = datetime.datetime.strptime(log.month, "%Y-%m").strftime("%Y-%m")
+            #             elif len(log.month) == 10:
+            #                 date = datetime.datetime.strptime(log.month, "%Y-%m-%d").strftime("%Y-%m")
+            #         placement_dates.append(date)
+            #         month_check.extend(list(set(placement_dates)))
+            #     current_month = month_start.strftime("%m-%Y")
+            #     month_check.append(current_month)
+            #     data &= Q(month__in=month_check)
+
+            usecase_data = rcrrakeQuota.objects.filter(data).order_by("year", "-month")
+            count = len(usecase_data)
+            path = None
+
+            if usecase_data:
+                try:
+                    path = os.path.join(
+                        "static_server",
+                        "gmr_ai",
+                        file,
+                        f"Rcr_Rake_Quota_{datetime.datetime.now().strftime('%Y-%m-%d:%H:%M:%S')}.xlsx",
+                    )
+                    filename = os.path.join(os.getcwd(), path)
+                    workbook = xlsxwriter.Workbook(filename)
+                    workbook.use_zip64()
+                    cell_format2 = workbook.add_format({'bold': True, 'font_size': 10, 'align': 'center', 'valign': 'vcenter'})
+                    cell_format = workbook.add_format({'font_size': 10, 'align': 'center', 'valign': 'vcenter'})
+
+                    worksheet = workbook.add_worksheet()
+                    worksheet.set_column("A:AZ", 20)
+                    worksheet.set_default_row(50)
+
+                    for index, header in enumerate(headers):
+                        worksheet.write(0, index, header, cell_format2)
+
+                    listData = []
+                    for row, query in enumerate(usecase_data, start=1):
+                        dictData = {
+                            "month": "", "source_type": "", "rakes_previous_month_quota_received": 0, 
+                            "rake_planned_for_the_month": "", "rakes_loaded_till_date": 0, "rakes_loaded_on_date": 0, 
+                            "rakes_received_on_date": 0, "total_rakes_received_for_month": 0, 
+                            "balance_rakes_to_receive": 0, "no_of_rakes_in_transist": 0, "expected_rakes_date": 0, "expected_rakes_value": 0
+                        }
+                        
+                        month_year = f"{query.year}-{query.month[:2].upper()}"
+                        date_obj = datetime.datetime.strptime(month_year, "%Y-%m")
+                        formatted_date = date_obj.strftime("%Y-%m")
+                        rail_logs = RcrData.objects.filter(drawn_date__icontains=formatted_date)
+
+                        dictData["month"] = month_year
+                        dictData["rake_planned_for_the_month"] = query.rake_alloted
+                        if query.expected_rakes:
+                            dictData["expected_rakes_date"] = list(query.expected_rakes.keys())[0]
+                            dictData["expected_rakes_value"] = list(query.expected_rakes.values())[0]
+                        if rail_logs:
+                            for rail_log in rail_logs:
+                                if rail_log.source_type != "":
+                                    dictData["source_type"] = rail_log.source_type
+                                rakes_loaded_till_date = RcrData.objects.filter(
+                                    month__icontains=formatted_date,
+                                    source_type__iexact = log.source_type
+                                ).count()
+                                dictData["rakes_loaded_till_date"] = rakes_loaded_till_date
+                                rakes_loaded_on_date = RcrData.objects.filter(
+                                    drawn_date__gte=f"{datetime.datetime.today().strftime('%Y-%m-%d')}T00:00",
+                                    drawn_date__lte=f"{datetime.datetime.today().strftime('%Y-%m-%d')}T23:59",
+                                    month__icontains=formatted_date,
+                                    source_type__iexact = log.source_type
+                                ).count()
+                                dictData["rakes_loaded_on_date"] = rakes_loaded_on_date
+                                dictData["no_of_rakes_in_transist"] = rakes_loaded_till_date - dictData["total_rakes_received_for_month"]
+
+                        balance_rakes_to_receive = int(query.rake_alloted) - dictData["total_rakes_received_for_month"]
+                        dictData["balance_rakes_to_receive"] = balance_rakes_to_receive
+
+                        prev_month_log = rcrrakeQuota.objects.filter(
+                            month=(date_obj.replace(day=1) - datetime.timedelta(days=1)).strftime("%b-%Y").upper()
+                        ).first()
+
+                        if prev_month_log:
+                            dictData["rakes_previous_month_quota_received"] = int(prev_month_log.rake_alloted)
+
+                        worksheet.write(row, 0, dictData["month"], cell_format)
+                        worksheet.write(row, 1, dictData["source_type"], cell_format)
+                        worksheet.write(row, 2, dictData["rakes_previous_month_quota_received"], cell_format)
+                        worksheet.write(row, 3, dictData["rake_planned_for_the_month"], cell_format)
+                        worksheet.write(row, 4, dictData["rakes_loaded_till_date"], cell_format)
+                        worksheet.write(row, 5, dictData["rakes_loaded_on_date"], cell_format)
+                        worksheet.write(row, 6, dictData["rakes_received_on_date"], cell_format)
+                        worksheet.write(row, 7, dictData["total_rakes_received_for_month"], cell_format)
+                        worksheet.write(row, 8, dictData["balance_rakes_to_receive"], cell_format)
+                        worksheet.write(row, 9, dictData["no_of_rakes_in_transist"], cell_format)
+                        worksheet.write(row, 10, dictData["expected_rakes_date"], cell_format)
+                        worksheet.write(row, 11, dictData["expected_rakes_value"], cell_format)
+
+                        listData.append(dictData)
+
+                    workbook.close()
+                    console_logger.debug(f"Successfully {service_id} report generated")
+                    console_logger.debug(f"Sent data {path}")
+
+                    return {
+                        "Type": "Rcr_Rake_quota_download_event",
+                        "Datatype": "Report",
+                        "File_Path": path,
+                    }
+
+                except Exception as e:
+                    console_logger.debug(e)
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+                    console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+                
+            else:
+                console_logger.error("No data found")
+                return {
+                    "Type": "Rcr_Rake_quota_download_event",
+                    "Datatype": "Report",
+                    "File_Path": path,
+                }
+
+    except Exception as e:
+        console_logger.debug("----- Fetch Rcr Rake Quota Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
     
 @router.get("/fetch/rake/quota/test", tags=["Rail Map"])
 def end_point_to_fetch_rake_quota_test(response: Response, 
@@ -17946,6 +24081,8 @@ def end_point_to_fetch_rake_quota_test(response: Response,
                     dictData["month"] = datetime.datetime.strptime(log.month, "%m-%Y").strftime("%b-%Y")
                     dictData["valid_upto"] = log.valid_upto
                     dictData["rake_planned_for_the_month"] = int(log.rake_alloted)
+                    if log.source_type:
+                        dictData["source_type"] = log.source_type
                     if log.expected_rakes:
                         dictData["expected_rakes_date"] = list(log.expected_rakes.keys())[0]
                         dictData["expected_rakes_value"] = list(log.expected_rakes.values())[0]
@@ -17962,7 +24099,8 @@ def end_point_to_fetch_rake_quota_test(response: Response,
                     # Ensure 'avery_placement_date' is stored as a string, then cast it to a datetime object for comparison
                     dictData["total_rakes_received_for_month"] = RailData.objects.filter(
                         Q(month__icontains=formatted_date) & 
-                        Q(avery_placement_date__ne=None)
+                        Q(avery_placement_date__ne=None) &
+                        Q(source_type__iexact = log.source_type)
                         # Q(avery_placement_date__gte=start_date_time.strftime("%Y-%m-%d %H:%M:%S")) &
                         # Q(avery_placement_date__lte=end_date_time.strftime("%Y-%m-%d %H:%M:%S"))
                     ).count()
@@ -17986,14 +24124,15 @@ def end_point_to_fetch_rake_quota_test(response: Response,
 
                     if rail_logs:
                         for rail_log in rail_logs:
-                            if rail_log.source_type != "":
-                                dictData["source_type"] = rail_log.source_type
+                            # if rail_log.source_type != "":
+                            #     dictData["source_type"] = rail_log.source_type
                             
                             today_utc = datetime.datetime.utcnow().replace(hour=0, minute=0, second=0)
                             end_of_day_utc = today_utc + timedelta(hours=23, minutes=59, seconds=59)
 
                             dictData["rakes_loaded_till_date"] = RailData.objects.filter(
-                                month__icontains=formatted_date
+                                month__icontains=formatted_date,
+                                source_type__iexact = log.source_type,
                             ).count()
 
                             # console_logger.debug(today_utc.strftime("%Y-%m-%d %H:%M:%S"))
@@ -18003,12 +24142,14 @@ def end_point_to_fetch_rake_quota_test(response: Response,
                                 month__icontains=formatted_date,
                                 avery_placement_date__gte=today_utc.strftime("%Y-%m-%d %H:%M:%S"),
                                 avery_placement_date__lte=end_of_day_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                                source_type__iexact = log.source_type,
                             ).count()
 
                             dictData["rakes_loaded_on_date"] = RailData.objects.filter(
                                 drawn_date__gte=today_utc,
                                 drawn_date__lte=end_of_day_utc,
                                 month__icontains=formatted_date,
+                                source_type__iexact = log.source_type,
                             ).count()
                             dictData["no_of_rakes_in_transist"] = dictData["rakes_loaded_till_date"] - dictData["total_rakes_received_for_month"]
 
@@ -18224,6 +24365,382 @@ def end_point_to_fetch_rake_quota_test(response: Response,
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
 
+@router.get("/fetch/rake/quota/test", tags=["Rail Map"])
+def end_point_to_fetch_rcr_rake_quota_pdf(response: Response, 
+                currentPage: Optional[int] = None,
+                perPage: Optional[int] = None,
+                # search_text: Optional[str] = None,
+                month_date: Optional[str] = None,
+                start_timestamp: Optional[str] = None,
+                end_timestamp: Optional[str] = None,
+                type: Optional[str] = "display"):
+    try:
+        data = Q()
+        result = {        
+                "labels": [],
+                "datasets": [],
+                "total": 0,
+                "page_size": 15
+        }
+
+        if type and type == "display":
+
+            page_no = 1
+            page_len = result["page_size"]
+
+            if currentPage:
+                page_no = currentPage
+
+            if perPage:
+                page_len = perPage
+                result["page_size"] = perPage
+
+            # if month_date:
+            #     month_start = datetime.datetime.strptime(month_date, "%Y-%m").replace(day=4)
+            #     month_end = (month_start + timedelta(days=31)).replace(day=3)
+            #     month_end = month_end.replace(hour=23, minute=59, second=59)
+
+            #     rail_logs = RailData.objects(
+            #         placement_date__gte=month_start.strftime("%Y-%m-%dT%H:%M"),
+            #         placement_date__lte=month_end.strftime("%Y-%m-%dT%H:%M"),
+            #     )
+            #     month_check = []
+            #     placement_dates = []
+                
+            #     for log in rail_logs:
+            #         if log.month:
+            #             if len(log.month) == 7:
+            #                 date = datetime.datetime.strptime(log.month, "%Y-%m").strftime("%Y-%m")
+            #             elif len(log.month) == 10:
+            #                 date = datetime.datetime.strptime(log.month, "%Y-%m-%d").strftime("%Y-%m")
+            #             placement_dates.append(date)
+
+            #         month_check.extend(list(set(placement_dates)))
+            #     current_month = month_start.strftime("%m-%Y")
+            #     month_check.append(current_month)
+            #     data &= Q(month__in=month_check)
+
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M", "Asia/Kolkata", False)
+                data &= Q(created_at__gte=start_date)
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M", "Asia/Kolkata", False)
+                data &= Q(created_at__lte=end_date)
+
+            offset = (page_no - 1) * page_len
+            logs = (
+                rcrrakeQuota.objects(data)
+                .order_by("year", "month")
+                .skip(offset)
+                .limit(page_len)
+            )
+            listData = []
+            if logs:
+                for log in logs:
+                    dictData = {"month": "", "source_type": "", "rakes_previous_month_quota_received": 0, 
+                                "rake_planned_for_the_month": "","rakes_loaded_till_date": 0, 
+                                "rakes_loaded_on_date": 0, "rakes_received_on_date": 0, 
+                                "total_rakes_received_for_month": 0, "balance_rakes_to_receive": 0, 
+                                "no_of_rakes_in_transist": 0, "expected_rakes_date": 0, 
+                                "expected_rakes_value": 0}
+                    rake_year = log.year
+                    rake_month = log.month
+
+                    month_year = f"{rake_year}-{rake_month[:2].upper()}"
+                    date_obj = datetime.datetime.strptime(month_year, "%Y-%m")
+                    prev_date_obj = date_obj - datetime.timedelta(days=1)
+                    prev_month_year = prev_date_obj.strftime("%Y-%m")
+
+                    formatted_date = date_obj.strftime("%Y-%m")
+                    rail_logs = RcrData.objects.filter(placement_date__icontains=formatted_date)
+                    dictData["month"] = datetime.datetime.strptime(log.month, "%m-%Y").strftime("%b-%Y")
+                    dictData["valid_upto"] = log.valid_upto
+                    dictData["rake_planned_for_the_month"] = int(log.rake_alloted)
+                    if log.source_type:
+                        dictData["source_type"] = log.source_type
+                    if log.expected_rakes:
+                        dictData["expected_rakes_date"] = list(log.expected_rakes.keys())[0]
+                        dictData["expected_rakes_value"] = list(log.expected_rakes.values())[0]
+                    
+                    currentDate = datetime.datetime.now()
+
+                    # Get the first day of the current month
+                    start_date_time = datetime.datetime(currentDate.year, currentDate.month, 1)
+
+                    # Get the last day of the current month
+                    _, last_day = calendar.monthrange(currentDate.year, currentDate.month)
+                    end_date_time = datetime.datetime(currentDate.year, currentDate.month, last_day, 23, 59, 59)
+
+                    # Ensure 'avery_placement_date' is stored as a string, then cast it to a datetime object for comparison
+                    dictData["total_rakes_received_for_month"] = RcrData.objects.filter(
+                        Q(month__icontains=formatted_date) & 
+                        Q(avery_placement_date__ne=None) &
+                        Q(source_type__iexact = log.source_type)
+                        # Q(avery_placement_date__gte=start_date_time.strftime("%Y-%m-%d %H:%M:%S")) &
+                        # Q(avery_placement_date__lte=end_date_time.strftime("%Y-%m-%d %H:%M:%S"))
+                    ).count()
+
+                    balance_rakes_to_receive = int(log.rake_alloted) - int(dictData["total_rakes_received_for_month"])
+                    dictData["balance_rakes_to_receive"] = balance_rakes_to_receive
+
+                    prev_date_obj = datetime.datetime.strptime(log.month, "%m-%Y")
+
+                    last_month = date_obj.month-1
+                    last_year = date_obj.year
+
+                    if last_month == 0:
+                        last_month = 12
+                        last_year -= 1
+
+                    last_month_date_obj = datetime.datetime(last_year, last_month, 1)
+
+                    last_month_str = last_month_date_obj.strftime("%m-%Y")
+                    last_month = datetime.datetime.strptime(last_month_str, "%m-%Y")
+
+                    if rail_logs:
+                        for rail_log in rail_logs:
+                            # if rail_log.source_type != "":
+                            #     dictData["source_type"] = rail_log.source_type
+                            
+                            today_utc = datetime.datetime.utcnow().replace(hour=0, minute=0, second=0)
+                            end_of_day_utc = today_utc + timedelta(hours=23, minutes=59, seconds=59)
+
+                            dictData["rakes_loaded_till_date"] = RcrData.objects.filter(
+                                month__icontains=formatted_date,
+                                source_type__iexact = log.source_type,
+                            ).count()
+
+                            # console_logger.debug(today_utc.strftime("%Y-%m-%d %H:%M:%S"))
+                            # console_logger.debug(end_of_day_utc.strftime("%Y-%m-%d %H:%M:%S"))
+
+                            dictData["rakes_received_on_date"] = RcrData.objects.filter(
+                                month__icontains=formatted_date,
+                                avery_placement_date__gte=today_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                                avery_placement_date__lte=end_of_day_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                                source_type__iexact = log.source_type,
+                            ).count()
+
+                            dictData["rakes_loaded_on_date"] = RcrData.objects.filter(
+                                drawn_date__gte=today_utc,
+                                drawn_date__lte=end_of_day_utc,
+                                month__icontains=formatted_date,
+                                source_type__iexact = log.source_type,
+                            ).count()
+                            dictData["no_of_rakes_in_transist"] = dictData["rakes_loaded_till_date"] - dictData["total_rakes_received_for_month"]
+
+                    listData.append(dictData)
+                # console_logger.debug(listData)
+                # for i, current_month_data in enumerate(listData):
+                #     for j in range(i + 1, len(listData)):
+                #         next_month_data = listData[j]
+                #         if next_month_data["month"] > current_month_data["month"]:
+                #             next_month_data["rakes_previous_month_quota_received"] = current_month_data["balance_rakes_to_receive"]
+                #             break
+
+                listData.sort(key=lambda x: convert_to_date(x['month']))
+
+                # Filter out entries where balance_rakes_to_receive is 0 or less
+                filtered_data = [entry for entry in listData if entry['balance_rakes_to_receive'] > 0]
+
+                # Update rakes_previous_month_quota_received with balance_rakes_to_receive from previous month
+                for i in range(1, len(filtered_data)):
+                    filtered_data[i]['rakes_previous_month_quota_received'] = filtered_data[i - 1]['balance_rakes_to_receive']
+
+                filtered_data.reverse()
+
+                # # Filter out entries where balance_rakes_to_receive is 0 or less
+                # filtered_data = [entry for entry in listData if entry['balance_rakes_to_receive'] > 0]
+
+                dataList = {}
+
+                dataList['data'] = filtered_data
+
+                # Initialize a dictionary to store the totals
+                totals = {
+                    'sum_rakes_previous_month_quota_received': 0,
+                    'sum_rake_planned_for_the_month': 0,
+                    'sum_rakes_loaded_till_date': 0,
+                    'sum_rakes_loaded_on_date': 0,
+                    'sum_rakes_received_on_date': 0,
+                    'sum_total_rakes_received_for_month': 0,
+                    'sum_balance_rakes_to_receive': 0,
+                    'sum_no_of_rakes_in_transist': 0,
+                    'sum_expected_rakes_date': 0,
+                    'sum_expected_rakes_value': 0,
+                }
+
+                # Loop through each record in data and accumulate totals
+                for record in listData:
+                    totals['sum_rakes_previous_month_quota_received'] += record['rakes_previous_month_quota_received']
+                    totals['sum_rake_planned_for_the_month'] += int(record['rake_planned_for_the_month'])
+                    totals['sum_rakes_loaded_till_date'] += record['rakes_loaded_till_date']
+                    totals['sum_rakes_loaded_on_date'] += record['rakes_loaded_on_date']
+                    totals['sum_rakes_received_on_date'] += record['rakes_received_on_date']
+                    totals['sum_total_rakes_received_for_month'] += record['total_rakes_received_for_month']
+                    totals['sum_balance_rakes_to_receive'] += record['balance_rakes_to_receive']
+                    totals['sum_no_of_rakes_in_transist'] += record['no_of_rakes_in_transist']
+                    totals['sum_expected_rakes_date'] += record['expected_rakes_date']
+                    totals['sum_expected_rakes_value'] += record['expected_rakes_value']
+
+                # Add the totals to dataList
+                dataList['rake_total'] = totals
+
+                result["labels"] = list(dictData.keys())
+                result["datasets"] = dataList
+                result["total"] = len(rcrrakeQuota.objects(data))
+            return result
+        elif type == "download":
+            file = datetime.datetime.now().strftime("%d-%m-%Y")
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+            headers = ["month", "source_type", "rakes_previous_month_quota_received", "rake_planned_for_the_month",
+                    "rakes_loaded_till_date", "rakes_loaded_on_date", "rakes_received_on_date", "total_rakes_received_for_month",
+                    "balance_rakes_to_receive", "no_of_rakes_in_transist", "expected_rakes_date", "expected_rakes_value"]
+            if month_date:
+                month_start = datetime.datetime.strptime(month_date, "%Y-%m").replace(day=4)
+                month_end = (month_start + timedelta(days=31)).replace(day=3)
+                month_end = month_end.replace(hour=23, minute=59, second=59)
+
+                rail_logs = RailData.objects(
+                    placement_date__gte=month_start.strftime("%Y-%m-%dT%H:%M"),
+                    placement_date__lte=month_end.strftime("%Y-%m-%dT%H:%M"),
+                )
+                month_check = []
+                placement_dates = []
+                
+                for log in rail_logs:
+                    if log.month:
+                        if len(log.month) == 7:
+                            date = datetime.datetime.strptime(log.month, "%Y-%m").strftime("%Y-%m")
+                        elif len(log.month) == 10:
+                            date = datetime.datetime.strptime(log.month, "%Y-%m-%d").strftime("%Y-%m")
+                    placement_dates.append(date)
+                    month_check.extend(list(set(placement_dates)))
+                current_month = month_start.strftime("%m-%Y")
+                month_check.append(current_month)
+                data &= Q(month__in=month_check)
+
+            usecase_data = rakeQuota.objects.filter(data).order_by("year", "-month")
+            count = len(usecase_data)
+            path = None
+
+            if usecase_data:
+                try:
+                    path = os.path.join(
+                        "static_server",
+                        "gmr_ai",
+                        file,
+                        f"Rake_Quota_{datetime.datetime.now().strftime('%Y-%m-%d:%H:%M:%S')}.xlsx",
+                    )
+                    filename = os.path.join(os.getcwd(), path)
+                    workbook = xlsxwriter.Workbook(filename)
+                    workbook.use_zip64()
+                    cell_format2 = workbook.add_format({'bold': True, 'font_size': 10, 'align': 'center', 'valign': 'vcenter'})
+                    cell_format = workbook.add_format({'font_size': 10, 'align': 'center', 'valign': 'vcenter'})
+
+                    worksheet = workbook.add_worksheet()
+                    worksheet.set_column("A:AZ", 20)
+                    worksheet.set_default_row(50)
+
+                    for index, header in enumerate(headers):
+                        worksheet.write(0, index, header, cell_format2)
+
+                    listData = []
+                    for row, query in enumerate(usecase_data, start=1):
+                        dictData = {
+                            "month": "", "source_type": "", "rakes_previous_month_quota_received": 0, 
+                            "rake_planned_for_the_month": "", "rakes_loaded_till_date": 0, "rakes_loaded_on_date": 0, 
+                            "rakes_received_on_date": 0, "total_rakes_received_for_month": 0, 
+                            "balance_rakes_to_receive": 0, "no_of_rakes_in_transist": 0, "expected_rakes_date": 0, "expected_rakes_value": 0
+                        }
+                        
+                        month_year = f"{query.year}-{query.month[:2].upper()}"
+                        date_obj = datetime.datetime.strptime(month_year, "%Y-%m")
+                        formatted_date = date_obj.strftime("%Y-%m")
+                        rail_logs = RailData.objects.filter(drawn_date__icontains=formatted_date)
+
+                        dictData["month"] = month_year
+                        dictData["rake_planned_for_the_month"] = query.rake_alloted
+                        if query.expected_rakes:
+                            dictData["expected_rakes_date"] = list(query.expected_rakes.keys())[0]
+                            dictData["expected_rakes_value"] = list(query.expected_rakes.values())[0]
+                        if rail_logs:
+                            for rail_log in rail_logs:
+                                if rail_log.source_type != "":
+                                    dictData["source_type"] = rail_log.source_type
+                                rakes_loaded_till_date = RailData.objects.filter(
+                                    month__icontains=formatted_date
+                                ).count()
+                                dictData["rakes_loaded_till_date"] = rakes_loaded_till_date
+                                rakes_loaded_on_date = RailData.objects.filter(
+                                    drawn_date__gte=f"{datetime.datetime.today().strftime('%Y-%m-%d')}T00:00",
+                                    drawn_date__lte=f"{datetime.datetime.today().strftime('%Y-%m-%d')}T23:59"
+                                ).count()
+                                dictData["rakes_loaded_on_date"] = rakes_loaded_on_date
+                                dictData["no_of_rakes_in_transist"] = rakes_loaded_till_date - dictData["total_rakes_received_for_month"]
+
+                        balance_rakes_to_receive = int(query.rake_alloted) - dictData["total_rakes_received_for_month"]
+                        dictData["balance_rakes_to_receive"] = balance_rakes_to_receive
+
+                        prev_month_log = rakeQuota.objects.filter(
+                            month=(date_obj.replace(day=1) - datetime.timedelta(days=1)).strftime("%b-%Y").upper()
+                        ).first()
+
+                        if prev_month_log:
+                            dictData["rakes_previous_month_quota_received"] = int(prev_month_log.rake_alloted)
+
+                        worksheet.write(row, 0, dictData["month"], cell_format)
+                        worksheet.write(row, 1, dictData["source_type"], cell_format)
+                        worksheet.write(row, 2, dictData["rakes_previous_month_quota_received"], cell_format)
+                        worksheet.write(row, 3, dictData["rake_planned_for_the_month"], cell_format)
+                        worksheet.write(row, 4, dictData["rakes_loaded_till_date"], cell_format)
+                        worksheet.write(row, 5, dictData["rakes_loaded_on_date"], cell_format)
+                        worksheet.write(row, 6, dictData["rakes_received_on_date"], cell_format)
+                        worksheet.write(row, 7, dictData["total_rakes_received_for_month"], cell_format)
+                        worksheet.write(row, 8, dictData["balance_rakes_to_receive"], cell_format)
+                        worksheet.write(row, 9, dictData["no_of_rakes_in_transist"], cell_format)
+                        worksheet.write(row, 10, dictData["expected_rakes_date"], cell_format)
+                        worksheet.write(row, 11, dictData["expected_rakes_value"], cell_format)
+
+                        listData.append(dictData)
+
+                    workbook.close()
+                    console_logger.debug(f"Successfully {service_id} report generated")
+                    console_logger.debug(f"Sent data {path}")
+
+                    return {
+                        "Type": "Rake_quota_download_event",
+                        "Datatype": "Report",
+                        "File_Path": path,
+                    }
+
+                except Exception as e:
+                    console_logger.debug(e)
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+                    console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+                
+            else:
+                console_logger.error("No data found")
+                return {
+                    "Type": "Rake_quota_download_event",
+                    "Datatype": "Report",
+                    "File_Path": path,
+                }
+
+    except Exception as e:
+        console_logger.debug("----- Fetch Rake Quota Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
 
 @router.post("/insert/rake/quota", tags=["Rail Map"])
 def endpoint_to_insert_rake_quota(response:Response, data:rakeQuotaManual):
@@ -18286,6 +24803,63 @@ def extract_quota_rail(file):
         return e
 
 
+# @router.post("/rail/rakequotaupload", tags=["Rail Map"])
+# async def endpoint_to_upload_rake_data(response: Response, pdf_upload: Optional[UploadFile] = File(None)):
+#     try:
+#         if pdf_upload is None:
+#             return {"error": "No file uploaded"}
+#         contents = await pdf_upload.read()
+
+#         if not contents:
+#             return {"error": "Uploaded file is empty"}
+
+#         if not pdf_upload.filename.endswith(('.pdf','.PDF')):
+#             return {"error": "Uploaded file is not a PDF"}
+        
+#         file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+#         target_directory = f"static_server/gmr_ai/{file}"
+#         os.umask(0)
+#         os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+#         file_extension = pdf_upload.filename.split(".")[-1]
+#         file_name = f'rake_quota_upload_{datetime.datetime.now().strftime("%Y-%m-%d:%H:%M")}.{file_extension}'
+#         full_path = os.path.join(os.getcwd(), target_directory, file_name)
+#         with open(full_path, "wb") as file_object:
+#             file_object.write(contents)
+#         fetchPdfData = extract_quota_rail(full_path)
+#         console_logger.debug(fetchPdfData)
+#         if fetchPdfData:
+#             try:
+#                 checkRakeRecords = rakeQuota.objects.get(month=fetchPdfData.get("date"))
+#                 # checkRakeRecords.month = fetchPdfData.get("date")
+#                 checkRakeRecords.month = datetime.datetime.strptime(fetchPdfData.get("date"), "%b-%Y").strftime("%m-%Y")
+#                 checkRakeRecords.year = fetchPdfData.get("date").split("-")[1]
+#                 checkRakeRecords.valid_upto = fetchPdfData.get("valid")
+#                 checkRakeRecords.coal_field = fetchPdfData.get("coal_field")
+#                 checkRakeRecords.rake_alloted = fetchPdfData.get("no_rake").split("Rakes")[0]
+#                 checkRakeRecords.grade = fetchPdfData.get("coal_grade")
+#                 checkRakeRecords.save()
+#             except DoesNotExist as e:
+#                 insertRakeRecords = rakeQuota(
+#                     # month=fetchPdfData.get("date"),
+#                     month=datetime.datetime.strptime(fetchPdfData.get("date"), "%b-%Y").strftime("%m-%Y"),
+#                     year=fetchPdfData.get("date").split("-")[1],
+#                     valid_upto=fetchPdfData.get("valid"),
+#                     coal_field=fetchPdfData.get("coal_field"),
+#                     rake_alloted=fetchPdfData.get("no_rake").split("Rakes")[0],
+#                     grade=fetchPdfData.get("coal_grade"),
+#                     ID=rakeQuota.objects.count() + 1)
+#                 insertRakeRecords.save()
+#         return {"details": "success"}
+#     except Exception as e:
+#         console_logger.debug("----- Rake Quota Upload Error -----",e)
+#         response.status_code = 400
+#         exc_type, exc_obj, exc_tb = sys.exc_info()
+#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#         return e
+
 @router.post("/rail/rakequotaupload", tags=["Rail Map"])
 async def endpoint_to_upload_rake_data(response: Response, pdf_upload: Optional[UploadFile] = File(None)):
     try:
@@ -18310,26 +24884,82 @@ async def endpoint_to_upload_rake_data(response: Response, pdf_upload: Optional[
         with open(full_path, "wb") as file_object:
             file_object.write(contents)
         fetchPdfData = extract_quota_rail(full_path)
-        if fetchPdfData:
+        # console_logger.debug(fetchPdfData)
+        return fetchPdfData
+    except Exception as e:
+        console_logger.debug("----- Rake Quota Upload Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.post("/rail/rcrrakequotaupload", tags=["Rail Map"])
+async def endpoint_to_upload_rcr_rake_data(response: Response, pdf_upload: Optional[UploadFile] = File(None)):
+    try:
+        if pdf_upload is None:
+            return {"error": "No file uploaded"}
+        
+        contents = await pdf_upload.read()
+
+        if not contents:
+            return {"error": "Uploaded file is empty"}
+
+        if not pdf_upload.filename.endswith(('.pdf','.PDF')):
+            return {"error": "Uploaded file is not a PDF"}
+        
+        file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+        target_directory = f"static_server/gmr_ai/{file}"
+        os.umask(0)
+        os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+        file_extension = pdf_upload.filename.split(".")[-1]
+        file_name = f'rcr_rake_quota_upload_{datetime.datetime.now().strftime("%Y-%m-%d:%H:%M")}.{file_extension}'
+        full_path = os.path.join(os.getcwd(), target_directory, file_name)
+        with open(full_path, "wb") as file_object:
+            file_object.write(contents)
+        fetchPdfData = extract_quota_rail(full_path)
+        # console_logger.debug(fetchPdfData)
+        return fetchPdfData
+    except Exception as e:
+        console_logger.debug("----- Rcr Rake Quota Upload Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.post("/update/rail/rakequotaupload", tags=["Rail Map"])
+async def endpoint_to_upload_rake_data(response: Response, data: rakequotaUpload):
+    try:
+        payload = data.dict()
+        console_logger.debug(payload)
+        if payload:
             try:
-                checkRakeRecords = rakeQuota.objects.get(month=fetchPdfData.get("date"))
+                checkRakeRecords = rakeQuota.objects.get(month=payload.get("month"))
                 # checkRakeRecords.month = fetchPdfData.get("date")
-                checkRakeRecords.month = datetime.datetime.strptime(fetchPdfData.get("date"), "%b-%Y").strftime("%m-%Y")
-                checkRakeRecords.year = fetchPdfData.get("date").split("-")[1]
-                checkRakeRecords.valid_upto = fetchPdfData.get("valid")
-                checkRakeRecords.coal_field = fetchPdfData.get("coal_field")
-                checkRakeRecords.rake_alloted = fetchPdfData.get("no_rake").split("Rakes")[0]
-                checkRakeRecords.grade = fetchPdfData.get("coal_grade")
+                # checkRakeRecords.month = datetime.datetime.strptime(payload.get("month"), "%b-%Y").strftime("%m-%Y")
+                checkRakeRecords.year = payload.get("year")
+                checkRakeRecords.valid_upto = payload.get("valid")
+                checkRakeRecords.coal_field = payload.get("coal_field")
+                checkRakeRecords.rake_alloted = payload.get("rake_alloted")
+                checkRakeRecords.grade = payload.get("grade")
+                checkRakeRecords.source_type = payload.get("source_type")
                 checkRakeRecords.save()
             except DoesNotExist as e:
                 insertRakeRecords = rakeQuota(
                     # month=fetchPdfData.get("date"),
-                    month=datetime.datetime.strptime(fetchPdfData.get("date"), "%b-%Y").strftime("%m-%Y"),
-                    year=fetchPdfData.get("date").split("-")[1],
-                    valid_upto=fetchPdfData.get("valid"),
-                    coal_field=fetchPdfData.get("coal_field"),
-                    rake_alloted=fetchPdfData.get("no_rake").split("Rakes")[0],
-                    grade=fetchPdfData.get("coal_grade"),
+                    month=payload.get("month"),
+                    year=payload.get("year"),
+                    valid_upto=payload.get("valid"),
+                    coal_field=payload.get("coal_field"),
+                    rake_alloted=payload.get("rake_alloted"),
+                    grade=payload.get("grade"),
+                    source_type=payload.get("source_type"),
                     ID=rakeQuota.objects.count() + 1)
                 insertRakeRecords.save()
         return {"details": "success"}
@@ -18341,6 +24971,69 @@ async def endpoint_to_upload_rake_data(response: Response, pdf_upload: Optional[
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
+
+
+@router.post("/update/rail/rcrrakequotaupload", tags=["Rail Map"])
+async def endpoint_to_upload_rcr_rake_data(response: Response, data: rakequotaUpload):
+    try:
+        payload = data.dict()
+        if payload:
+            try:
+                checkRakeRecords = rcrrakeQuota.objects.get(month=payload.get("month"))
+                # checkRakeRecords.month = fetchPdfData.get("date")
+                # checkRakeRecords.month = datetime.datetime.strptime(payload.get("month"), "%b-%Y").strftime("%m-%Y")
+                checkRakeRecords.year = payload.get("year")
+                checkRakeRecords.valid_upto = payload.get("valid")
+                checkRakeRecords.coal_field = payload.get("coal_field")
+                checkRakeRecords.rake_alloted = payload.get("rake_alloted")
+                checkRakeRecords.grade = payload.get("grade")
+                checkRakeRecords.source_type = payload.get("source_type")
+                checkRakeRecords.save()
+            except DoesNotExist as e:
+                insertRakeRecords = rcrrakeQuota(
+                    # month=fetchPdfData.get("date"),
+                    month=payload.get("month"),
+                    year=payload.get("year"),
+                    valid_upto=payload.get("valid"),
+                    coal_field=payload.get("coal_field"),
+                    rake_alloted=payload.get("rake_alloted"),
+                    grade=payload.get("grade"),
+                    source_type=payload.get("source_type"),
+                    ID=rcrrakeQuota.objects.count() + 1)
+                insertRakeRecords.save()
+        return {"details": "success"}
+    except Exception as e:
+        console_logger.debug("----- Rake Quota Upload Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.get("/fetch/sourcetype/rake", tags=['Rail Map'])
+def endpoint_to_fetch_source_type_rake(response: Response):
+    try:
+        listData = []
+        checkSourceType = rakeQuota.objects.only("source_type")
+        checkRcrSourceType = rcrrakeQuota.objects.only("source_type")
+        for single_data in checkSourceType:
+            if single_data.source_type:
+                listData.append(single_data.source_type)
+        for single_rcr_data in checkRcrSourceType:
+            if single_rcr_data.source_type:
+                listData.append(single_rcr_data.source_type)
+        return list(set(listData))
+    except Exception as e:
+        console_logger.debug("----- Rake Quota Source Type Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+    
 
 
 def extract_with_regex_rcr(pattern, text, group_index=1):
@@ -18481,6 +25174,8 @@ async def endpoint_to_upload_sap_data(response: Response, pdf_upload: Optional[U
 
         fetchRcrData = extract_fields_rcr_data(full_path)
 
+        console_logger.debug(fetchRcrData)
+
         if fetchRcrData:
             try:
                 checkRcrRecords = sapRecordsRCR.objects.get(rr_no=fetchRcrData.get("rr_no"))
@@ -18594,9 +25289,12 @@ async def endpoint_to_upload_rail_data(response: Response, pdf_upload: List[Uplo
 
             fetchRailData = extract_fields_rail(full_path)
             # console_logger.debug(fetchRailData)
+            # console_logger.debug(fetchRailData.get("rr_no"))
+            # console_logger.debug(fetchRailData.get("siding"))
             if fetchRailData:
                 try:
-                    checkRailSapRecords = sapRecordsRail.objects.get(rr_no=fetchRailData.get("rr_no"))
+                    checkRailSapRecords = sapRecordsRail.objects.get(rr_no=fetchRailData.get("rr_no"), siding=fetchRailData.get("siding"))
+                    # checkRailSapRecords = sapRecordsRail.objects.get(rr_no=fetchRailData.get("rr_no"))
                     checkRailSapRecords.month = datetime.datetime.strptime(fetchRailData.get("sale_order_date"), "%b %d, %Y").strftime("%Y-%m-%d")
                     checkRailSapRecords.rr_date = datetime.datetime.strptime(fetchRailData.get("rr_date"), '%b %d, %Y').strftime('%Y-%m-%d')
                     checkRailSapRecords.siding = fetchRailData.get("siding")
@@ -18619,7 +25317,7 @@ async def endpoint_to_upload_rail_data(response: Response, pdf_upload: List[Uplo
                     insertRailSapRecords.save()
             
                 try:
-                    checkRailData = RailData.objects(rr_no=fetchRailData.get("rr_no"))
+                    checkRailData = RailData.objects(rr_no=fetchRailData.get("rr_no"), siding=fetchRailData.get("siding"))
                     for singleCheckRailData in checkRailData:
                         singleCheckRailData.month = datetime.datetime.strptime(fetchRailData.get("sale_order_date"), '%b %d, %Y').strftime('%Y-%m-%d')
                         singleCheckRailData.rr_date = datetime.datetime.strptime(fetchRailData.get("rr_date"), '%b %d, %Y').strftime('%Y-%m-%d')
@@ -18694,16 +25392,16 @@ def endpoint_to_fetch_saprcr_data(response: Response, currentPage: Optional[int]
             offset = (page_no - 1) * page_len
             # listData = []
             logs = (
-                sapRecordsRCR.objects(data)
+                RcrData.objects(data)
                 .order_by("-created_at")
                 .skip(offset)
                 .limit(page_len)
             )   
             if any(logs):
                 for log in logs:
-                    result["labels"] = list(log.payload().keys())
-                    result["datasets"].append(log.payload())
-                result["total"]= len(sapRecordsRCR.objects(data))
+                    result["labels"] = list(log.simplepayload().keys())
+                    result["datasets"].append(log.simplepayload())
+                result["total"]= len(RcrData.objects(data))
                 return result
             else:
                 return result
@@ -18732,7 +25430,7 @@ def endpoint_to_fetch_saprcr_data(response: Response, currentPage: Optional[int]
                 else:
                     data &= (Q(mine__icontains=search_text))
 
-            usecase_data = sapRecordsRCR.objects(data).order_by("-created_at")
+            usecase_data = RcrData.objects(data).order_by("-created_at")
             count = len(usecase_data)
             path = None
             if usecase_data:
@@ -18761,20 +25459,45 @@ def endpoint_to_fetch_saprcr_data(response: Response, currentPage: Optional[int]
                     cell_format.set_font_size(10)
                     cell_format.set_align("center")
                     cell_format.set_align("vcenter")
+
                     headers = [
-                        "Sr no",
-                        "RR No",
-                        "RR Date",
-                        "Start Date",
-                        "End Date",
-                        "Month",
-                        "Consumer Type",
-                        "Grade",
-                        "Mine",
-                        "Line Item",
-                        "RR Qty",
-                        "PO Amount",
-                        "Created At",
+                        "rr_no",
+                        "rr_qty",
+                        "po_no",
+                        "po_date",
+                        "line_item",
+                        "source",
+                        "placement_date",
+                        "completion_date",
+                        "avery_placement_date",
+                        "avery_completion_date",
+                        "drawn_date",
+                        "total_ul_wt",
+                        "boxes_supplied",
+                        "total_secl_gross_wt",
+                        "total_secl_tare_wt",
+                        "total_secl_net_wt",
+                        "total_secl_ol_wt",
+                        "boxes_loaded",
+                        "total_rly_gross_wt",
+                        "total_rly_tare_wt",
+                        "total_rly_net_wt",
+                        "total_rly_ol_wt",
+                        "total_secl_chargable_wt",
+                        "total_rly_chargable_wt",
+                        "freight",
+                        "gst",
+                        "pola",
+                        "total_freight",
+                        "source_type",
+                        "month",
+                        "rr_date",
+                        "siding",
+                        "mine",
+                        "grade",
+                        "po_amount",
+                        "rake_no",
+                        "created_at"
                     ]
                    
                     for index, header in enumerate(headers):
@@ -18784,17 +25507,40 @@ def endpoint_to_fetch_saprcr_data(response: Response, currentPage: Optional[int]
                         result = query.payload()
                         worksheet.write(row, 0, count, cell_format)     
                         worksheet.write(row, 1, str(result["rr_no"]))                      
-                        worksheet.write(row, 2, str(result["rr_date"]))                      
-                        worksheet.write(row, 3, str(result["start_date"]))                      
-                        worksheet.write(row, 4, str(result["end_date"]))                      
-                        worksheet.write(row, 5, str(result["month"]))                      
-                        worksheet.write(row, 6, str(result["consumer_type"]))                      
-                        worksheet.write(row, 7, str(result["grade"]))                      
-                        worksheet.write(row, 8, str(result["mine"]))                      
-                        worksheet.write(row, 9, str(result["line_item"]))                      
-                        worksheet.write(row, 10, str(result["rr_qty"]))                      
-                        worksheet.write(row, 11, str(result["po_amount"]))                      
-                        worksheet.write(row, 12, str(result["created_at"]))                   
+                        worksheet.write(row, 2, str(result["rr_qty"]))                      
+                        worksheet.write(row, 3, str(result["po_no"]))                      
+                        worksheet.write(row, 4, str(result["po_date"]))                      
+                        worksheet.write(row, 5, str(result["line_item"]))                      
+                        worksheet.write(row, 6, str(result["source"]))                      
+                        worksheet.write(row, 7, str(result["placement_date"]))                      
+                        worksheet.write(row, 8, str(result["completion_date"]))                      
+                        worksheet.write(row, 9, str(result["avery_placement_date"]))                      
+                        worksheet.write(row, 10, str(result["avery_completion_date"]))                      
+                        worksheet.write(row, 11, str(result["drawn_date"]))                      
+                        worksheet.write(row, 12, str(result["total_ul_wt"]))                   
+                        worksheet.write(row, 13, str(result["boxes_supplied"]))                   
+                        worksheet.write(row, 14, str(result["total_secl_gross_wt"]))                   
+                        worksheet.write(row, 15, str(result["total_secl_tare_wt"]))                   
+                        worksheet.write(row, 16, str(result["total_secl_net_wt"]))                   
+                        worksheet.write(row, 17, str(result["total_secl_ol_wt"]))                   
+                        worksheet.write(row, 18, str(result["boxes_loaded"]))                   
+                        worksheet.write(row, 19, str(result["total_rly_gross_wt"]))                   
+                        worksheet.write(row, 20, str(result["total_rly_tare_wt"]))                   
+                        worksheet.write(row, 21, str(result["total_rly_net_wt"]))                   
+                        worksheet.write(row, 22, str(result["total_rly_ol_wt"]))                   
+                        worksheet.write(row, 23, str(result["total_secl_chargable_wt"]))                   
+                        worksheet.write(row, 24, str(result["total_rly_chargable_wt"]))                   
+                        worksheet.write(row, 25, str(result["freight"]))                   
+                        worksheet.write(row, 26, str(result["pola"]))                   
+                        worksheet.write(row, 27, str(result["total_freight"]))                   
+                        worksheet.write(row, 28, str(result["source_type"]))                   
+                        worksheet.write(row, 29, str(result["month"]))                   
+                        worksheet.write(row, 30, str(result["rr_date"]))                   
+                        worksheet.write(row, 31, str(result["mine"]))                   
+                        worksheet.write(row, 32, str(result["grade"]))                   
+                        worksheet.write(row, 33, str(result["po_amount"]))                   
+                        worksheet.write(row, 34, str(result["rake_no"]))                   
+                        worksheet.write(row, 35, str(result["created_at"]))                   
                         
                         count-=1
                         
@@ -19503,6 +26249,8 @@ def endpoint_to_fetch_saprcr_data(response: Response, currentPage: Optional[int]
 #         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
 #         return e
 
+
+# for dashboard secl linkage
 @router.get("/fetch/secllinkage", tags=["Rail Map"])
 def endpoint_to_fetch_secl_linkage_matrialization(response: Response, year_data: str):
     try:
@@ -19528,7 +26276,8 @@ def endpoint_to_fetch_secl_linkage_matrialization(response: Response, year_data:
             
             # Calculate the percentage
             percentage = (received / planned) * 100 if planned > 0 else 0
-            dictData["percentage_received"] = percentage
+            new_percentage = percentage if percentage < 100 else 100.0 
+            dictData["percentage_received"] = new_percentage
             listData.append(dictData)
         # console_logger.debug(listData)
 
@@ -19536,6 +26285,7 @@ def endpoint_to_fetch_secl_linkage_matrialization(response: Response, year_data:
         # months = [entry['month'] for entry in listData]
         months = [datetime.datetime.strptime(entry['month'], "%b-%Y").strftime("%b") for entry in listData]
         percentages = [round(entry['percentage_received'], 2) for entry in listData]
+        targets = [100 for n in range(0, len(months))]
 
         chart_data = {
             "labels": months,
@@ -19544,6 +26294,12 @@ def endpoint_to_fetch_secl_linkage_matrialization(response: Response, year_data:
                     "label": "Percentage",
                     "data": percentages,
                     "borderWidth": 1,
+                },
+                {
+                    "label": "Target",
+                    "data": targets,
+                    "order": 0,
+                    "type": "line"
                 }
             ]
         }
@@ -19565,6 +26321,148 @@ def endpoint_to_fetch_wcl_linkage_matrialization(response: Response, year_data: 
         next_year = str(int(year_data) + 1)
         financial_year_end = f"{next_year}-03-31"
 
+        # old without consumer_type
+        # sapRecordsPipeline = [
+        #     {
+        #         '$project': {
+        #             'month': {
+        #                 '$cond': {
+        #                     'if': {
+        #                         '$and': [
+        #                             {
+        #                                 '$gte': [
+        #                                     {
+        #                                         '$strLenCP': {
+        #                                             '$ifNull': [
+        #                                                 '$slno', ''
+        #                                             ]
+        #                                         }
+        #                                     }, 6
+        #                                 ]
+        #                             }, {
+        #                                 '$regexMatch': {
+        #                                     'input': '$slno', 
+        #                                     'regex': '^[0-9]{6}'
+        #                                 }
+        #                             }
+        #                         ]
+        #                     }, 
+        #                     'then': {
+        #                         '$dateToString': {
+        #                             'format': '%Y%m', 
+        #                             'date': {
+        #                                 '$dateFromString': {
+        #                                     'dateString': {
+        #                                         '$concat': [
+        #                                             {
+        #                                                 '$substr': [
+        #                                                     '$slno', 0, 4
+        #                                                 ]
+        #                                             }, '-', {
+        #                                                 '$substr': [
+        #                                                     '$slno', 4, 2
+        #                                                 ]
+        #                                             }, '-01'
+        #                                         ]
+        #                                     }, 
+        #                                     'format': '%Y-%m-%d'
+        #                                 }
+        #                             }
+        #                         }
+        #                     }, 
+        #                     'else': None
+        #                 }
+        #             }, 
+        #             'year': {
+        #                 '$substr': [
+        #                     '$slno', 0, 4
+        #                 ]
+        #             }, 
+        #             'do_qty': {
+        #                 '$toDouble': '$do_qty'
+        #             }, 
+        #             'do_no': 1
+        #         }
+        #     }, {
+        #         '$match': {
+        #             'year': {'$in': [str(year_data), str(next_year)]}, 
+        #             'month': {
+        #                 '$ne': None
+        #             }, 
+        #             '$expr': {
+        #                 '$and': [
+        #                     {
+        #                         '$gte': [
+        #                             {
+        #                                 '$dateFromString': {
+        #                                     'dateString': {
+        #                                         '$concat': [
+        #                                             {
+        #                                                 '$substr': [
+        #                                                     '$month', 0, 4
+        #                                                 ]
+        #                                             }, '-', {
+        #                                                 '$substr': [
+        #                                                     '$month', 4, 2
+        #                                                 ]
+        #                                             }, '-01'
+        #                                         ]
+        #                                     }, 
+        #                                     'format': '%Y-%m-%d'
+        #                                 }
+        #                             }, {
+        #                                 '$dateFromString': {
+        #                                     'dateString': financial_year_start
+        #                                 }
+        #                             }
+        #                         ]
+        #                     }, {
+        #                         '$lte': [
+        #                             {
+        #                                 '$dateFromString': {
+        #                                     'dateString': {
+        #                                         '$concat': [
+        #                                             {
+        #                                                 '$substr': [
+        #                                                     '$month', 0, 4
+        #                                                 ]
+        #                                             }, '-', {
+        #                                                 '$substr': [
+        #                                                     '$month', 4, 2
+        #                                                 ]
+        #                                             }, '-01'
+        #                                         ]
+        #                                     }, 
+        #                                     'format': '%Y-%m-%d'
+        #                                 }
+        #                             }, {
+        #                                 '$dateFromString': {
+        #                                     'dateString': financial_year_end
+        #                                 }
+        #                             }
+        #                         ]
+        #                     }
+        #                 ]
+        #             }
+        #         }
+        #     }, {
+        #         '$group': {
+        #             '_id': '$month', 
+        #             'total_do_qty': {
+        #                 '$sum': '$do_qty'
+        #             }, 
+        #             'do_nos': {
+        #                 '$addToSet': '$do_no'
+        #             }
+        #         }
+        #     }, {
+        #         '$sort': {
+        #             '_id': 1
+        #         }
+        #     }
+        # ]
+
+        #new with consumer_type 
         sapRecordsPipeline = [
             {
                 '$project': {
@@ -19624,14 +26522,16 @@ def endpoint_to_fetch_wcl_linkage_matrialization(response: Response, year_data: 
                     'do_qty': {
                         '$toDouble': '$do_qty'
                     }, 
-                    'do_no': 1
+                    'do_no': 1, 
+                    'consumer_type': 1
                 }
             }, {
                 '$match': {
-                    'year': {'$in': [str(year_data), str(next_year)]}, 
+                    'year': {'$in': [str(year_data), str(next_year)]},  
                     'month': {
                         '$ne': None
                     }, 
+                    'consumer_type': 'WCL Shakti B(iii) Round 5 Coal', 
                     '$expr': {
                         '$and': [
                             {
@@ -19704,7 +26604,6 @@ def endpoint_to_fetch_wcl_linkage_matrialization(response: Response, year_data: 
                 }
             }
         ]
-
         
         roadDataSap_result_cursor = SapRecords.objects().aggregate(sapRecordsPipeline)
         sapData_result = list(roadDataSap_result_cursor)
@@ -19720,6 +26619,7 @@ def endpoint_to_fetch_wcl_linkage_matrialization(response: Response, year_data: 
                         'arv_cum_do_number': {
                             '$in': do_nos,
                         },
+                        'type_consumer': 'WCL Shakti B(iii) Round 5 Coal',
                     }
                 }, 
                 {
@@ -19818,9 +26718,12 @@ def endpoint_to_fetch_wcl_linkage_matrialization(response: Response, year_data: 
 
 
             gmrdata_result_cursor = Gmrdata.objects().aggregate(pipelineData)
+            gmrdataHist_result_cursor = gmrdataHistoric.objects().aggregate(pipelineData)
 
             gmrData_result = list(gmrdata_result_cursor)
+            gmrDataHist_result = list(gmrdataHist_result_cursor)
             listData.append(gmrData_result)
+            listData.append(gmrDataHist_result)
 
         flat_gmrData_result = [item for sublist in listData for item in sublist]
 
@@ -19843,11 +26746,13 @@ def endpoint_to_fetch_wcl_linkage_matrialization(response: Response, year_data: 
             total_net_qty = gmr_data_dict.get(month, 0)
             
             percentage = (total_net_qty / total_do_qty) * 100 if total_do_qty > 0 else 0
-            
+            new_percentage = percentage if percentage < 100 else 100.0
             # chart_data['labels'].append(total_do_qty)
             chart_data['labels'].append(datetime.datetime.strptime(month, "%Y%m").strftime("%b"))
-            chart_data['datasets'][0]['data'].append(percentage)
-            
+            chart_data['datasets'][0]['data'].append(new_percentage)
+
+        targets = [100 for n in range(0, len(chart_data["datasets"][0]["data"]))]
+        chart_data["datasets"].append({"label": "Target", "data": targets,"order": 0, "type": "line"})
         return chart_data 
     except Exception as e:
         console_logger.debug("----- Wcl Linkage Matrialization Error -----",e)
@@ -20165,17 +27070,38 @@ def endpoint_to_fetch_wcl_linkage_matrialization_new(response: Response, year_da
 def endpoint_to_update_rakequota_data(response: Response, data:rakeQuotaUpdate):
     try:
         payload = data.dict()
-        # console_logger.debug(payload)
         try:
             fetchrakeQuota = rakeQuota.objects(month=datetime.datetime.strptime(payload.get("month"), "%b-%Y").strftime("%m-%Y"))
             if fetchrakeQuota:
-                fetchrakeQuota.update(rake_alloted=payload.get("rakes_planned_for_month"), expected_rakes=payload.get("expected_rakes"))
+                fetchrakeQuota.update(rake_alloted=payload.get("rakes_planned_for_month"), expected_rakes=payload.get("expected_rakes"), source_type=payload.get("source_type"))
         except DoesNotExist as e:
             return {"detail": "No data found"}
         
         return {"details": "success"}
     except Exception as e:
         console_logger.debug("-----Update RakeQuota Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.post("/update/rcrrakequota", tags=["Rail Map"])
+def endpoint_to_update_rcr_rakequota_data(response: Response, data:rakeQuotaUpdate):
+    try:
+        payload = data.dict()
+        try:
+            fetchrakeQuota = rcrrakeQuota.objects(month=datetime.datetime.strptime(payload.get("month"), "%b-%Y").strftime("%m-%Y"))
+            if fetchrakeQuota:
+                fetchrakeQuota.update(rake_alloted=str(payload.get("rakes_planned_for_month")), expected_rakes=payload.get("expected_rakes"), source_type=payload.get("source_type"))
+        except DoesNotExist as e:
+            return {"detail": "No data found"}
+        
+        return {"details": "success"}
+    except Exception as e:
+        console_logger.debug("-----Update Rcr RakeQuota Error -----",e)
         response.status_code = 400
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -20198,8 +27124,75 @@ def make_request(endpoint_name, url, avery_id, avery_pass, proxies):
         console_logger.debug(f"{endpoint_name} An error occurred:", str(e))
 
 
+@router.get("/update/placementcompleteiondate", tags=["Rail Map"])
+def endpoint_to_update_averydata_placement(response:Response):
+    try:
+        fetchAveryData = RailData.objects()
+        for single_data in fetchAveryData:
+            # console_logger.debug(fetchAveryData.rr_no)
+            if hasattr(single_data, 'avery_rly_data'): 
+                placement_date = []
+                completion_date = []
+                for avery_single_data in single_data.avery_rly_data:
+                    if avery_single_data.tip_startdate and avery_single_data.tip_starttime:
+                        try:
+                            if len(avery_single_data.tip_startdate) == 19:
+                                formatted_date = datetime.datetime.strptime(avery_single_data.tip_startdate, "%m/%d/%Y %H:%M:%S").strftime("%Y-%m-%d")
+                                placement_date.append(f'{formatted_date}T{avery_single_data.tip_starttime}')
+                            elif len(avery_single_data.tip_startdate) == 10:
+                                placement_date.append(f'{avery_single_data.tip_startdate}T{avery_single_data.tip_starttime}')
+                        except ValueError as e:
+                            console_logger.error(f"Error parsing tip_startdate: {e}")
+                            
+                    if avery_single_data.tip_enddate and avery_single_data.tip_endtime:
+                        try:
+                            if len(avery_single_data.tip_enddate) == 19:
+                                formatted_date = datetime.datetime.strptime(avery_single_data.tip_enddate, "%m/%d/%Y %H:%M:%S").strftime("%Y-%m-%d")
+                                completion_date.append(f'{formatted_date}T{avery_single_data.tip_endtime}')
+                            elif len(avery_single_data.tip_enddate) == 10:
+                                completion_date.append(f'{avery_single_data.tip_enddate}T{avery_single_data.tip_endtime}')
+                        except ValueError as e:
+                            console_logger.error(f"Error parsing tip_enddate: {e}")
+
+                if placement_date:
+                    console_logger.debug(f"Placement date: {placement_date[0]}")
+                    single_data.avery_placement_date = placement_date[0]
+                
+                if completion_date:
+                    console_logger.debug(f"Completion date: {completion_date[-1]}")
+                    single_data.avery_completion_date = completion_date[-1]
+                
+                single_data.save()
+        return "success"
+    except Exception as e:
+        console_logger.debug("----- Road Sap Upload Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+@router.get("/test/averydata", tags=["Rail Map"])
+def endpoint_test(rr_number: str):
+    try:
+        fetchRailDatanew = RailData.objects.get(rr_no=rr_number)
+        console_logger.debug(len([entry["gwel_net_wt"] for entry in fetchRailDatanew["avery_rly_data"] if entry["gwel_net_wt"]]))
+        console_logger.debug(len([entry["gwel_net_wt"] for entry in fetchRailDatanew["avery_rly_data"] if not entry["gwel_net_wt"]]))
+        console_logger.debug(round(sum([float(entry["gwel_gross_wt"]) for entry in fetchRailDatanew["avery_rly_data"] if entry["gwel_gross_wt"]]), 2))
+        console_logger.debug(round(sum([float(entry["gwel_tare_wt"]) for entry in fetchRailDatanew["avery_rly_data"] if entry["gwel_tare_wt"]]), 2))
+        console_logger.debug(round(sum([float(entry["gwel_net_wt"]) for entry in fetchRailDatanew["avery_rly_data"] if entry["gwel_net_wt"]]), 2))
+    except Exception as e:
+        console_logger.debug("----- Road Sap Upload Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
 @router.get("/update/averydata", tags=["Rail Map"])
-def endpoint_to_update_averydata(response:Response, start_date: str, end_date: str):
+def endpoint_to_update_averydata(start_date: str, end_date: str):
     try:
         emailData = EmailDevelopmentCheck.objects()
 
@@ -20235,20 +27228,25 @@ def endpoint_to_update_averydata(response:Response, start_date: str, end_date: s
                 for singleAveryData in fetchAveryData:
                     if singleAveryData.get("rakeId"):
                         if "A" in singleAveryData.get("rakeId"):
-                            # console_logger.debug(singleAveryData.get("rakeId").split("A")[1])
                             rr_number = singleAveryData.get("rakeId").split("A")[1]
                         elif "B" in singleAveryData.get("rakeId"):
-                            # console_logger.debug(singleAveryData.get("rakeId").split("B")[1])
                             rr_number = singleAveryData.get("rakeId").split("B")[1]
                         try:
                             fetchRailData = RailData.objects.get(rr_no=rr_number)
-
-                            # console_logger.debug(fetchRailData)
+                            fetchRailData.GWEL_received_wagons = str(len([entry["gwel_net_wt"] for entry in fetchRailData["avery_rly_data"] if entry["gwel_net_wt"]]))
+                            fetchRailData.GWEL_pending_wagons = str(len([entry["gwel_net_wt"] for entry in fetchRailData["avery_rly_data"] if not entry["gwel_net_wt"]]))
+                            fetchRailData.Total_gwel_gross = str(round(sum([float(entry["gwel_gross_wt"]) for entry in fetchRailData["avery_rly_data"] if entry["gwel_gross_wt"]]), 2))
+                            fetchRailData.Total_gwel_tare = str(round(sum([float(entry["gwel_tare_wt"]) for entry in fetchRailData["avery_rly_data"] if entry["gwel_tare_wt"]]), 2))
+                            fetchRailData.Total_gwel_net = str(round(sum([float(entry["gwel_net_wt"]) for entry in fetchRailData["avery_rly_data"] if entry["gwel_net_wt"]]), 2))
                             if fetchRailData:
-                                # console_logger.debug(fetchRailData.avery_rly_data)
+                                start_date_tip = [f'{datetime.datetime.strptime(single_data.tip_enddate, "%m/%d/%Y %H:%M:%S").strftime("%Y-%m-%d")}T{single_data.tip_endtime}' for single_data in fetchRailData.avery_rly_data if single_data.tip_enddate is not None]
+                                end_date_tip = [f'{datetime.datetime.strptime(single_data.tip_enddate, "%m/%d/%Y %H:%M:%S").strftime("%Y-%m-%d")}T{single_data.tip_endtime}' for single_data in fetchRailData.avery_rly_data if single_data.tip_enddate is not None]
+                                if start_date_tip:
+                                    fetchRailData.avery_placement_date = [f'{datetime.datetime.strptime(single_data.tip_startdate, "%m/%d/%Y %H:%M:%S").strftime("%Y-%m-%d")}T{single_data.tip_starttime}' for single_data in fetchRailData.avery_rly_data if single_data.tip_startdate is not None][0]
+                                if end_date_tip:
+                                    fetchRailData.avery_completion_date = [f'{datetime.datetime.strptime(single_data.tip_enddate, "%m/%d/%Y %H:%M:%S").strftime("%Y-%m-%d")}T{single_data.tip_endtime}' for single_data in fetchRailData.avery_rly_data if single_data.tip_enddate is not None][-1]
                                 for single_rail_data in fetchRailData.avery_rly_data:
                                     if singleAveryData.get("wagonId")[-5:] == single_rail_data.wagon_no[-5:]:
-                                        # console_logger.debug("matched")
                                         # Update fields
                                         single_rail_data.ser_no = singleAveryData.get("serNo")
                                         single_rail_data.rake_no = singleAveryData.get("rakeNo")
@@ -20271,7 +27269,7 @@ def endpoint_to_update_averydata(response:Response, start_date: str, end_date: s
                                         single_rail_data.po_number = singleAveryData.get("ponumber")
                                         single_rail_data.coal_grade = singleAveryData.get("coalgrade")
                                         
-                                        # # Save the changes
+                                        # Save the changes
                                         fetchRailData.save()
                             # return {"detail": "success"}
                         except DoesNotExist as e:
@@ -20279,7 +27277,7 @@ def endpoint_to_update_averydata(response:Response, start_date: str, end_date: s
         return {"detail": "success"}
     except Exception as e:
         console_logger.debug("----- Road Sap Upload Error -----",e)
-        response.status_code = 400
+        # response.status_code = 400
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
@@ -20288,11 +27286,12 @@ def endpoint_to_update_averydata(response:Response, start_date: str, end_date: s
 
 
 @router.get("/update/averydata/test", tags=["Rail Map"])
-def endpoint_to_update_averydata(response:Response):
+def endpoint_to_update_averydata_test(response:Response):
     try:
         fetchAveryData = [{'serNo': '3', 'rakeNo': '2', 'rakeId': 'B162014638', 'wagonNo': '3', 'wagonId': 'SECR    12254', 'wagonType': 'Single', 'wagonCC': '80', 'mode': 'MD MD', 'tipStartDate': '08/25/2024 00:00:00', 'tipStartTime': '00:21:55', 'tipEndDate': '08/25/2024 00:00:00', 'tipEndTime': '00:37:54', 'tippleTime': '16', 'status': None, 'wagonGrossWt': 88.55, 'wagonTareWt': 20.7, 'wagonNetWt': 67.85, 'timeIn_tipp': None, 'ponumber': '4500099650', 'coalgrade': 'G-11'}, {'serNo': '3', 'rakeNo': '2', 'rakeId': 'B162014638', 'wagonNo': '4', 'wagonId': 'WC      10219', 'wagonType': 'Single', 'wagonCC': '80', 'mode': 'MD MD', 'tipStartDate': '08/25/2024 00:00:00', 'tipStartTime': '00:40:53', 'tipEndDate': '08/25/2024 00:00:00', 'tipEndTime': '02:16:50', 'tippleTime': '96', 'status': None, 'wagonGrossWt': 89.5, 'wagonTareWt': 20.95, 'wagonNetWt': 68.55, 'timeIn_tipp': None, 'ponumber': '4500099650', 'coalgrade': 'G-11'}, {'serNo': '3', 'rakeNo': '2', 'rakeId': 'B162014638', 'wagonNo': '5', 'wagonId': 'NR       81575', 'wagonType': 'Single', 'wagonCC': '80', 'mode': 'MD MD', 'tipStartDate': '08/25/2024 00:00:00', 'tipStartTime': '02:19:39', 'tipEndDate': '08/25/2024 00:00:00', 'tipEndTime': '02:23:07', 'tippleTime': '4', 'status': None, 'wagonGrossWt': 87.1, 'wagonTareWt': 22.55, 'wagonNetWt': 64.55, 'timeIn_tipp': None, 'ponumber': '4500099650', 'coalgrade': 'G-11'}, {'serNo': '3', 'rakeNo': '2', 'rakeId': 'B162014638', 'wagonNo': '6', 'wagonId': 'SECR   812070', 'wagonType': 'Single', 'wagonCC': '80', 'mode': 'MD MD', 'tipStartDate': '08/25/2024 00:00:00', 'tipStartTime': '02:25:23', 'tipEndDate': '08/25/2024 00:00:00', 'tipEndTime': '02:46:04', 'tippleTime': '21', 'status': None, 'wagonGrossWt': 86.4, 'wagonTareWt': 24.0, 'wagonNetWt': 62.4, 'timeIn_tipp': None, 'ponumber': '4500099650', 'coalgrade': 'G-11'}, {'serNo': '3', 'rakeNo': '2', 'rakeId': 'B162014638', 'wagonNo': '7', 'wagonId': 'SECR   21836', 'wagonType': 'Single', 'wagonCC': '80', 'mode': 'MD MD', 'tipStartDate': '08/25/2024 00:00:00', 'tipStartTime': '02:48:25', 'tipEndDate': '08/25/2024 00:00:00', 'tipEndTime': '02:59:44', 'tippleTime': '11', 'status': None, 'wagonGrossWt': 85.15, 'wagonTareWt': 21.4, 'wagonNetWt': 63.75, 'timeIn_tipp': None, 'ponumber': '4500099650', 'coalgrade': 'G-11'}, {'serNo': '3', 'rakeNo': '2', 'rakeId': 'B162014638', 'wagonNo': '8', 'wagonId': 'SECR   10714', 'wagonType': 'Single', 'wagonCC': '80', 'mode': 'MD MD', 'tipStartDate': '08/25/2024 00:00:00', 'tipStartTime': '03:01:47', 'tipEndDate': '08/25/2024 00:00:00', 'tipEndTime': '03:58:32', 'tippleTime': '57', 'status': None, 'wagonGrossWt': 93.8, 'wagonTareWt': 21.95, 'wagonNetWt': 71.85, 'timeIn_tipp': None, 'ponumber': '4500099650', 'coalgrade': 'G-11'}, {'serNo': '3', 'rakeNo': '2', 'rakeId': 'B162014638', 'wagonNo': '9', 'wagonId': 'SECR   10752', 'wagonType': 'Single', 'wagonCC': '80', 'mode': 'MD MD', 'tipStartDate': '08/25/2024 00:00:00', 'tipStartTime': '04:00:49', 'tipEndDate': '08/25/2024 00:00:00', 'tipEndTime': '04:05:42', 'tippleTime': '5', 'status': None, 'wagonGrossWt': 83.05, 'wagonTareWt': 22.0, 'wagonNetWt': 61.05, 'timeIn_tipp': None, 'ponumber': '4500099650', 'coalgrade': 'G-11'}]
         listData = []
         if fetchAveryData:
+            
             for singleAveryData in fetchAveryData:
                 if "A" in singleAveryData.get("rakeId"):
                     rr_number = singleAveryData.get("rakeId").split("A")[1]
@@ -20300,14 +27299,9 @@ def endpoint_to_update_averydata(response:Response):
                     rr_number = singleAveryData.get("rakeId").split("B")[1]
                 fetchRailData = RailData.objects.get(rr_no=rr_number)
 
-                # console_logger.debug(fetchRailData.rr_no)
                 if fetchRailData:
-                    # console_logger.debug(fetchRailData.avery_rly_data)
                     for single_rail_data in fetchRailData.avery_rly_data:
-                        # console_logger.debug(singleAveryData.get("wagonId")[-5:])
-                        # console_logger.debug(single_rail_data.wagon_no[-5:])
                         if singleAveryData.get("wagonId")[-5:] == single_rail_data.wagon_no[-5:]:
-                            # console_logger.debug("matched")
                             single_rail_data.ser_no = singleAveryData.get("serNo")
                             single_rail_data.rake_no = singleAveryData.get("rakeNo")
                             single_rail_data.rake_id = singleAveryData.get("rakeId")
@@ -20375,7 +27369,44 @@ def endpoint_to_update_avery_user_data(response: Response, data: mainAveryData, 
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
-        return e       
+        return e  
+
+
+@router.post("/update/useraverydatarcr", tags=["Rail Map"])
+def endpoint_to_update_avery_user_data(response: Response, data: mainAveryData, rr_no: str, placement_date: str, completion_date: str, GWEL_received_wagons: str, GWEL_pending_wagons: str, Total_gwel_gross: str, Total_gwel_tare: str, Total_gwel_net: str, Total_no_of_boxes_supplied: str, Total_no_of_boxes_loaded: str):
+    try:
+        payload = data.dict()
+        fetchRailData = RcrData.objects.get(rr_no=rr_no)
+        fetchRailData.avery_placement_date = placement_date
+        fetchRailData.avery_completion_date = completion_date
+        fetchRailData.GWEL_received_wagons = GWEL_received_wagons
+        fetchRailData.GWEL_pending_wagons = GWEL_pending_wagons
+        fetchRailData.Total_gwel_gross = Total_gwel_gross
+        fetchRailData.Total_gwel_tare = Total_gwel_tare
+        fetchRailData.Total_gwel_net = Total_gwel_net
+        fetchRailData.boxes_loaded = Total_no_of_boxes_loaded
+        fetchRailData.boxes_supplied = Total_no_of_boxes_supplied
+
+        if payload.get("data"):
+            avery_user_data_instances = [AveryRailData(**item) for item in payload.get("data")]
+            fetchRailData.avery_rly_data = avery_user_data_instances
+        else:
+            fetchRailData.avery_rly_data.clear()
+        try:
+            fetchRailData.save()
+        except ValidationError as e:
+            console_logger.error(f"Validation error while saving RcrData: {e}")
+            return {"details": "error", "message": str(e)}
+        return {"details": "success"}
+    except Exception as e:
+        console_logger.debug("----- Update Avery Rcr Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e  
+
 
 @router.get("/fetch/avery/singlerail", tags=["Rail Map"])
 def endpoint_to_fetch_avery_railway_data(response: Response, rrno: str):
@@ -20397,8 +27428,6 @@ def endpoint_to_fetch_avery_railway_data(response: Response, rrno: str):
                         end_dated_date = f'{datetime.datetime.strptime(singleRailData.tip_startdate, "%m/%d/%Y %H:%M:%S").strftime("%Y-%m-%d")} {singleRailData.tip_starttime}'
                         endlistData.append(end_dated_date)
                 
-                # console_logger.debug(startlistData)
-                # console_logger.debug(endlistData)
                 if startlistData and endlistData:
                     dictData["avery_placement"] = startlistData[0]
                     dictData["avery_completion"] = endlistData[-1]
@@ -20452,7 +27481,7 @@ def endpoint_to_fetch_avery_railway_data(response: Response, rrno: str):
 
 
 @router.get("/update/saprecordsroad", tags=["Road Map"])
-def endpoint_to_update_averydata(response:Response):
+def endpoint_to_update_averydata_saprecords(response:Response):
     try:
         fetchsapRecords = SapRecords.objects()
         for single_saprecords in fetchsapRecords:
@@ -20462,6 +27491,21 @@ def endpoint_to_update_averydata(response:Response):
                     )
                 if gmrDatafetch:
                     gmrDatafetch.update(
+                            do_date=single_saprecords.do_date, 
+                            start_date=single_saprecords.start_date, 
+                            end_date=single_saprecords.end_date, 
+                            slno=single_saprecords.slno,
+                            type_consumer= single_saprecords.consumer_type,
+                            grade= single_saprecords.grade,
+                            mine= single_saprecords.mine_name,
+                            po_qty= single_saprecords.do_qty,
+                            po_amount= single_saprecords.po_amount)
+
+                gmrDataHistfetch = Gmrdata.objects(
+                        arv_cum_do_number=single_saprecords.do_no,
+                    )
+                if gmrDataHistfetch:
+                    gmrDataHistfetch.update(
                             do_date=single_saprecords.do_date, 
                             start_date=single_saprecords.start_date, 
                             end_date=single_saprecords.end_date, 
@@ -20490,13 +27534,64 @@ def endpoint_to_update_saprecprdsrail(response:Response):
         for single_saprecords in fetchrailsapRecords:
             if single_saprecords:
                 railDatafetch = RailData.objects(
-                        rr_no=single_saprecords.rr_no,
+                        rr_no=single_saprecords.rr_no, siding=single_saprecords.siding
                     )
                 if railDatafetch:
                     if single_saprecords.month is not None:
+                        # console_logger.debug(single_saprecords.month)
+                        # if len(single_saprecords.month) == 7:
+                        #     current_month_str = single_saprecords.month
+                        #     console_logger.debug(single_saprecords.rr_no)
+                        #     console_logger.debug(current_month_str)
+                        # elif len(single_saprecords.month) == 10:
+                        #     date_obj = datetime.datetime.strptime(single_saprecords.month, "%Y-%m-%d")
+
+                        #     # Check if the day is less than or equal to 3
+                        #     if date_obj.day <= 3:
+                        #         # Calculate the previous month by subtracting one day from the 1st of the current month
+                        #         first_day_of_current_month = date_obj.replace(day=1)
+                        #         previous_month = first_day_of_current_month - timedelta(days=1)
+
+                        #         # Format and display the previous month (YYYY-MM)
+                        #         # previous_month_str = previous_month.strftime("%Y-%m")
+                        #         current_month_str = previous_month.strftime("%Y-%m")
+                        #         console_logger.debug(single_saprecords.rr_no)
+                        #         console_logger.debug(current_month_str)
+                        #     else:
+                        #         # Otherwise, display the current month
+                        #         current_month_str = date_obj.strftime("%Y-%m")
+                        #         console_logger.debug(single_saprecords.rr_no)
+                        #         console_logger.debug(current_month_str)
+                        # elif len(single_saprecords.month) == 11:
+                        #     date_obj = datetime.datetime.strptime(single_saprecords.month, "%b %d, %Y")
+
+                        #     #  Check if the day is less than or equal to 3
+                        #     if date_obj.day <= 3:
+                        #         # Calculate the previous month by subtracting one day from the 1st of the current month
+                        #         first_day_of_current_month = date_obj.replace(day=1)
+                        #         previous_month = first_day_of_current_month - timedelta(days=1)
+
+                        #         # Format and display the previous month (YYYY-MM)
+                        #         current_month_str = previous_month.strftime("%Y-%m")
+                        #         console_logger.debug(single_saprecords.rr_no)
+                        #         console_logger.debug(current_month_str)
+                        #     else:
+                        #         # Otherwise, display the current month
+                        #         current_month_str = date_obj.strftime("%Y-%m")
+                        #         console_logger.debug(single_saprecords.rr_no)
+                        #         console_logger.debug(current_month_str)
+
+                        if len(single_saprecords.month) == 7:
+                            current_month_str = single_saprecords.month
+                        elif len(single_saprecords.month) == 10:
+                            current_month_str = datetime.datetime.strptime(single_saprecords.month, "%Y-%m-%d").strftime("%Y-%m")
+                        elif len(single_saprecords.month) == 11:
+                            current_month_str = datetime.datetime.strptime(single_saprecords.month, "%b %d, %Y").strftime("%Y-%m")
+
                         railDatafetch.update(
                                 # month=datetime.datetime.strptime(single_saprecords.month, '%b %d, %Y').strftime('%Y-%m-%d'), 
-                                month=datetime.datetime.strptime(single_saprecords.month, '%Y-%m-%d').strftime('%Y-%m-%d'), 
+                                # month=datetime.datetime.strptime(single_saprecords.month, '%Y-%m-%d').strftime('%Y-%m-%d'),
+                                month=current_month_str,
                                 rr_date=single_saprecords.rr_date, 
                                 siding=single_saprecords.siding, 
                                 mine=single_saprecords.mine,
@@ -20816,7 +27911,6 @@ def coal_gdv_comparision_analysis(response: Response):
             mtd_ytd_result['mtd'][year] = month_wise_result
             mtd_ytd_result['ytd'][year] = ytd_result
 
-        console_logger.debug(mtd_ytd_result)
         finalDict["gcv_difference"] = mtd_ytd_result
         date = str(datetime.datetime.now().strftime("%Y-%m-%d"))
         fetchFinalData = generate_report_comparision(date, finalDict)
@@ -20985,10 +28079,6 @@ def coal_consumption_analysis_month(response: Response):
         # Merge the results from both collections (if needed)
         combined_output = list(output_coaltesting) + list(output_coaltestingtrain)
 
-        # You can further process combined_output as needed (e.g., summing across both collections if they overlap)
-
-        # console_logger.debug(combined_output)
-
         # Initialize the result dictionary
         result = {}
 
@@ -21010,9 +28100,6 @@ def coal_consumption_analysis_month(response: Response):
             else:
                 # Create a new key for the year if it doesn't exist
                 result[year] = [month_data]
-
-        # Output the result
-        # console_logger.debug(result)
 
         # Combine the dictionaries
         resultData = {}
@@ -21068,7 +28155,7 @@ def coal_consumption_analysis_month(response: Response):
                 ytd_weighted_gcv = total_weighted_gcv / len(cumulative_weighted_gcv + [entrydata['coal_receipt_weighted_gcv']])
                 cumulative_weighted_gcv.append(entrydata['coal_receipt_weighted_gcv'])
                 entrydata['coal_receipt_ytd_weighted_gcv'] = round(ytd_weighted_gcv, 2)
-        # console_logger.debug(resultData)
+        
         resultDatamain = {}
 
         # Sort the years
@@ -21202,13 +28289,10 @@ def coal_consumption_analysis_month(response: Response):
         bunker_analysis_grouped_data = defaultdict(list)
 
         for singleBunkerData in output_bunkerData:
-            # console_logger.debug(singleBunkerData)
             singleBunkerData["bunker_coal_weighted_gcv"] = round(singleBunkerData.get("avg_gross_calorific_value_adb"), 2)
             bunkeryear = singleBunkerData.get("year")
             bunker_grouped_data[bunkeryear].append(singleBunkerData)
             
-        
-
         for singleBunkerAnalysis in output_bunkerAnalysisData:
             singleBunkerAnalysis["bunker_coal_domestic_qty"] = round(singleBunkerAnalysis.get("totalBunkering"), 2)
             bunkerAnalysisYear = singleBunkerAnalysis.get("year")
@@ -21250,7 +28334,6 @@ def coal_consumption_analysis_month(response: Response):
 
         # Convert defaultdict back to a regular dict
         combined_data_bunker = dict(combined_data_bunker)
-
 
         ytd_sum = 0
 
@@ -21857,16 +28940,15 @@ def endpoint_to_fetch_coal_statement(response:Response, currentPage: Optional[in
             outputDict = {}
             listData = []
             for singleData in output:
-                # console_logger.debug(singleData["totalData"])
                 for dataload in singleData["totalData"]:
                     dataload["do_no"] = dataload.get("do_number")
                     dataload["quota"] = dataload.get("month")
-                    dataload["challan_gross_qty"] = round(dataload.get("challan_gross_qty"), 2)
-                    dataload["challan_tare_qty"] = round(dataload.get("challan_tare_qty"), 2)
-                    dataload["challan_net_qty"] = round(dataload.get("challan_net_qty"), 2)
-                    dataload["gwel_actual_gross_qty"] = round(dataload.get("gwel_actual_gross_qty"), 2)
-                    dataload["gwel_actual_tare_qty"] = round(dataload.get("gwel_actual_tare_qty"), 2)
-                    dataload["gwel_actual_net_qty"] = round(dataload.get("gwel_actual_net_qty"), 2)
+                    dataload["challan_gross_qty"] = round(dataload.get("challan_gross_qty"), 2) if dataload.get("challan_gross_qty") else 0
+                    dataload["challan_tare_qty"] = round(dataload.get("challan_tare_qty"), 2) if dataload.get("challan_tare_qty") else 0
+                    dataload["challan_net_qty"] = round(dataload.get("challan_net_qty"), 2) if dataload.get("challan_net_qty") else 0
+                    dataload["gwel_actual_gross_qty"] = round(dataload.get("gwel_actual_gross_qty"), 2) if dataload.get("gwel_actual_gross_qty") else 0
+                    dataload["gwel_actual_tare_qty"] = round(dataload.get("gwel_actual_tare_qty"), 2) if dataload.get("gwel_actual_tare_qty") else 0
+                    dataload["gwel_actual_net_qty"] = round(dataload.get("gwel_actual_net_qty"), 2) if dataload.get("gwel_actual_net_qty") else 0
                     dataload["transist_loss"] = round(dataload.get("challan_net_qty") - dataload.get("gwel_actual_net_qty"), 2)
                     listData.append(dataload)
                 
@@ -21874,12 +28956,12 @@ def endpoint_to_fetch_coal_statement(response:Response, currentPage: Optional[in
                 for historicDataload in singlehistoricdata["totalData"]:
                     historicDataload["do_no"] = historicDataload.get("do_number")
                     historicDataload["quota"] = historicDataload.get("month")
-                    historicDataload["challan_gross_qty"] = round(historicDataload.get("challan_gross_qty"), 2)
-                    historicDataload["challan_tare_qty"] = round(historicDataload.get("challan_tare_qty"), 2)
-                    historicDataload["challan_net_qty"] = round(historicDataload.get("challan_net_qty"), 2)
-                    historicDataload["gwel_actual_gross_qty"] = round(historicDataload.get("gwel_actual_gross_qty"), 2)
-                    historicDataload["gwel_actual_tare_qty"] = round(historicDataload.get("gwel_actual_tare_qty"), 2)
-                    historicDataload["gwel_actual_net_qty"] = round(historicDataload.get("gwel_actual_net_qty"), 2)
+                    historicDataload["challan_gross_qty"] = round(historicDataload.get("challan_gross_qty"), 2) if historicDataload.get("challan_gross_qty") else 0
+                    historicDataload["challan_tare_qty"] = round(historicDataload.get("challan_tare_qty"), 2) if historicDataload.get("challan_tare_qty") else 0
+                    historicDataload["challan_net_qty"] = round(historicDataload.get("challan_net_qty"), 2) if historicDataload.get("challan_net_qty") else 0
+                    historicDataload["gwel_actual_gross_qty"] = round(historicDataload.get("gwel_actual_gross_qty"), 2) if historicDataload.get("gwel_actual_gross_qty") else 0
+                    historicDataload["gwel_actual_tare_qty"] = round(historicDataload.get("gwel_actual_tare_qty"), 2) if historicDataload.get("gwel_actual_tare_qty") else 0
+                    historicDataload["gwel_actual_net_qty"] = round(historicDataload.get("gwel_actual_net_qty"), 2) if historicDataload.get("gwel_actual_net_qty") else 0
                     historicDataload["transist_loss"] = round(historicDataload.get("challan_net_qty") - historicDataload.get("gwel_actual_net_qty"), 2)
                     do_no_exists = any(item['do_no'] == historicDataload.get("do_number") for item in listData)
                     if not do_no_exists:
@@ -22245,6 +29327,7 @@ def endpoint_to_fetch_coal_statement(response:Response, currentPage: Optional[in
                     datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
                 ),
             )
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             filename = os.path.join(os.getcwd(), path)
             workbook = xlsxwriter.Workbook(filename)
             workbook.use_zip64()
@@ -22252,7 +29335,20 @@ def endpoint_to_fetch_coal_statement(response:Response, currentPage: Optional[in
             cell_format2.set_bold()
             cell_format2.set_font_size(10)
             cell_format2.set_align("center")
-            cell_format2.set_align("vjustify")
+            cell_format2.set_align("vcenter")
+            cell_format2.set_text_wrap(True)
+            cell_format2.set_border(1)
+
+            header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+            date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+            report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+
+            header_format.set_align("vcenter")
+            date_format.set_align("vcenter")
+            report_name_format.set_align("vcenter")
+            header_format.set_border(1)
+            date_format.set_border(1)
+            report_name_format.set_border(1)
 
             worksheet = workbook.add_worksheet()
             worksheet.set_column("A:AZ", 20)
@@ -22261,12 +29357,25 @@ def endpoint_to_fetch_coal_statement(response:Response, currentPage: Optional[in
             cell_format.set_font_size(10)
             cell_format.set_align("center")
             cell_format.set_align("vcenter")
+            cell_format.set_text_wrap(True)
+            cell_format.set_border(1)
+
+            worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+            # Merge cells for the main header and place it in the center
+            main_header = "GMR Warora Energy Limited"  # Set your main header text here
+            worksheet.merge_range("A1:P1", main_header, header_format)  # Merge cells A1 to H1 for the header
+            
+            # Write the current date on the left side (A2)
+            worksheet.write("A2", f"Date: {datetime.datetime.now().strftime('%d-%m-%Y')}", date_format)
+            worksheet.merge_range("C2:P2", f"Road Coal Statement", report_name_format)
+
             # headers = ["Do no", "Mine", "Quota", "DO Qty", "Challan Gross Qty", "Challan Tare Qty", "Challan Net Qty", "Gwel Actual Gross Qty", "Gwel Actual Tare Qty", "Gwel Actual Net Qty", "Transist Loss"]
             headers = ["Do no", "Mine", "Quota", "Do qty", "Challan Gross Qty", "Challan Tare Qty", "Challan Net Qty", "Gwel Actual Gross ty", "gwel actual tare qty", "gwel actual net qty", "transist loss", "line item", "start date", "end date", "po no", "po date"]
             finalData = []
 
             for index, header in enumerate(headers):
-                worksheet.write(0, index, header, cell_format2)
+                worksheet.write(2, index, header, cell_format2)
 
             for singleData in output:
                 # console_logger.debug(singleData["totalData"])
@@ -22319,63 +29428,63 @@ def endpoint_to_fetch_coal_statement(response:Response, currentPage: Optional[in
                     if not do_no_exists:
                         print("DO_No does not exist in final_data.")
                         listData.append(sapDataload)
-            row = 1
+            row = 3
             for singlelistData in listData:
                 if singlelistData.get("do_number"):
-                    worksheet.write(row, 0, singlelistData["do_number"])
+                    worksheet.write(row, 0, singlelistData["do_number"], cell_format)
                 else:    
-                    worksheet.write(row, 0, "None")
+                    worksheet.write(row, 0, "None", cell_format)
                 if singlelistData.get("mine"):
-                    worksheet.write(row, 1, singlelistData["mine"])
+                    worksheet.write(row, 1, singlelistData["mine"], cell_format)
                 else:
-                    worksheet.write(row, 1, "Unknown")
-                worksheet.write(row, 2, singlelistData["quota"])
-                worksheet.write(row, 3, singlelistData["do_qty"])
+                    worksheet.write(row, 1, "Unknown", cell_format)
+                worksheet.write(row, 2, singlelistData["quota"], cell_format)
+                worksheet.write(row, 3, singlelistData["do_qty"], cell_format)
                 if singlelistData.get("challan_gross_qty"):
-                    worksheet.write(row, 4, round(singlelistData["challan_gross_qty"], 2))
+                    worksheet.write(row, 4, round(singlelistData["challan_gross_qty"], 2), cell_format)
                 else:
-                    worksheet.write(row, 4, 0)
+                    worksheet.write(row, 4, 0, cell_format)
                 if singlelistData.get("challan_lr_qty"):
-                    worksheet.write(row, 5, round(singlelistData["challan_tare_qty"], 2))
+                    worksheet.write(row, 5, round(singlelistData["challan_tare_qty"], 2), cell_format)
                 else:
-                    worksheet.write(row, 5, round(singlelistData["challan_tare_qty"], 2))
+                    worksheet.write(row, 5, 0, cell_format)
                 if singlelistData.get("challan_net_qty"):
-                    worksheet.write(row, 6, round(singlelistData["challan_net_qty"], 2))
+                    worksheet.write(row, 6, round(singlelistData["challan_net_qty"], 2), cell_format)
                 else:
-                    worksheet.write(row, 6, 0)
+                    worksheet.write(row, 6, 0, cell_format)
                 if singlelistData.get("gwel_actual_gross_qty"):
-                    worksheet.write(row, 7, round(singlelistData["gwel_actual_gross_qty"], 2))
+                    worksheet.write(row, 7, round(singlelistData["gwel_actual_gross_qty"], 2), cell_format)
                 else:    
-                    worksheet.write(row, 7, 0)
+                    worksheet.write(row, 7, 0, cell_format)
                 if singlelistData.get("gwel_actual_tare_qty"):
-                    worksheet.write(row, 8, round(singlelistData["gwel_actual_tare_qty"], 2))
+                    worksheet.write(row, 8, round(singlelistData["gwel_actual_tare_qty"], 2), cell_format)
                 else:
-                    worksheet.write(row, 8, 0)
+                    worksheet.write(row, 8, 0, cell_format)
                 if singlelistData.get("gwel_actual_net_qty"):
-                    worksheet.write(row, 9, round(singlelistData["gwel_actual_net_qty"], 2))
+                    worksheet.write(row, 9, round(singlelistData["gwel_actual_net_qty"], 2), cell_format)
                 else:
-                    worksheet.write(row, 9, 0)
-                worksheet.write(row, 10, round(singlelistData.get("challan_net_qty") - singlelistData.get("gwel_actual_net_qty"), 2))
+                    worksheet.write(row, 9, 0, cell_format)
+                worksheet.write(row, 10, round(singlelistData.get("challan_net_qty") - singlelistData.get("gwel_actual_net_qty"), 2), cell_format)
                 if singlelistData.get("line_item"):
-                    worksheet.write(row, 11, singlelistData.get("line_item"))
+                    worksheet.write(row, 11, singlelistData.get("line_item"), cell_format)
                 else:
-                    worksheet.write(row, 11, "N/A")
+                    worksheet.write(row, 11, "N/A", cell_format)
                 if singlelistData.get("start_date"):
-                    worksheet.write(row, 12, singlelistData.get("start_date"))
+                    worksheet.write(row, 12, singlelistData.get("start_date"), cell_format)
                 else:    
-                    worksheet.write(row, 12, "N/A")
+                    worksheet.write(row, 12, "N/A", cell_format)
                 if singlelistData.get("end_date"):
-                    worksheet.write(row, 13, singlelistData.get("end_date"))
+                    worksheet.write(row, 13, singlelistData.get("end_date"), cell_format)
                 else:    
-                    worksheet.write(row, 13, "N/A")
+                    worksheet.write(row, 13, "N/A", cell_format)
                 if singlelistData.get("po_no"):
-                    worksheet.write(row, 14, singlelistData.get("po_no"))
+                    worksheet.write(row, 14, singlelistData.get("po_no"), cell_format)
                 else:    
-                    worksheet.write(row, 14, "N/A")
+                    worksheet.write(row, 14, "N/A", cell_format)
                 if singlelistData.get("po_date"):
-                    worksheet.write(row, 15, singlelistData.get("po_date"))
+                    worksheet.write(row, 15, singlelistData.get("po_date"), cell_format)
                 else:    
-                    worksheet.write(row, 15, "N/A")
+                    worksheet.write(row, 15, "N/A", cell_format)
                 # count -= 1
                 row += 1
             workbook.close()
@@ -22434,7 +29543,7 @@ def endpoint_to_fetch_coal_statement(response:Response, currentPage: Optional[in
         console_logger.debug(e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        # console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
 
@@ -22623,6 +29732,595 @@ def get_sap_data(arv_cum_do_numbers):
     sap_data = {item['do_no']: item['po_amount'] for item in sap_results}
     return sap_data
 
+#coalReceiptSummary start
+
+def normalize_sample_qty(qty):
+    
+    if type(qty) == str:
+        qty.strip()
+        qty = qty.replace(",","")
+    # print(qty)
+    return float(qty)
+
+def update_data_type():
+    result = RCA.find()
+    for d in result:
+        console_logger.debug(d)
+        if type(d.get("sample_qty")) == str:
+            try:
+                # RCA.update_one(filter={"_id":d.get("_id")}, update={"$set":{"plant_analysis_date":datetime.strptime(d.get("plant_analysis_date"), '%d/%m/%Y')}})
+                RCA.update_one(filter={"_id":d.get("_id")}, update={"$set":{"sample_qty":normalize_sample_qty(d.get("sample_qty"))}})
+            except:
+                RCA.update_one(filter={"_id":d.get("_id")}, update={"$set":{"sample_qty":normalize_sample_qty(d.get("sample_qty"))}})
+                RCA.update_one(filter={"_id":d.get("_id")}, update={"$set":{"plant_analysis_date":datetime.strptime(d.get("plant_analysis_date"), '%d.%m.%Y')}})
+    return
+
+
+def get_month_ends(Month):
+    current_date = datetime.datetime.now(datetime.timezone.utc)
+    start_month = current_date.replace(month=Month, day=1, hour=0, minute=0, second=0, microsecond=0)
+    end_month = start_month.replace(month=Month + 1) - datetime.timedelta(days=1)
+    
+    return start_month.date()
+
+def get_monthends():
+    monthends = []
+    for month in range(1, 12):
+        monthends.append(get_month_ends(month))
+    return monthends
+
+def fetch_bunker_data_gcv():
+    bunker_dates = []
+    bunker_values = []
+    for data in BQS.find(sort={"date":1}):
+        bunker_dates.append(data.get("date"))
+        bunker_values.append(data.get("domestic_qty"))
+    return bunker_dates, bunker_values
+
+#coalReceiptSummary end
+
+
+
+@router.get("/fetchgcvsummarydata", tags=["test"])
+def endpoint_to_fetch_coal_recipt_summary():
+    try:
+        monthends = get_monthends()
+        # console_logger.debug(monthends)
+        bunker_dates, bunker_values = fetch_bunker_data_gcv()
+        # logger.debug((monthends, bunker_data, bunker_values))
+
+        console_logger.debug(bunker_dates)
+        console_logger.debug(bunker_values)
+
+        project={
+            'plant_preperation_date': 0,
+            'plant_certificate_id':0,
+            'plant_ulr_id':0,
+            'plant_sample_date':0,
+            "sample_no":0,
+            "mine":0,
+            "mode":0,
+            "plant_lab_temp":0,
+            "_id":0
+        }
+        filter = {
+        'plant_analysis_date': {
+            '$gte': datetime.datetime.now(datetime.timezone.utc).replace(day=3,month=4,hour=0, minute=0,second=0,microsecond=0)
+        }, }
+
+        df = pl.DataFrame(list(RCA.find(filter=filter, sort={"plant_analysis_date":1},skip=3)))
+
+        df = df.with_columns([
+            pl.lit(0.0).alias("cum_wt"),
+            pl.lit(0.0).alias("weighted_gcv"),
+            pl.lit(0.0).alias("cum_weighted_gcv"),
+            pl.lit(0.0).alias("gcv")
+        ])
+
+        df = df.with_columns([
+            pl.lit(float(df["sample_qty"][0])).alias('cum_wt')
+        ])
+        
+        # initialize data to previous values    
+        cum_wt_list = [73471.5+float(df['sample_qty'][0])]
+        weighted_gcv_list = [float(df['sample_qty'][0]) * float(df['plant_arb_gcv'][0])]
+        cum_weighted_gcv_list = [weighted_gcv_list[0]+265714358.5]
+        gcv_list = [cum_weighted_gcv_list[0]/cum_wt_list[0]]
+        
+        dates = {}
+
+        fdata = {
+            "date": [],
+            "sample_qty": [],
+            "cum_wt": [],
+            "weighted_gcv_arb": [],
+            "cum_weighted_gcv": [],
+            "weighted_gcv": [],
+            "cum_domestic_qty_ytd":[],
+            "wt_domestic_gcv_before_final": [],
+            "cum_wt_domestic_gcv":[],
+            "domestic_gcv":[],
+        }
+        
+        for i in range(1, len(df)):      
+            current_month = df['plant_analysis_date'][i].month
+
+            cum_wt_total = float(df['sample_qty'][i]) + cum_wt_list[i-1]
+            weighted_gcv_total = float(df['sample_qty'][i]) * float(df['plant_arb_gcv'][i])
+            cum_weighted_gcv_total = float(weighted_gcv_total) + cum_weighted_gcv_list[i-1]
+            gcv_total = cum_weighted_gcv_total/cum_wt_total
+            if len(bunker_values) > 0 and cum_wt_total >= bunker_values[0]:
+  
+                month = df['plant_analysis_date'][i].replace(day=1, month=(df['plant_analysis_date'][i].month) + 1) - timedelta(days=1)               #For Monthend
+                console_logger.debug(month)
+                to_sub = bunker_values.pop(0)
+                date = bunker_dates.pop(0)
+                
+                wt = cum_wt_total - to_sub
+                wgcv = wt*float(df['plant_arb_gcv'][i])
+                cwgcv = wgcv+cum_weighted_gcv_list[i-1]
+                
+                cum_wt_total = wt
+                weighted_gcv_total = wt * float(df['plant_arb_gcv'][i])
+                cum_weighted_gcv_total = weighted_gcv_total
+                gcv_total = cum_weighted_gcv_total / cum_wt_total
+                if not dates.get(month):
+                    if not month:
+                        continue
+
+                    # fdata['date'].append(month.strftime("%m/%d/%Y"))
+                    if month.strftime("%m/%d/%Y") in fdata['date']:
+                        fdata['date'].append(date.strftime("%m/%d/%Y"))
+                    else:
+                        fdata['date'].append(month.strftime("%m/%d/%Y"))
+                    fdata['sample_qty'].append(df['sample_qty'][i] - wt)
+                    fdata['cum_wt'].append(to_sub)
+                    fdata['weighted_gcv_arb'].append(wgcv)
+                    fdata['cum_weighted_gcv'].append(cwgcv)
+                    fdata['weighted_gcv'].append(cwgcv/to_sub)
+                    fdata['wt_domestic_gcv_before_final'].append((df['sample_qty'][i] - wt)*(cwgcv/to_sub))
+                    if len(fdata["cum_domestic_qty_ytd"]) != 0 :
+                        fdata["cum_domestic_qty_ytd"].append((df['sample_qty'][i] - wt) + fdata["cum_domestic_qty_ytd"][len(fdata["cum_domestic_qty_ytd"])-1])
+                    else:
+                        fdata["cum_domestic_qty_ytd"].append(df['sample_qty'][i] - wt)
+                    if len(fdata["cum_wt_domestic_gcv"]) != 0 :
+                        fdata["cum_wt_domestic_gcv"].append(((df['sample_qty'][i] - wt)*(cwgcv/to_sub)) + fdata["cum_wt_domestic_gcv"][len(fdata["cum_wt_domestic_gcv"])-1])
+                    else:
+                        fdata["cum_wt_domestic_gcv"].append((df['sample_qty'][i] - wt)*(cwgcv/to_sub))
+                    fdata["domestic_gcv"].append(fdata["cum_wt_domestic_gcv"][-1]/fdata["cum_domestic_qty_ytd"][-1])
+            
+            cum_wt_list.append(cum_wt_total)
+            weighted_gcv_list.append(weighted_gcv_total)
+            cum_weighted_gcv_list.append(cum_weighted_gcv_total)
+            gcv_list.append(gcv_total)
+
+        
+        #     if len(bunker_values) == 0:
+        #         last_bunker_analysis_date = df['plant_analysis_date'].max()
+        #         console_logger.debug(last_bunker_analysis_date)
+        #         console_logger.debug(last_bunker_analysis_date)
+                
+        #         wt = cum_wt_total - to_sub
+        #         wgcv = wt*float(df['plant_arb_gcv'][i])
+        #         cwgcv = wgcv+cum_weighted_gcv_list[i-1]
+                
+        #         cum_wt_total = wt
+        #         weighted_gcv_total = wt * float(df['plant_arb_gcv'][i])
+        #         cum_weighted_gcv_total = weighted_gcv_total
+        #         gcv_total = cum_weighted_gcv_total / cum_wt_total
+        #         if not dates.get(last_bunker_analysis_date):
+        #             if not last_bunker_analysis_date:
+        #                 continue
+
+        #             fdata['date'].append(last_bunker_analysis_date.strftime("%m/%d/%Y"))
+        #             fdata['sample_qty'].append(df['sample_qty'][i] - wt)
+        #             fdata['cum_wt'].append(to_sub)
+        #             fdata['weighted_gcv_arb'].append(wgcv)
+        #             fdata['cum_weighted_gcv'].append(cwgcv)
+        #             fdata['weighted_gcv'].append(cwgcv/to_sub)
+        #             fdata['wt_domestic_gcv_before_final'].append((df['sample_qty'][i] - wt)*(cwgcv/to_sub))
+        #             if len(fdata["cum_domestic_qty_ytd"]) != 0 :
+        #                 fdata["cum_domestic_qty_ytd"].append((df['sample_qty'][i] - wt) + fdata["cum_domestic_qty_ytd"][len(fdata["cum_domestic_qty_ytd"])-1])
+        #             else:
+        #                 fdata["cum_domestic_qty_ytd"].append(df['sample_qty'][i] - wt)
+        #             if len(fdata["cum_wt_domestic_gcv"]) != 0 :
+        #                 fdata["cum_wt_domestic_gcv"].append(((df['sample_qty'][i] - wt)*(cwgcv/to_sub)) + fdata["cum_wt_domestic_gcv"][len(fdata["cum_wt_domestic_gcv"])-1])
+        #             else:
+        #                 fdata["cum_wt_domestic_gcv"].append((df['sample_qty'][i] - wt)*(cwgcv/to_sub))
+        #             fdata["domestic_gcv"].append(fdata["cum_wt_domestic_gcv"][-1]/fdata["cum_domestic_qty_ytd"][-1])
+
+            
+        #     cum_wt_list.append(cum_wt_total)
+        #     weighted_gcv_list.append(weighted_gcv_total)
+        #     cum_weighted_gcv_list.append(cum_weighted_gcv_total)
+        #     gcv_list.append(gcv_total)
+
+        # console_logger.debug(len(cum_wt_list))       
+        # console_logger.debug(len(weighted_gcv_list))       
+        # console_logger.debug(len(cum_weighted_gcv_list))       
+        # console_logger.debug(len(gcv_list))       
+        
+        df = df.with_columns(
+            pl.Series('cum_wt', cum_wt_list),
+            pl.Series('weighted_gcv', weighted_gcv_list),
+            pl.Series('cum_weighted_gcv',cum_weighted_gcv_list),
+            pl.Series('gcv', gcv_list)
+        )
+        fdf = pl.DataFrame(fdata)
+        # fdf_dict = fdf.to_dict()
+        # fdf_rows = fdf.to_dict(as_series=False).items()
+        # console_logger.debug(fdf_rows)
+        # csv_str = fdf.write_csv()
+        fdf_dict = fdf.to_dict(as_series=False)
+        path_bunker = os.path.join(
+                        "static_server",
+                        "test_summary_{}.xlsx".format(
+                            datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                        ),)
+
+        # fdf.write_excel(path_bunker)
+        # console_logger.debug(fdf_dict)
+        return fdf_dict
+    except Exception as e:
+        console_logger.debug("----- Vehicle Scanned Count Error -----",e)
+        # response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+def get_week_ends(month: int, year: int):
+    # Get the start and end of the month
+    start_month = datetime.datetime(year, month, 1)
+    if month == 12:
+        end_month = start_month.replace(year=year + 1, month=1) - datetime.timedelta(days=1)
+    else:
+        end_month = start_month.replace(month=month + 1) - datetime.timedelta(days=1)
+    
+    weekends = []
+
+    # Iterate through all days in the month
+    current_day = start_month
+    while current_day <= end_month:
+        # Check if the current day is a weekend (Saturday or Sunday)
+        if current_day.weekday() == 5 or current_day.weekday() == 6:  # 5 = Saturday, 6 = Sunday
+            weekends.append(current_day)
+        current_day += datetime.timedelta(days=1)
+    
+    return weekends
+
+
+def get_current_financial_year_week(Month):
+    current_date = datetime.datetime.now(datetime.timezone.utc)    
+    start_month = current_date.replace(month=Month if Month < 12 else Month, day=1, year=current_date.year+1 if Month in [1,2,3] else current_date.year, hour=0,minute=0,second=0,microsecond=0)
+    if Month == 12:
+        end_month = start_month.replace(day=31)
+    else:
+        end_month = start_month.replace(month=Month+1 ) - datetime.timedelta(days=1)
+    
+    return start_month, end_month
+
+
+
+@router.get("/summary/week", tags=["test"])
+def summarybyWeek():
+    try:
+        if "BunkerQualityAnalysis" not in collectionList or "BunkerQualitySummary" not in collectionList:
+            BQA = gmrDB.create_collection("BunkerQualityAnalysis")
+            BQS = gmrDB.create_collection("BunkerQualitySummary")
+        else:
+            BQA = gmrDB.get_collection("BunkerQualityAnalysis")
+            BQS = gmrDB.get_collection("BunkerQualitySummary")
+            index_name = "po_index"
+            BQA.create_index(index_name)
+        monthends = []
+        weekends = []
+        for month in range(1, 13):
+            start_year, end_year = get_current_financial_year_week(month)
+            weekends.extend(get_week_ends(start_year.month, end_year.year))
+        weekends.sort()
+        # print(weekends)
+        
+        result = BQA.aggregate([ 
+            { 
+                "$facet": {
+                    "WeightedGCV": [
+                        {
+                            '$match': {
+                                'sample_date': {
+                                '$gte': datetime.datetime.now().replace(day=1),  # Date range from 1st of the month
+                                '$lte': datetime.datetime.now()         # To the current date
+                        }
+                            }
+                        },
+                        {
+                            '$sort': {
+                                'bunker_wt_gcv': -1
+                            }
+                        },
+                        {
+                            '$group': {
+                                '_id': {
+                                    'sample_date': '$sample_date'
+                                },
+                                'bunker_wt_gcv': {
+                                    '$max': '$bunker_wt_gcv'
+                                }
+                            }
+                        },
+                    ],
+                    "DomesticQty": [
+                        {
+                            '$project': {
+                                'sample_date': 1,  
+                                'bunkered_qty': 1  
+                            }
+                        },
+                        {
+                            '$group': {
+                                '_id': {
+                                    '$dateToString': {
+                                        'date': '$sample_date',
+                                        'format': '%Y-%V'
+                                    }
+                                },
+                                'domestic_qty': {
+                                    '$sum': '$bunkered_qty' 
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        ])
+
+        console_logger.debug([ 
+            { 
+                "$facet": {
+                    "WeightedGCV": [
+                        {
+                            '$match': {
+                                'sample_date': {
+                                '$gte': datetime.datetime.now().replace(day=1),  # Date range from 1st of the month
+                                '$lte': datetime.datetime.now()         # To the current date
+                        }
+                            }
+                        },
+                        {
+                            '$sort': {
+                                'bunker_wt_gcv': -1
+                            }
+                        },
+                        {
+                            '$group': {
+                                '_id': {
+                                    'sample_date': '$sample_date'
+                                },
+                                'bunker_wt_gcv': {
+                                    '$max': '$bunker_wt_gcv'
+                                }
+                            }
+                        },
+                    ],
+                    "DomesticQty": [
+                        {
+                            '$project': {
+                                'sample_date': 1,  
+                                'bunkered_qty': 1  
+                            }
+                        },
+                        {
+                            '$group': {
+                                '_id': {
+                                    '$dateToString': {
+                                        'date': '$sample_date',
+                                        'format': '%Y-%V'
+                                    }
+                                },
+                                'domestic_qty': {
+                                    '$sum': '$bunkered_qty' 
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        ])
+        
+        wgcv = []
+        dqty = []
+        
+        for col in result:
+            wgcv.extend(col.get("WeightedGCV", []))
+            dqty.extend(col.get("DomesticQty", []))
+        
+        data = []
+        # for i in wgcv:
+        #     for s in dqty:
+        #         if s.get("_id") == i.get("_id").get("sample_date").strftime("%Y-%m"):
+        #             data.append({
+        #                 "date": i.get("_id").get("sample_date"), 
+        #                 "domestic_qty": s.get("domestic_qty"), 
+        #                 "wt_gcv": i.get("bunker_wt_gcv"),
+        #                 "imported_qty": 0, 
+        #                 "total_qty": s.get("domestic_qty") + 0, 
+        #                 "cum_total_qty": s.get("domestic_qty") + 0
+        #             })
+        
+        for i in wgcv:
+            sample_date = i.get("_id").get("sample_date")
+            week_id = sample_date.strftime("%Y-%V")  # Convert to year-week format
+            
+            for s in dqty:
+                if s.get("_id") == week_id:  # Match using the weekly ID
+                    data.append({
+                        "date": sample_date, 
+                        "domestic_qty": s.get("domestic_qty"), 
+                        "wt_gcv": i.get("bunker_wt_gcv"),
+                        "imported_qty": 0, 
+                        "total_qty": s.get("domestic_qty") + 0, 
+                        "cum_total_qty": s.get("domestic_qty") + 0
+                    })
+        console_logger.debug(data)
+        df = pl.DataFrame(data).sort(by='date', descending=False)
+
+        df = df.with_columns([
+            pl.lit(0.0).alias("cum_total_qty"),
+            pl.lit(0.0).alias("weighted_domestic_gcv"),
+            pl.lit(0.0).alias("cum_weighted_domestic_gcv"),
+            pl.lit(0.0).alias("weighted_gcv")
+            
+        ])
+        
+        
+        df = df.with_columns([
+            pl.lit(df['total_qty'][0]).alias("cum_total_qty"),
+            pl.lit(df['wt_gcv'][0] * df['total_qty'][0]).alias("weighted_domestic_gcv"),
+            pl.lit(df['wt_gcv'][0] * df['total_qty'][0]).alias("cum_weighted_domestic_gcv"),
+            pl.lit((df['wt_gcv'][0] * df['total_qty'][0]) / df['total_qty'][0]).alias("weighted_gcv")
+        ])
+        
+        # Perform calculations for cumulative columns
+        cum_total_qty_list = [df['cum_total_qty'][0]]
+        weighted_domestic_gcv_list = [df['weighted_domestic_gcv'][0]]
+        cum_weighted_domestic_gcv_list = [df['cum_weighted_domestic_gcv'][0]]
+        weighted_gcv_list = [df['weighted_gcv'][0]]
+
+        for i in range(1, len(df)):
+            cum_total_qty = df['total_qty'][i] + cum_total_qty_list[i-1]
+            
+            if df['wt_gcv'][i] is not None:
+                weighted_domestic_gcv = df['wt_gcv'][i] * df['total_qty'][i]
+            else:
+                weighted_domestic_gcv = 0
+            cum_weighted_domestic_gcv = weighted_domestic_gcv + cum_weighted_domestic_gcv_list[i-1]
+            weighted_gcv = cum_weighted_domestic_gcv / cum_total_qty
+
+            cum_total_qty_list.append(cum_total_qty)
+            weighted_domestic_gcv_list.append(weighted_domestic_gcv)
+            cum_weighted_domestic_gcv_list.append(cum_weighted_domestic_gcv)
+            weighted_gcv_list.append(weighted_gcv)
+
+        # Update the DataFrame with the calculated lists
+        df = df.with_columns([
+            pl.Series("cum_total_qty", cum_total_qty_list),
+            pl.Series("weighted_domestic_gcv", weighted_domestic_gcv_list),
+            pl.Series("cum_weighted_domestic_gcv", cum_weighted_domestic_gcv_list),
+            pl.Series("weighted_gcv", weighted_gcv_list)
+        ])
+
+        bulk = []
+        
+        today = datetime.datetime.today()
+
+        console_logger.debug(df)
+
+        # Extract the latest date from your dataframe
+        latest_date = df['date'].max()
+
+        if today.month == latest_date.month and today.year == latest_date.year:
+            last_row = {key: value[0] for key, value in df.tail(1).to_dict(as_series=False).items()}
+            filter_query = {"date": last_row["date"]}
+            update_query = {
+                "$set": {
+                    "domestic_qty": last_row['domestic_qty'],
+                    "wt_gcv": last_row['wt_gcv'],
+                    "imported_qty": last_row['imported_qty'],
+                    "total_qty": last_row['total_qty'],
+                    "cum_total_qty": last_row['cum_total_qty'],
+                    "weighted_domestic_gcv": last_row['weighted_domestic_gcv'],
+                    "cum_weighted_domestic_gcv": last_row['cum_weighted_domestic_gcv'],
+                    "weighted_gcv": last_row['weighted_gcv'],
+                    # "cr_domestic_gcv_mtd": last_row['domestic_qty'],
+                    
+                }
+            }
+            bulk.append(UpdateOne(filter_query, update_query, upsert=True))
+        else:
+            console_logger.info("The current month is completed; no data will be inserted.")
+            
+        if bulk:
+            # console_logger.debug(bulk)
+            BQS.bulk_write(bulk)
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+def last_day_of_month(date):
+    if date.month == 12:
+        return date.replace(day=31)
+    return date.replace(month=date.month+1, day=1) - datetime.timedelta(days=1)
+
+
+@router.get("/test_data_summary", tags=["Road Coal"])
+def endpoint_to_test_gcv_analysis():
+    try:
+        listData = ["04/30/2024", "05/31/2024", "06/30/2024", "07/31/2024", "08/31/2024", "09/30/2024", "10/31/2024", "11/03/2024"]
+
+        for single_data in listData:
+            date_data = datetime.datetime.strptime(single_data, "%m/%d/%Y").strftime("%Y-%m")
+            date_data_dateee = datetime.datetime.strptime(single_data, "%m/%d/%Y").date()
+            start_date = f"{date_data}-01"
+            end_date = str(last_day_of_month(date_data_dateee))
+            fetchBunkerSummary = BunkerQualitySummary.objects.get(date__gte=start_date, date__lte=end_date)
+            console_logger.debug(fetchBunkerSummary.date)
+            console_logger.debug(fetchBunkerSummary.cum_total_qty)
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+    
+@router.get("/test_coalgcv", tags=["Road Coal"])
+def endpoint_to_insert_gcv_analysis():
+    try:
+        fetchreciptData = endpoint_to_fetch_coal_recipt_summary()
+        for i, fetch_date in enumerate(fetchreciptData['date']):
+            try:
+                fetchBunkerSummary = BunkerQualitySummary.objects.get(date=fetch_date)
+                # date_data = datetime.datetime.strptime(fetch_date, "%m/%d/%Y").strftime("%Y-%m")
+                # date_data_dateee = datetime.datetime.strptime(fetch_date, "%m/%d/%Y").date()
+                # start_date = f"{date_data}-01"
+                # end_date = str(last_day_of_month(date_data_dateee))
+                # console_logger.debug(start_date)
+                # console_logger.debug(end_date)
+                # fetchBunkerSummary = BunkerQualitySummary.objects.get(date__gte=start_date, date__lte=end_date)
+                cr_domestic_gcv_mtd = round(fetchreciptData['weighted_gcv'][i], 2)
+                cr_weighted_gcv_ytd = round(fetchreciptData['domestic_gcv'][i], 2)
+                cr_domestic_qty_mtd = round(fetchBunkerSummary.domestic_qty, 2)
+                cr_imported_qty_mtd = 0 
+                cr_imported_gcv_mtd = 0 
+                cr_weighted_gcv_mtd = round(((fetchBunkerSummary.domestic_qty*cr_domestic_gcv_mtd) + (cr_imported_qty_mtd*cr_imported_gcv_mtd)) / (cr_domestic_qty_mtd+cr_imported_qty_mtd), 2) #((sample_qty*weighted_gcv) + (imported_qty_mtd*imported_gcv_mtd))/ sample_qty+imported_qty_mtd
+                difference_in_gcv_mtd = round(cr_weighted_gcv_mtd - fetchBunkerSummary.wt_gcv, 3)
+                difference_in_gcv_ytd = round(cr_weighted_gcv_ytd - fetchBunkerSummary.weighted_gcv, 3)
+                
+                fetchBunkerSummary.cr_domestic_gcv_mtd = cr_domestic_gcv_mtd
+                fetchBunkerSummary.cr_weighted_gcv_ytd = cr_weighted_gcv_ytd
+                fetchBunkerSummary.cr_domestic_qty_mtd = cr_domestic_qty_mtd
+                fetchBunkerSummary.cr_imported_qty_mtd = cr_imported_qty_mtd
+                fetchBunkerSummary.cr_imported_gcv_mtd = cr_imported_gcv_mtd
+                fetchBunkerSummary.cr_weighted_gcv_mtd = cr_weighted_gcv_mtd
+                fetchBunkerSummary.difference_in_gcv_mtd = difference_in_gcv_mtd
+                fetchBunkerSummary.difference_in_gcv_ytd = difference_in_gcv_ytd
+                fetchBunkerSummary.save()
+
+            except DoesNotExist as e:
+                continue
+        return {"detail": "success"}
+    except Exception as e:
+        console_logger.debug("----- Vehicle Scanned Count Error -----",e)
+        # response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
 
 @router.get("/coal_gcv_analysis", tags=["Road Coal"])
 def endpoint_to_fetch_gcv_analysis(response: Response, currentPage: Optional[int] = None, perPage: Optional[int] = None, search_text:  Optional[str] = None, type: Optional[str]="display"):
@@ -22634,6 +30332,7 @@ def endpoint_to_fetch_gcv_analysis(response: Response, currentPage: Optional[int
                 "page_size": 15
         }
         if type and type == "display":
+            data = Q()
             page_no = 1
             page_len = result["page_size"]
 
@@ -22645,47 +30344,32 @@ def endpoint_to_fetch_gcv_analysis(response: Response, currentPage: Optional[int
                 result["page_size"] = perPage
                 
             offset = (page_no - 1) * page_len
-            
+
             listData = []
-            fetchBunkerQualitySummary = BunkerQualitySummary.objects().skip(offset).limit(page_len)
-            for singleBunkerQuality in fetchBunkerQualitySummary:
-                console_logger.debug(singleBunkerQuality.date)
-                dataDict = {}
-                # dataDict["year"] = "FY-2024"
-                date_obj = singleBunkerQuality.date
-                year = date_obj.year
-                month = date_obj.month
-                if month < 4:  # Months: Jan(1), Feb(2), Mar(3)
-                    financial_year = f"FY {year - 1}-{str(year+1)[2:]}"
-                else:  # Months: Apr(4), May(5), ..., Dec(12)
-                    financial_year = f"FY {year}-{str(year+1)[2:]}"
-                # console_logger.debug(financial_year)
-                dataDict["year"] = financial_year
-                dataDict["month"] = singleBunkerQuality.date.strftime("%Y-%m-%d")
-                dataDict["cb_domestic_qty_mtd"] = round(singleBunkerQuality.domestic_qty, 2)
-                dataDict["cb_imported_qty_mtd"] = round(singleBunkerQuality.cum_total_qty, 2)
-                dataDict["cb_weighted_gcv_mtd"] = round(singleBunkerQuality.wt_gcv, 2)
-                dataDict["cb_weighted_gcv_ytd"] = round(singleBunkerQuality.weighted_gcv, 2)
-                dataDict["cr_domestic_qty_mtd"] = 0
-                dataDict["cr_domestic_gcv_mtd"] = 0 
-                dataDict["cr_imported_qty_mtd"] = 0 
-                dataDict["cr_imported_gcv_mtd"] = 0 
-                dataDict["cr_weighted_gcv_mtd"] = 0 
-                dataDict["cr_weighted_gcv_ytd"] = 0 
-                dataDict["mtd"] = dataDict["cr_weighted_gcv_mtd"] - dataDict["cb_weighted_gcv_mtd"]
-                dataDict["ytd"] = dataDict["cr_weighted_gcv_ytd"] - dataDict["cb_weighted_gcv_ytd"]
-                listData.append(dataDict)
-                # console_logger.debug(dataDict)
-            console_logger.debug(result)
-            console_logger.debug(search_text)
-            if search_text and search_text != "all":
-                filtered_data = [entry for entry in listData if entry['year'] == search_text]
-            elif search_text == "all":
-                filtered_data = listData
-            else:
-                filtered_data = listData
-            result["labels"] = list(dataDict.keys())
-            result["datasets"] = filtered_data
+            logs = BunkerQualitySummary.objects().skip(offset).limit(page_len).order_by("date")
+            # result["labels"] = list(dataDict.keys())
+            if any(logs):
+                for log in logs:
+                    # result["labels"] = ["year", "month", "cb_domestic_qty_mtd", "cb_imported_qty_mtd", "cb_weighted_gcv_mtd", "cb_weighted_gcv_ytd", "cr_domestic_qty_mtd", "cr_domestic_gcv_mtd", "cr_imported_qty_mtd",  "cr_imported_gcv_mtd", "cr_weighted_gcv_mtd", "cr_weighted_gcv_ytd", "difference_in_gcv_mtd", "difference_in_gcv_ytd"]
+                    # result["labels"] = list(log.simplepayload().keys())
+                    # result["datasets"].append(log.simplepayload())
+                    payload = log.simplepayload()
+                    
+                    # Add search filtering here
+                    if search_text:
+                        # Search through the values of the payload dictionary
+                        if search_text.lower() in str(payload).lower():
+                            # result["labels"] = list(payload.keys())
+                            result["labels"] = ["year", "month", "cb_domestic_qty_mtd", "cb_imported_qty_mtd", "cb_weighted_gcv_mtd", "cb_weighted_gcv_ytd", "cr_domestic_qty_mtd", "cr_domestic_gcv_mtd", "cr_imported_qty_mtd",  "cr_imported_gcv_mtd", "cr_weighted_gcv_mtd", "cr_weighted_gcv_ytd", "difference_in_gcv_mtd", "difference_in_gcv_ytd"]
+                            
+                            result["datasets"].append(payload)
+                    else:
+                        # If no search_text provided, add all the data
+                        # result["labels"] = list(payload.keys())
+                        result["labels"] = ["year", "month", "cb_domestic_qty_mtd", "cb_imported_qty_mtd", "cb_weighted_gcv_mtd", "cb_weighted_gcv_ytd", "cr_domestic_qty_mtd", "cr_domestic_gcv_mtd", "cr_imported_qty_mtd",  "cr_imported_gcv_mtd", "cr_weighted_gcv_mtd", "cr_weighted_gcv_ytd", "difference_in_gcv_mtd", "difference_in_gcv_ytd"]
+
+                        result["datasets"].append(payload)
+
             result["total"]= len(BunkerQualitySummary.objects())
             return result
         elif type and type =="download":
@@ -22699,6 +30383,7 @@ def endpoint_to_fetch_gcv_analysis(response: Response, currentPage: Optional[int
             usecase_data = BunkerQualitySummary.objects()
             count = len(usecase_data)
             path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             if usecase_data:
                 try:
                     path = os.path.join(
@@ -22716,71 +30401,100 @@ def endpoint_to_fetch_gcv_analysis(response: Response, currentPage: Optional[int
                     cell_format2.set_bold()
                     cell_format2.set_font_size(10)
                     cell_format2.set_align("center")
-                    cell_format2.set_align("vjustify")
+                    cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+                    cell_format2.set_border(1)
+
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+                    # report_name_format.set_text_wrap(True)
+
+                    header_format.set_align("vcenter")
+                    date_format.set_align("vcenter")
+                    report_name_format.set_align("vcenter")
+                    header_format.set_border(1)
+                    date_format.set_border(1)
+                    report_name_format.set_border(1)
 
                     worksheet = workbook.add_worksheet()
-                    worksheet.set_column("A:AZ", 20)
+                    # worksheet.set_column("A:AZ", 20)
                     worksheet.set_default_row(50)
                     # cell_format = workbook.add_format()
                     cell_format = workbook.add_format({'num_format': '0'}) 
                     cell_format.set_font_size(10)
                     cell_format.set_align("center")
                     cell_format.set_align("vcenter")
-                    headers = [
-                        "srno",
-                        "year",
-                        "month",
-                        "cb_domestic_qty_mtd",
-                        "cb_imported_qty_mtd",
-                        "cb_weighted_gcv_mtd",
-                        "cb_weighted_gcv_ytd",
-                        "cr_domestic_qty_mtd",
-                        "cr_domestic_gcv_mtd",
-                        "cr_imported_qty_mtd",
-                        "cr_imported_gcv_mtd",
-                        "cr_weighted_gcv_mtd",
-                        "cr_weighted_gcv_ytd",
-                        "mtd",
-                        "ytd"
+                    cell_format.set_text_wrap(True)
+                    cell_format.set_border(1)
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range("A1:O1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    
+                    # Write the current date on the left side (A2)
+                    # worksheet.write("A2", f"Date: {datetime.datetime.now().strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range("A2:B2", f"Date: {datetime.datetime.now().strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range("C2:O2", f"Coal GCV Analysis", report_name_format)
+
+                    diff_gcv_color = workbook.add_format({'bg_color': '#C4BD97'})
+
+                    worksheet.conditional_format('N3:N10', {'type': 'no_blanks', 'format': diff_gcv_color})
+                    worksheet.conditional_format('O3:O10', {'type': 'no_blanks', 'format': diff_gcv_color})
+
+                    headers= [
+                        "Srno",
+                        "Year",
+                        "Month",
+                        "Coal Bunker Domestic Qty MTD",
+                        "Coal Bunker Imported Qty MTD",
+                        "Coal Bunker Weighted GCV MTD",
+                        "Coal Bunker Weighted GCVYTD",
+                        "Coal Receipt Domestic Qty MTD",
+                        "Coal Receipt Domestic GCV MTD",
+                        "Coal Receipt Imported Qty MTD",
+                        "Coal Receipt Imported GCV MTD",
+                        "Coal Receipt Weighted GCV MTD",
+                        "Coal Receipt Weighted GCV YTD",
+                        "Difference in GCV MTD",
+                        "Difference in GCV YTD"
                     ]
 
                     for index, header in enumerate(headers):
-                        worksheet.write(0, index, header, cell_format2)
+                        worksheet.write(2, index, header, cell_format2)
+                    finalData = None
+                    for row, query in enumerate(usecase_data, start=3):
+                        dataField = query.simplepayload()
+                        # Add search filtering here
+                        if search_text:
+                            if search_text.lower() in str(dataField).lower():
+                                finalData = dataField
+                        else:
+                            finalData = dataField
+                        if finalData is not None:
+                            # Writing data to the worksheet
+                            worksheet.write(row, 0, count, cell_format)  # Ensure cell_format is properly defined
 
-                    for row, result in enumerate(usecase_data, start=1):
-                        # Writing data to the worksheet
-                        worksheet.write(row, 0, count, cell_format)  # Ensure cell_format is properly defined
+                            worksheet.write(row, 1, finalData["year"], cell_format)
+                            worksheet.write(row, 2, finalData["month"], cell_format)
+                            worksheet.write(row, 3, finalData["cb_domestic_qty_mtd"], cell_format)
+                            worksheet.write(row, 4, finalData["cb_imported_qty_mtd"], cell_format)
+                            worksheet.write(row, 5, finalData["cb_weighted_gcv_mtd"], cell_format)
+                            worksheet.write(row, 6, finalData["cb_weighted_gcv_ytd"], cell_format)
+                            worksheet.write(row, 7, finalData["cr_domestic_qty_mtd"], cell_format)
+                            worksheet.write(row, 8, finalData["cr_domestic_gcv_mtd"], cell_format)
+                            worksheet.write(row, 9, finalData["cr_imported_qty_mtd"], cell_format)
+                            worksheet.write(row, 10, finalData["cr_imported_gcv_mtd"], cell_format)
+                            worksheet.write(row, 11, finalData["cr_weighted_gcv_mtd"], cell_format)
+                            worksheet.write(row, 12, finalData["cr_weighted_gcv_ytd"], cell_format)
+                            worksheet.write(row, 13, finalData["difference_in_gcv_mtd"], cell_format)
+                            worksheet.write(row, 14, finalData["difference_in_gcv_ytd"], cell_format)
 
-                        # Extracting date and formatting it according to financial year
-                        console_logger.debug(result['date'])    
-                        date_obj = result['date']
-                        year = date_obj.year
-                        month = date_obj.month
-                        
-                        # Handling financial year based on month
-                        if month < 4:  # Jan(1), Feb(2), Mar(3)
-                            financial_year = f"FY {year - 1}-{str(year + 1)[2:]}"
-                        else:  # Apr(4) to Dec(12)
-                            financial_year = f"FY {year}-{str(year + 1)[2:]}"
-                        
-                        # Writing data into the worksheet
-                        worksheet.write(row, 1, financial_year)                      
-                        worksheet.write(row, 2, date_obj.strftime("%Y-%m-%d"))                      
-                        worksheet.write(row, 3, round(result['domestic_qty'], 2))                      
-                        worksheet.write(row, 4, round(result['cum_total_qty'], 2))                      
-                        worksheet.write(row, 5, round(result['wt_gcv'], 2))                      
-                        worksheet.write(row, 6, round(result['weighted_gcv'], 2))  # cb_weighted_gcv_ytd
-                        worksheet.write(row, 7, 0)  # cr_domestic_gcv_mtd
-                        worksheet.write(row, 8, 0)  # cr_imported_qty_mtd  
-                        worksheet.write(row, 9, 0)  # cr_imported_gcv_mtd                 
-                        worksheet.write(row, 10, 0)  # cr_weighted_gcv_mtd                
-                        worksheet.write(row, 11, 0)  # cr_weighted_gcv_ytd         
-                        worksheet.write(row, 12, 0)  # cr_weighted_gcv_ytd         
-                        worksheet.write(row, 13, round(0 - result['wt_gcv'], 2))   # cr_weighted_gcv_mtd
-                        worksheet.write(row, 14, round(0 - result['weighted_gcv'], 2))  # cr_weighted_gcv_ytd
-
-                        count-=1
-                        
+                            count-=1
+                        else: 
+                            return {"Type":"coal_gcv_analysis_download_event","Datatype":"Report","File_Path":None}
                     workbook.close()
                     console_logger.debug("Successfully {} report generated".format(service_id))
                     console_logger.debug("sent data {}".format(path))
@@ -22811,6 +30525,229 @@ def endpoint_to_fetch_gcv_analysis(response: Response, currentPage: Optional[int
         console_logger.debug((exc_type, fname, exc_tb.tb_lineno))
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
+
+
+# old calculation for cr part
+# @router.get("/coal_gcv_analysis", tags=["Road Coal"])
+# def endpoint_to_fetch_gcv_analysis(response: Response, currentPage: Optional[int] = None, perPage: Optional[int] = None, search_text:  Optional[str] = None, type: Optional[str]="display"):
+#     try:
+#         result = {        
+#                 "labels": [],
+#                 "datasets": [],
+#                 "total" : 0,
+#                 "page_size": 15
+#         }
+#         if type and type == "display":
+#             page_no = 1
+#             page_len = result["page_size"]
+
+#             if currentPage:
+#                 page_no = currentPage
+
+#             if perPage:
+#                 page_len = perPage
+#                 result["page_size"] = perPage
+                
+#             offset = (page_no - 1) * page_len
+            
+#             listData = []
+#             fetchBunkerQualitySummary = BunkerQualitySummary.objects().skip(offset).limit(page_len)
+#             for singleBunkerQuality in fetchBunkerQualitySummary:
+#                 # console_logger.debug(singleBunkerQuality.date)
+#                 dataDict = {}
+#                 # dataDict["year"] = "FY-2024"
+#                 date_obj = singleBunkerQuality.date
+#                 year = date_obj.year
+#                 month = date_obj.month
+#                 fetchreciptData = endpoint_to_fetch_coal_recipt_summary()
+                
+#                 db_date = singleBunkerQuality.date.strftime("%m/%d/%Y")
+#                 if month < 4:  # Months: Jan(1), Feb(2), Mar(3)
+#                     financial_year = f"FY {year - 1}-{str(year+1)[2:]}"
+#                 else:  # Months: Apr(4), May(5), ..., Dec(12)
+#                     financial_year = f"FY {year}-{str(year+1)[2:]}"
+#                 # console_logger.debug(financial_year)
+#                 dataDict["year"] = financial_year
+#                 dataDict["month"] = singleBunkerQuality.date.strftime("%Y-%m-%d")
+#                 dataDict["cb_domestic_qty_mtd"] = round(singleBunkerQuality.domestic_qty, 2)
+#                 dataDict["cb_imported_qty_mtd"] = round(singleBunkerQuality.imported_qty, 2)
+#                 dataDict["cb_weighted_gcv_mtd"] = round(singleBunkerQuality.wt_gcv, 2)
+#                 dataDict["cb_weighted_gcv_ytd"] = round(singleBunkerQuality.weighted_gcv, 2)
+#                 console_logger.debug(fetchreciptData)
+
+#                 dataDict["cr_domestic_gcv_mtd"] = 0  
+#                 dataDict["cr_weighted_gcv_ytd"] = 0 
+
+#                 for i, fetch_date in enumerate(fetchreciptData['date']):
+#                     console_logger.debug(fetch_date)
+#                     console_logger.debug(db_date)
+#                     if fetch_date == db_date:
+#                         # dataDict["cr_domestic_qty_mtd"] = round(fetchreciptData['sample_qty'][i], 2)
+#                         dataDict["cr_domestic_gcv_mtd"] = round(fetchreciptData['weighted_gcv'][i], 2)
+#                         dataDict["cr_weighted_gcv_ytd"] = round(fetchreciptData['domestic_gcv'][i], 2)
+#                 # dataDict["cr_domestic_qty_mtd"] = 0 #sample_qty
+#                 # dataDict["cr_domestic_gcv_mtd"] = 0 #weighted_gcv
+#                 dataDict["cr_domestic_qty_mtd"] = round(singleBunkerQuality.domestic_qty, 2)
+#                 dataDict["cr_imported_qty_mtd"] = 0 
+#                 dataDict["cr_imported_gcv_mtd"] = 0 
+#                 console_logger.debug(dataDict["cr_domestic_gcv_mtd"])
+#                 # dataDict["cr_weighted_gcv_mtd"] = round(((dataDict["cr_domestic_qty_mtd"]*dataDict["cr_domestic_gcv_mtd"]) + (dataDict["cr_imported_qty_mtd"]*dataDict["cr_imported_gcv_mtd"]) / dataDict["cr_domestic_qty_mtd"]+dataDict["cr_imported_qty_mtd"]), 2) #((sample_qty*weighted_gcv) + (imported_qty_mtd*imported_gcv_mtd))/ sample_qty+imported_qty_mtd
+#                 dataDict["cr_weighted_gcv_mtd"] = round(((singleBunkerQuality.domestic_qty*dataDict["cr_domestic_gcv_mtd"]) + (dataDict["cr_imported_qty_mtd"]*dataDict["cr_imported_gcv_mtd"])) / (dataDict["cr_domestic_qty_mtd"]+dataDict["cr_imported_qty_mtd"]), 2) #((sample_qty*weighted_gcv) + (imported_qty_mtd*imported_gcv_mtd))/ sample_qty+imported_qty_mtd
+#                 # dataDict["cr_weighted_gcv_ytd"] = 0
+#                 dataDict["difference_in_gcv_mtd"] = round(dataDict["cr_weighted_gcv_mtd"] - dataDict["cb_weighted_gcv_mtd"], 3)
+#                 dataDict["difference_in_gcv_ytd"] = round(dataDict["cr_weighted_gcv_ytd"] - dataDict["cb_weighted_gcv_ytd"], 3)
+#                 listData.append(dataDict)
+#                 # console_logger.debug(dataDict)
+#             if search_text and search_text != "all":
+#                 filtered_data = [entry for entry in listData if entry['year'] == search_text]
+#             elif search_text == "all":
+#                 filtered_data = listData
+#             else:
+#                 filtered_data = listData
+#             # result["labels"] = list(dataDict.keys())
+#             result["labels"] = ["year", "month", "cb_domestic_qty_mtd", "cb_imported_qty_mtd", "cb_weighted_gcv_mtd", "cb_weighted_gcv_ytd", "cr_domestic_qty_mtd", "cr_domestic_gcv_mtd", "cr_imported_qty_mtd",  "cr_imported_gcv_mtd", "cr_weighted_gcv_mtd", "cr_weighted_gcv_ytd", "difference_in_gcv_mtd", "difference_in_gcv_ytd"]
+#             result["datasets"] = filtered_data
+#             result["total"]= len(BunkerQualitySummary.objects())
+#             return result
+#         elif type and type =="download":
+#             del type
+
+#             file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+#             target_directory = f"static_server/gmr_ai/{file}"
+#             os.umask(0)
+#             os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+#             usecase_data = BunkerQualitySummary.objects()
+#             count = len(usecase_data)
+#             path = None
+#             if usecase_data:
+#                 try:
+#                     path = os.path.join(
+#                         "static_server",
+#                         "gmr_ai",
+#                         file,
+#                         "coal_gcv_analysis_Report_{}.xlsx".format(
+#                             datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+#                         ),
+#                     )
+#                     filename = os.path.join(os.getcwd(), path)
+#                     workbook = xlsxwriter.Workbook(filename)
+#                     workbook.use_zip64()
+#                     cell_format2 = workbook.add_format()
+#                     cell_format2.set_bold()
+#                     cell_format2.set_font_size(10)
+#                     cell_format2.set_align("center")
+#                     cell_format2.set_align("vjustify")
+
+#                     worksheet = workbook.add_worksheet()
+#                     worksheet.set_column("A:AZ", 20)
+#                     worksheet.set_default_row(50)
+#                     # cell_format = workbook.add_format()
+#                     cell_format = workbook.add_format({'num_format': '0'}) 
+#                     cell_format.set_font_size(10)
+#                     cell_format.set_align("center")
+#                     cell_format.set_align("vcenter")
+#                     headers = [
+#                         "Srno",
+#                         "Year",
+#                         "Month",
+#                         "Coal Bunker Domestic Qty MTD",
+#                         "Coal Bunker Imported Qty MTD",
+#                         "Coal Bunker Weighted GCV MTD",
+#                         "Coal Bunker Weighted GCV YTD",
+#                         "Coal Receipt Domestic Qty MTD",
+#                         "Coal Receipt Domestic GCV MTD",
+#                         "Coal Receipt Imported Qty MTD",
+#                         "Coal Receipt Imported GCV MTD",
+#                         "Coal Receipt Weighted GCV MTD",
+#                         "Coal Receipt Weighted GCV YTD",
+#                         "Difference in GCV MTD",
+#                         "Difference in GCV YTD"
+#                     ]
+
+#                     for index, header in enumerate(headers):
+#                         worksheet.write(0, index, header, cell_format2)
+
+#                     for row, result in enumerate(usecase_data, start=1):
+#                         # Writing data to the worksheet
+#                         worksheet.write(row, 0, count, cell_format)  # Ensure cell_format is properly defined
+
+#                         # Extracting date and formatting it according to financial year
+#                         console_logger.debug(result['date'])    
+#                         date_obj = result['date']
+#                         year = date_obj.year
+#                         month = date_obj.month
+
+#                         fetchreciptData = endpoint_to_fetch_coal_recipt_summary()
+                        
+#                         db_date = result['date'].strftime("%m/%d/%Y")
+
+#                         # Handling financial year based on month
+#                         if month < 4:  # Jan(1), Feb(2), Mar(3)
+#                             financial_year = f"FY {year - 1}-{str(year + 1)[2:]}"
+#                         else:  # Apr(4) to Dec(12)
+#                             financial_year = f"FY {year}-{str(year + 1)[2:]}"
+                        
+#                         # Writing data into the worksheet
+#                         worksheet.write(row, 1, financial_year)                      
+#                         worksheet.write(row, 2, date_obj.strftime("%Y-%m-%d"))                      
+#                         worksheet.write(row, 3, round(result['domestic_qty'], 2))                      
+#                         worksheet.write(row, 4, round(result['imported_qty'], 2))                      
+#                         worksheet.write(row, 5, round(result['wt_gcv'], 2))                      
+#                         worksheet.write(row, 6, round(result['weighted_gcv'], 2))  # cb_weighted_gcv_ytd
+#                         cr_domestic_gcv_mtd = 0
+#                         cr_weighted_gcv_ytd = 0
+#                         for i, fetch_date in enumerate(fetchreciptData['date']):
+#                             if fetch_date == db_date:
+#                                 cr_domestic_gcv_mtd = round(fetchreciptData['weighted_gcv'][i], 2)
+#                                 worksheet.write(row, 8, round(fetchreciptData['weighted_gcv'][i], 2)) # cr_domestic_gcv_mtd
+#                                 worksheet.write(row, 12, round(fetchreciptData['domestic_gcv'][i], 2)) # cr_weighted_gcv_ytd
+#                                 cr_weighted_gcv_ytd = round(fetchreciptData['domestic_gcv'][i], 2)
+#                         worksheet.write(row, 7, round(result["domestic_qty"], 2)) # cr_domestic_qty_mtd
+#                         cr_domestic_qty_mtd = round(result["domestic_qty"], 2)
+#                         worksheet.write(row, 9, 0)  # cr_domestic_qty_mtd
+#                         worksheet.write(row, 10, 0)  # cr_imported_qty_mtd  
+#                         cr_imported_qty_mtd = 0
+#                         cr_imported_gcv_mtd = 0
+#                         # worksheet.write(row, 11, round(((cr_domestic_qty_mtd*cr_domestic_gcv_mtd) + (cr_imported_qty_mtd*cr_imported_gcv_mtd) / cr_domestic_qty_mtd+cr_imported_qty_mtd), 2))  # cr_weighted_gcv_mtd 
+#                         worksheet.write(row, 11, round(((cr_domestic_qty_mtd*cr_domestic_gcv_mtd) + (cr_imported_qty_mtd*cr_imported_gcv_mtd)) / (cr_domestic_qty_mtd+cr_imported_qty_mtd), 2))
+#                         cr_weighted_gcv_mtd = round(((cr_domestic_qty_mtd*cr_domestic_gcv_mtd) + (cr_imported_qty_mtd*cr_imported_gcv_mtd)) / (cr_domestic_qty_mtd+cr_imported_qty_mtd), 2)
+                        
+#                         worksheet.write(row, 13, round(cr_weighted_gcv_mtd - result['wt_gcv'], 2))   # cr_weighted_gcv_mtd
+#                         worksheet.write(row, 14, round(cr_weighted_gcv_ytd - result['weighted_gcv'], 2))  # cr_weighted_gcv_ytd
+
+#                         count-=1
+                        
+#                     workbook.close()
+#                     console_logger.debug("Successfully {} report generated".format(service_id))
+#                     console_logger.debug("sent data {}".format(path))
+
+#                     return {
+#                             "Type": "coal_gcv_analysis_download_event",
+#                             "Datatype": "Report",
+#                             "File_Path": path,
+#                             }
+#                 except Exception as e:
+#                     console_logger.debug(e)
+#                     exc_type, exc_obj, exc_tb = sys.exc_info()
+#                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#                     console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#                     console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#             else:
+#                 console_logger.error("No data found")
+#                 return {
+#                         "Type": "coal_gcv_analysis_download_event",
+#                         "Datatype": "Report",
+#                         "File_Path": path,
+#                         }
+#     except Exception as e:
+#         console_logger.debug(e)
+#         response.status_code = 400
+#         exc_type, exc_obj, exc_tb = sys.exc_info()
+#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#         console_logger.debug((exc_type, fname, exc_tb.tb_lineno))
+#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#         return e
 
 
 def get_sap_data(arv_cum_do_numbers):
@@ -22971,7 +30908,7 @@ def get_cmpl_recovery(response: Response,
                                     }
                                 },
                                 "to": "double",
-                                "onError": 0  # Handle conversion errors by returning 0
+                                "onError": 0
                             }
                         }}
                     }
@@ -22990,7 +30927,7 @@ def get_cmpl_recovery(response: Response,
                                             }
                                         },
                                         "to": "double",
-                                        "onError": 0  # Handle conversion errors by returning 0
+                                        "onError": 0
                                     }
                                 },
                                 "$cc_net_qty"
@@ -23072,7 +31009,6 @@ def get_cmpl_recovery(response: Response,
             # result = list(db.aggregate(pipeline))
             result = list(Gmrdata.objects().aggregate(pipeline))
             countResult = list(Gmrdata.objects().aggregate(countAggregation))
-            # console_logger.debug(countResult[0].get("total_count"))
             arv_cum_do_numbers = [item['arv_cum_do_number'] for item in result]
             sap_data = get_sap_data(arv_cum_do_numbers)
 
@@ -23121,7 +31057,7 @@ def get_cmpl_recovery(response: Response,
                 start_date = datetime.datetime.strptime("{}.000Z".format(start_date.isoformat().split("+")[0]), "%Y-%m-%dT%H:%M:%S.%fZ")
                 end_date = datetime.datetime.strptime("{}.000Z".format(end_date.isoformat().split("+")[0]), "%Y-%m-%dT%H:%M:%S.%fZ")
 
-                query["created_at"] = {"$gte": start_date,"$lte": end_date}
+                query["GWEL_Tare_Time"] = {"$gte": start_date,"$lte": end_date}
 
             if search_text:
                 query["$or"] = [
@@ -23190,6 +31126,7 @@ def get_cmpl_recovery(response: Response,
                     item['penalty'] = 0.0
 
             path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             if alldata:
                 try:
                     path = os.path.join(
@@ -23208,6 +31145,11 @@ def get_cmpl_recovery(response: Response,
                     cell_format2.set_font_size(10)
                     cell_format2.set_align("center")
                     cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'left', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'left', 'font_size': 12, "bold": True})
 
                     worksheet = workbook.add_worksheet()
                     worksheet.set_column("A:AZ", 20)
@@ -23216,6 +31158,17 @@ def get_cmpl_recovery(response: Response,
                     cell_format.set_font_size(10)
                     cell_format.set_align("center")
                     cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range("A1:H1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    
+                    # Write the current date on the left side (A2)
+                    worksheet.write("A2", f"Date: {end_date.strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range("C2:H2", f"Report Name: RCF Road Losses", report_name_format)
 
                     headers = [
                         "Sr.No.",
@@ -23228,10 +31181,10 @@ def get_cmpl_recovery(response: Response,
                         "Penalty"
                     ]
                     for index, header in enumerate(headers):
-                        worksheet.write(0, index, header, cell_format2)
+                        worksheet.write(2, index, header, cell_format2)
                     sr_no = 1
-                    for row, item in enumerate(alldata, start=1):
-                        worksheet.write(sr_no, 0, sr_no, cell_format)
+                    for row, item in enumerate(alldata, start=3):
+                        worksheet.write(row, 0, sr_no, cell_format)
                         worksheet.write(row, 1, str(item["type_consumer"]), cell_format)
                         worksheet.write(row, 2, str(item["mine_name"]), cell_format)     
                         worksheet.write(row, 3, str(item["arv_cum_do_number"]), cell_format)
@@ -23278,8 +31231,8 @@ def get_cmpl_recovery(response: Response,
 @router.get("/rcf_losses", tags=["Recovery"])
 def get_rcf_losses(response: Response,
                    month: Optional[str] = None,
-                   currentPage: Optional[int] = 1,
-                   perPage: Optional[int] = 10,                   
+                   currentPage: Optional[int] = None,
+                   perPage: Optional[int] = None,                   
                    type: Optional[str] = "display"):
     try:
         query = {}
@@ -23348,13 +31301,72 @@ def get_rcf_losses(response: Response,
                 {
                     "$sort": {"month": 1}
                 },
-                { 
-                    "$skip": skip_value 
-                },
-                { 
-                    "$limit": page_len 
-                }
+                # { 
+                #     "$skip": skip_value 
+                # },
+                # { 
+                #     "$limit": page_len 
+                # }
             ]
+
+            # pipeline = [
+            #     {'$match': query}, 
+            #     {
+            #         "$group": {
+            #             "_id": {
+            #                 "$substr": ["$month", 0, 7]
+            #             },
+            #             "total_secl_net_wt_sum": {"$sum": {"$toDouble": "$total_secl_net_wt"}},
+            #             "total_gwel_net_wt_sum": {"$sum": {"$toDouble": "$total_gwel_net_wt"}},
+            #             "tl_sum": {
+            #                 "$sum": {
+            #                     "$subtract": [
+            #                         {"$toDouble": "$total_secl_net_wt"},
+            #                         {"$toDouble": "$total_gwel_net_wt"}
+            #                     ]
+            #                 }
+            #             },
+            #             "tl_tolerance_sum": {
+            #                 "$sum": {
+            #                     "$multiply": [
+            #                         {"$toDouble": "$total_secl_net_wt"},
+            #                         0.008
+            #                     ]
+            #                 }
+            #             }
+            #         }
+            #     },
+            #     {
+            #         '$facet': {
+            #             'data': [
+            #                 {
+            #                     '$project': {
+            #                         'month': '$_id', 
+            #                         'total_secl_net_wt_sum': 1, 
+            #                         'total_gwel_net_wt_sum': 1, 
+            #                         'tl_sum': 1, 
+            #                         'tl_tolerance_sum': 1, 
+            #                         '_id': 0
+            #                     }
+            #                 }, {
+            #                     '$sort': {
+            #                         'month': 1
+            #                     }
+            #                 }, 
+            #                 # {
+            #                 #     '$skip': 0
+            #                 # }, {
+            #                 #     '$limit': 200
+            #                 # }
+            #             ], 
+            #             'totalCount': [
+            #                 {
+            #                     '$count': 'total'
+            #                 }
+            #             ]
+            #         }
+            #     }
+            # ]
 
             alldata = list(RailData.objects().aggregate(pipeline))
             listData = []
@@ -23408,10 +31420,16 @@ def get_rcf_losses(response: Response,
                 totalDict["50_percent_of_ol_recovery"] = ""
                 totalDict["ul_recovery"] = ""
                 # footerlistData.append(totalDict)
-            console_logger.debug(listData)
-            result["datasets"] = listData
-            result["footerdatasets"] = totalDict
+
             result["total"] = len(listData)
+            # apgination added
+            start_idx = (page_no - 1) * page_len
+            end_idx = start_idx + page_len
+            paginated_data = listData[start_idx:end_idx]
+            
+            if paginated_data:
+                result["datasets"] = paginated_data
+                result["footerdatasets"] = totalDict
             return result        
 
         elif type and type == "download":
@@ -23471,6 +31489,7 @@ def get_rcf_losses(response: Response,
             alldata = list(raildb.aggregate(pipeline))
 
             path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             if alldata:
                 try:
                     path = os.path.join(
@@ -23489,6 +31508,11 @@ def get_rcf_losses(response: Response,
                     cell_format2.set_font_size(10)
                     cell_format2.set_align("center")
                     cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'left', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'left', 'font_size': 12, "bold": True})
 
                     worksheet = workbook.add_worksheet()
                     worksheet.set_column("A:AZ", 20)
@@ -23497,6 +31521,17 @@ def get_rcf_losses(response: Response,
                     cell_format.set_font_size(10)
                     cell_format.set_align("center")
                     cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range("A1:H1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    
+                    # Write the current date on the left side (A2)
+                    worksheet.write("A2", f"Date: {datetime.datetime.now().strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range("C2:H2", f"Report Name: RCF Rail Losses", report_name_format)
 
                     headers = [
                         "Sr.No.",
@@ -23509,7 +31544,7 @@ def get_rcf_losses(response: Response,
                         "U/L recovery"                                 # penal_ul * freight_pmt
                     ]
                     for index, header in enumerate(headers):
-                        worksheet.write(0, index, header, cell_format2)
+                        worksheet.write(2, index, header, cell_format2)
 
                     grand_total_secl = 0
                     grand_total_gwel = 0
@@ -23517,7 +31552,7 @@ def get_rcf_losses(response: Response,
                     grand_total_tolerance = 0
                     sr_no = 1
 
-                    for row, item in enumerate(alldata, start=1):
+                    for row, item in enumerate(alldata, start=3):
                         secl_qty = item["total_secl_net_wt_sum"]
                         gwel_qty = item["total_gwel_net_wt_sum"]
                         tl = item["tl_sum"]
@@ -23584,9 +31619,15 @@ def get_secl_analysis(response: Response,
                       search_text: Optional[str] = None,
                       start_timestamp: Optional[str] = None,
                       end_timestamp: Optional[str] = None,
+                      month: Optional[str] = None,
                       type: Optional[str] = "display"):
     try:
         query = {}
+        response_data = {
+                "labels": [],
+                "datasets": [],
+                "total" : 0,
+                "page_size": 10}
 
         if type and type == "display":    
             skip = page_size * (page_no - 1)
@@ -23598,6 +31639,15 @@ def get_secl_analysis(response: Response,
                 query["$or"] = [
                     {"sample_id": {"$regex": f"{search_text}", "$options": "i"}}
                 ]
+            
+            if month:
+                start_date = f'{month}-01'
+                startd_date = datetime.datetime.strptime(f"{start_date}T00:00", "%Y-%m-%dT%H:%M")
+                end_date = (startd_date + relativedelta(months=+1, days=-1))
+                query["plant_analysis_date"] = {
+                    "$gte": startd_date,
+                    "$lte": end_date.replace(hour=23, minute=59, second=59)
+                }
 
             Pipeline = [
                 {"$match": query},
@@ -23643,7 +31693,7 @@ def get_secl_analysis(response: Response,
                             "$toDouble": {
                                 "$replaceAll": {
                                     "input": {
-                                        "$toString": "$last_sample_qty"  # Convert to string first
+                                        "$toString": "$last_sample_qty"
                                     },
                                     "find": ",",
                                     "replacement": ""
@@ -23729,27 +31779,27 @@ def get_secl_analysis(response: Response,
                 month = None
 
                 if do_no in secl_dict:
-                    rr_date = f"{secl_dict.get(do_no, {}).get('rr_date', None)}"
+                    rr_date = f"{secl_dict.get(do_no, {}).get('rr_date', '')}"
                     rr_qty = float(secl_dict.get(do_no, {}).get("rr_qty", 0) or 0)
-                    mine_name = f"{secl_dict.get(do_no, {}).get('mine', None)}"
-                    month = f"{secl_dict.get(do_no, {}).get('month', None)}"
+                    mine_name = f"{secl_dict.get(do_no, {}).get('mine', '')}"
+                    month = f"{secl_dict.get(do_no, {}).get('month', '')}"
                     mine_qty = float(item.get("mine_qty", 0) or 0)
 
                 if rr_qty != 0 or mine_qty != 0:
                     transit_loss = round(rr_qty - mine_qty, 2)
 
-                item["Rake_No"] = f"Rake-{item.pop('sample_no', None)}"
-                item["RR_No"] = item.pop("sample_id", None)
+                item["Rake_No"] = f"Rake-{item.pop('sample_no', '')}"
+                item["RR_No"] = item.pop("sample_id", '')
                 item["WT_Quantity"] = mine_qty
-                item["GCV_(ADB)"] = item.pop("plant_adb_gcv", None)
-                item["GCV_(ARB)"] = item.pop("plant_arb_gcv", None)
-                item["TM"] = item.pop("plant_arb_tm", None)
-                item["IM"] = item.pop("plant_adb_im", None)
-                item["VM_(ADB)"] = item.pop("plant_adb_vm", None)
-                item["ASH_(ADB)"] = item.pop("plant_adb_ash", None)
-                item["VM_(ARB)"] = item.pop("plant_arb_vm", None)
-                item["ASH_(ARB)"] = item.pop("plant_arb_ash", None)
-                item["FC_(ARB)"] = item.pop("plant_arb_fc", None)
+                item["GCV_(ADB)"] = item.pop("plant_adb_gcv", '')
+                item["GCV_(ARB)"] = item.pop("plant_arb_gcv", '')
+                item["TM"] = item.pop("plant_arb_tm", '')
+                item["IM"] = item.pop("plant_adb_im", '')
+                item["VM_(ADB)"] = item.pop("plant_adb_vm", '')
+                item["ASH_(ADB)"] = item.pop("plant_adb_ash", '')
+                item["VM_(ARB)"] = item.pop("plant_arb_vm", '')
+                item["ASH_(ARB)"] = item.pop("plant_arb_ash", '')
+                item["FC_(ARB)"] = item.pop("plant_arb_fc", '')
                 item["Analysis_Date"] = str(item.pop("plant_analysis_date").replace(tzinfo=pytz.utc).astimezone(
                                     pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d"))
 
@@ -23924,7 +31974,7 @@ def get_secl_analysis(response: Response,
                 #     console_logger.debug(f"No matching entry in secl_dict for rr_no: {rr_no}")
 
             path = None
-
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             if os.path.exists(target_directory):
                 path = os.path.join(
                         "static_server",
@@ -23945,12 +31995,43 @@ def get_secl_analysis(response: Response,
             normal_row_format = workbook.add_format({'bold': True, 'font_size': 10, 'align': 'center', 
                                                      'valign': 'vcenter', 'border': 1, 'border_color': 'black'})
 
+            cell_format.set_align("vcenter")
+            normal_row_format.set_align("vcenter")
+
+            cell_format.set_border(1)
+            normal_row_format.set_border(1)
+
+            header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+            date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+            report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+
+            cell_format.set_text_wrap(True)
+            header_format.set_text_wrap(True)
+            normal_row_format.set_text_wrap(True)
+
+            header_format.set_align("vcenter")
+            date_format.set_align("vcenter")
+            report_name_format.set_align("vcenter")
+
+            cell_format.set_border(1)
+            header_format.set_border(1)
+            normal_row_format.set_border(1)
+
             for consumer_type, do_grouped_data in grouped_data.items():
                 try:
                     # Create a new worksheet for the current consumer type
                     worksheet = workbook.add_worksheet(consumer_type)
                     worksheet.set_column("A:AZ", 20)
                     worksheet.set_default_row(50)
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    main_header = "GMR Warora Energy Limited"
+                    worksheet.merge_range("A1:T1", main_header, header_format)
+                    
+                    # Write the current date on the left side (A2)
+                    worksheet.write("A2", f"Date: {end_date.strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range("C2:T2", f"Coal Analysis", report_name_format)
 
                     # Write headers only once for the consumer type
                     headers = [
@@ -23977,9 +32058,9 @@ def get_secl_analysis(response: Response,
                     ]
 
                     for index, header in enumerate(headers):
-                        worksheet.write(0, index, header, normal_row_format)
+                        worksheet.write(2, index, header, normal_row_format)
 
-                    current_row = 1  # Start writing data from the second row after headers
+                    current_row = 3  # Start writing data from the second row after headers
 
                     for do_no, entries in do_grouped_data.items():
                         sorted_entries = []
@@ -24011,7 +32092,6 @@ def get_secl_analysis(response: Response,
                             try:
                                 worksheet.write(current_row, 2, datetime.datetime.strptime(month, "%Y-%m").strftime("%b %Y"), cell_format)
                             except ValueError as e:
-                                # console_logger.debug(f"Error parsing month '{month}': {e}")
                                 worksheet.write(current_row, 2, "", cell_format)
 
                             worksheet.write(current_row, 3, do_no, cell_format)
@@ -24022,11 +32102,6 @@ def get_secl_analysis(response: Response,
                             mine_qty = float(item.get("mine_qty", 0) or 0)
 
                             worksheet.write(current_row, 7, round(rr_qty - mine_qty, 2), cell_format)
-                            
-                            # if receive_date:
-                            #     if isinstance(receive_date, str):
-                            #         receive_date = datetime.datetime.fromisoformat(receive_date)
-                            #     worksheet.write(current_row, 5, receive_date.strftime("%Y-%m-%d"), cell_format)
                             worksheet.write(current_row, 8, receive_date, cell_format)
                             worksheet.write(current_row, 9, receive_time, cell_format)
                             worksheet.write(current_row, 10, str(item.get("plant_analysis_date").replace(tzinfo=pytz.utc).astimezone(
@@ -24041,8 +32116,6 @@ def get_secl_analysis(response: Response,
                             worksheet.write(current_row, 17, item.get("plant_arb_vm", ""), cell_format)
                             worksheet.write(current_row, 18, item.get("plant_arb_ash", ""), cell_format)
                             worksheet.write(current_row, 19, item.get("plant_arb_fc", ""), cell_format)
-                            
-                            # current_row += 1  # Move to the next row for the next item
                         
                         current_row += 1
 
@@ -24078,17 +32151,325 @@ def get_secl_analysis(response: Response,
         return {"detail": str(e)}
 
 
+@router.get("/consumer_types", tags=["Recovery"])
+def get_consumer_types(response: Response,):
+    try:
+        consumer_types = sapdb.distinct("consumer_type", {"consumer_type": {"$ne": None}})
+        return consumer_types
+    
+    except Exception as e:
+        console_logger.debug(f"----- Consumer Type Get Error ----- {e}")
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(f"{exc_type} in {fname} on line {exc_tb.tb_lineno}")
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return {"detail": str(e)}
+
+
 @router.get("/wcl_analysis", tags=["Recovery"])
 def get_wcl_analysis(response: Response,
+                     page_no:Optional[int]=1, 
+                     page_size:Optional[int]=10,
                      search_text: Optional[str] = None,
+                     search_mine: Optional[str] = "All",
                      start_timestamp: Optional[str] = None,
                      end_timestamp: Optional[str] = None,
-                     type: Optional[str] = "download"):
+                     month: Optional[str] = None,
+                     consumer: Optional[str] = None,
+                     type: Optional[str] = "display",
+                     display_type : Optional[str] ="do_wise",
+                     sort_type : Optional[str] ="sample_id"):
     try:
         query = {}
 
         if type == "display":
-            return {"detail": "In progress"}
+            header = []
+            query["mode"] = {"$eq": "Road"}
+
+            if search_text:
+                query["$or"] = [
+                    {"sample_id": {"$regex": f"{search_text}", "$options": "i"}},
+                ]
+
+            if search_mine and search_mine != "All":
+                query["$or"] = [
+                    {"mine": {"$regex": f"{search_mine}", "$options": "i"}}
+                ]
+
+            if month:
+                start_date = f'{month}-01'
+                startd_date = datetime.datetime.strptime(f"{start_date}T00:00", "%Y-%m-%dT%H:%M")
+                end_date = (startd_date + relativedelta(months=+1, days=-1))
+                query["plant_analysis_date"] = {
+                    "$gte": startd_date,
+                    "$lte": end_date.replace(hour=23, minute=59, second=59)
+                }
+
+            pipeline = [
+                {"$match": query},
+                # {'$skip': skip},
+                # {'$limit': limit},
+                {
+                    "$group": {
+                        "_id": {
+                            "sample_id": "$sample_id",
+                            "sample_no": "$sample_no",
+                            "mine": "$mine",
+                            "plant_certificate_id": "$plant_certificate_id",
+                            "plant_sample_date": "$plant_sample_date",
+                            "plant_analysis_date": "$plant_analysis_date",
+                            "plant_preperation_date": "$plant_preperation_date",
+                            "mode": "$mode"
+                        },
+                        "last_sample_qty": {"$last": "$sample_qty"},
+                        "plant_arb_tm": {"$last": "$plant_arb_tm"},
+                        "plant_arb_vm": {"$last": "$plant_arb_vm"},
+                        "plant_arb_ash": {"$last": "$plant_arb_ash"},
+                        "plant_arb_fc": {"$last": "$plant_arb_fc"},
+                        "plant_arb_gcv": {"$last": "$plant_arb_gcv"},
+                        "plant_adb_im": {"$last": "$plant_adb_im"},
+                        "plant_adb_vm": {"$last": "$plant_adb_vm"},
+                        "plant_adb_ash": {"$last": "$plant_adb_ash"},
+                        "plant_adb_fc": {"$last": "$plant_adb_fc"},
+                        "plant_adb_gcv": {"$last": "$plant_adb_gcv"}
+                    }
+                },
+                {
+                    "$project": {
+                        "_id": 0,
+                        "sample_id": "$_id.sample_id",
+                        "sample_no": "$_id.sample_no",
+                        "mine": "$_id.mine",
+                        "plant_certificate_id": "$_id.plant_certificate_id",
+                        "plant_sample_date": "$_id.plant_sample_date",
+                        "plant_analysis_date": "$_id.plant_analysis_date",
+                        "plant_preperation_date": "$_id.plant_preperation_date",
+                        "mode": "$_id.mode",
+                        "mine_qty": {
+                            "$toDouble": {
+                                "$replaceAll": {
+                                    "input": {
+                                        "$toString": "$last_sample_qty"
+                                    },
+                                    "find": ",",
+                                    "replacement": ""
+                                }
+                            }
+                        },
+                        "parameters": {
+                            "plant_arb_tm": "$plant_arb_tm",
+                            "plant_arb_vm": "$plant_arb_vm",
+                            "plant_arb_ash": "$plant_arb_ash",
+                            "plant_arb_fc": "$plant_arb_fc",
+                            "plant_arb_gcv": "$plant_arb_gcv",
+                            "plant_adb_im": "$plant_adb_im",
+                            "plant_adb_vm": "$plant_adb_vm",
+                            "plant_adb_ash": "$plant_adb_ash",
+                            "plant_adb_fc": "$plant_adb_fc",
+                            "plant_adb_gcv": "$plant_adb_gcv"
+                        }
+                    }
+                },
+                {
+                    "$addFields": {
+                        "data": {
+                            "$mergeObjects": [
+                                {
+                                    "sample_id": "$sample_id",
+                                    "sample_no": "$sample_no",
+                                    "mine": "$mine",
+                                    "plant_certificate_id": "$plant_certificate_id",
+                                    "plant_sample_date": "$plant_sample_date",
+                                    "plant_analysis_date": "$plant_analysis_date",
+                                    "plant_preperation_date": "$plant_preperation_date",
+                                    "mode": "$mode",
+                                    "mine_qty": "$mine_qty"
+                                },
+                                "$parameters"
+                            ]
+                        }
+                    }
+                },
+                {"$replaceRoot": {"newRoot": "$data"}},
+                {"$sort": {sort_type: 1}}
+            ]
+            alldata = list(receiptCoalQualityAnalysisdb.aggregate(pipeline))
+            datasets = []
+            grouped_data = {}
+
+            sapdb_data = sapdb.find({})
+            sapdb_dict = {entry.get("do_no", ""): entry for entry in sapdb_data}
+            
+            for item in alldata:
+                do_no = item.get("sample_id")
+                mine = item.get("mine")
+
+                sapdb_entry = sapdb_dict.get(do_no)
+                if sapdb_entry is not None:
+                    consumer_type = sapdb_entry.get("consumer_type")
+                    do_qty = sapdb_dict.get(do_no, {}).get("do_qty", 0)
+                    if display_type == "do_wise":
+                        header = [
+                            "LOT_No",
+                            "Sample_Quantity",  # mine qty is sample qty
+                            "Received_Date",
+                            "Total_Moisture",
+                            "Inherent_Moisture_(ADB)",
+                            "Ash_(ADB)",
+                            "Volatile_Matter_(ADB)",
+                            "Gross_Calorific_Value_(ADB)",
+                            "Ash_(ARB)",
+                            "Volatile_Matter_(ARB)",
+                            "Fixed_Carbon_(ARB)",
+                            "Gross_Calorific_Value_(ARB)"]
+                        if consumer == consumer_type:
+                            if do_no not in grouped_data:
+                                grouped_data[do_no] = {
+                                    "do_no": do_no,
+                                    "consumer_type" : consumer_type if consumer_type not in ["", None] else None,
+                                    "mine": mine,
+                                    "mine_quantity": do_qty,
+                                    "body_arr": [],
+                                    "footer_arr": {
+                                        "Sample_Quantity": 0
+                                    }
+                                }
+
+                            grouped_data[do_no]["body_arr"].append({
+                                "LOT_No": item.get("sample_no", ""),
+                                "Sample_Quantity": item.get("mine_qty", 0),
+                                "Received_Date":item.get("plant_analysis_date", "").replace(tzinfo=pytz.utc).astimezone(
+                                                pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d"),
+                                "Total_Moisture": item.get("plant_arb_tm", ""),
+                                "Inherent_Moisture_(ADB)": item.get("plant_adb_im", ""),
+                                "Ash_(ADB)": item.get("plant_adb_ash", ""),
+                                "Volatile_Matter_(ADB)": item.get("plant_adb_vm", ""),
+                                "Gross_Calorific_Value_(ADB)": item.get("plant_adb_gcv", ""),
+                                "Ash_(ARB)": item.get("plant_arb_ash", ""),
+                                "Volatile_Matter_(ARB)": item.get("plant_arb_vm", ""),
+                                "Fixed_Carbon_(ARB)": item.get("plant_arb_fc", ""),
+                                "Gross_Calorific_Value_(ARB)": item.get("plant_arb_gcv", "")
+                            })
+
+                            total_mine_qty=0
+                            mine_qty = item.get("mine_qty", 0)
+                            
+                            total_mine_qty += round(float(mine_qty or 0), 1)
+                            grouped_data[do_no]["footer_arr"]["Sample_Quantity"] = round(total_mine_qty,2)
+
+                            C = np.array([float(item.get("mine_qty", 0) or 0)])
+                            C42 = total_mine_qty
+                            if C42 == 0:
+                                arb_tm_avg = 0
+                                adb_im_avg = 0
+                                adb_ash_avg = 0
+                                adb_vm_avg = 0
+                                adb_gcv_avg = 0
+                                arb_ash_avg = 0
+                                arb_vm_avg = 0
+                                arb_fc_avg = 0
+                                arb_gcv_avg = 0
+                            else:
+                                arb_tm_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_arb_tm", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+                                adb_im_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_adb_im", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+                                adb_ash_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_adb_ash", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+                                adb_vm_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_adb_vm", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+                                adb_gcv_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_adb_gcv", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+                                arb_ash_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_arb_ash", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+                                arb_vm_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_arb_vm", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+                                arb_fc_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_arb_fc", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+                                arb_gcv_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_arb_gcv", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+
+                            grouped_data[do_no]["footer_arr"]["Total_Moisture"] = arb_tm_avg
+                            grouped_data[do_no]["footer_arr"]["Inherent_Moisture_(ADB)"] = adb_im_avg
+                            grouped_data[do_no]["footer_arr"]["Ash_(ADB)"] = adb_ash_avg
+                            grouped_data[do_no]["footer_arr"]["Volatile_Matter_(ADB)"] = adb_vm_avg
+                            grouped_data[do_no]["footer_arr"]["Gross_Calorific_Value_(ADB)"] = adb_gcv_avg
+                            grouped_data[do_no]["footer_arr"]["Ash_(ARB)"] = arb_ash_avg
+                            grouped_data[do_no]["footer_arr"]["Volatile_Matter_(ARB)"] = arb_vm_avg
+                            grouped_data[do_no]["footer_arr"]["Fixed_Carbon_(ARB)"] = arb_fc_avg
+                            grouped_data[do_no]["footer_arr"]["Gross_Calorific_Value_(ARB)"] = arb_gcv_avg
+                    else:
+                        header = [
+                            "do_no",
+                            "mine",
+                            "consumer_type",
+                            "Sample_Quantity",  # mine qty is sample qty
+                            "Mine_Quantity",    # do_qty from saprecords
+                            "Total_Moisture",
+                            "Inherent_Moisture_(ADB)",
+                            "Ash_(ADB)",
+                            "Volatile_Matter_(ADB)",
+                            "Gross_Calorific_Value_(ADB)",
+                            "Ash_(ARB)",
+                            "Volatile_Matter_(ARB)",
+                            "Fixed_Carbon_(ARB)",
+                            "Gross_Calorific_Value_(ARB)"]
+                        if consumer == consumer_type:
+                            if do_no not in grouped_data:
+                                grouped_data[do_no] = {
+                                    "do_no": do_no,
+                                    "mine": mine,
+                                    "consumer_type" : consumer_type if consumer_type not in ["", None] else None,
+                                    "Sample_Quantity": 0,
+                                    "Mine_Quantity" : do_qty,
+                                    "Total_Moisture": 0,
+                                    "Inherent_Moisture_(ADB)": 0,
+                                    "Ash_(ADB)": 0,
+                                    "Volatile_Matter_(ADB)": 0,
+                                    "Gross_Calorific_Value_(ADB)": 0,
+                                    "Ash_(ARB)": 0,
+                                    "Volatile_Matter_(ARB)": 0,
+                                    "Fixed_Carbon_(ARB)": 0,
+                                    "Gross_Calorific_Value_(ARB)": 0
+                                    }
+
+                                total_mine_qty=0
+                                mine_qty = item.get("mine_qty", 0)
+                                
+                                total_mine_qty += round(float(mine_qty or 0), 1)
+                                grouped_data[do_no]["Sample_Quantity"] = round(total_mine_qty,2)
+
+                                C = np.array([float(item.get("mine_qty", 0) or 0)])
+                                C42 = total_mine_qty
+                                if C42 == 0:
+                                    arb_tm_avg = 0
+                                    adb_im_avg = 0
+                                    adb_ash_avg = 0
+                                    adb_vm_avg = 0
+                                    adb_gcv_avg = 0
+                                    arb_ash_avg = 0
+                                    arb_vm_avg = 0
+                                    arb_fc_avg = 0
+                                    arb_gcv_avg = 0
+                                else:
+                                    arb_tm_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_arb_tm", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+                                    adb_im_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_adb_im", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+                                    adb_ash_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_adb_ash", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+                                    adb_vm_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_adb_vm", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+                                    adb_gcv_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_adb_gcv", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+                                    arb_ash_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_arb_ash", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+                                    arb_vm_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_arb_vm", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+                                    arb_fc_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_arb_fc", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+                                    arb_gcv_avg = round(np.nan_to_num(np.sum(np.array([float(item.get("plant_arb_gcv", 0) or 0)]) * C) / C42, nan=0, posinf=0, neginf=0), 2)
+
+                                grouped_data[do_no]["Total_Moisture"] = arb_tm_avg
+                                grouped_data[do_no]["Inherent_Moisture_(ADB)"] = adb_im_avg
+                                grouped_data[do_no]["Ash_(ADB)"] = adb_ash_avg
+                                grouped_data[do_no]["Volatile_Matter_(ADB)"] = adb_vm_avg
+                                grouped_data[do_no]["Gross_Calorific_Value_(ADB)"] = adb_gcv_avg
+                                grouped_data[do_no]["Ash_(ARB)"] = arb_ash_avg
+                                grouped_data[do_no]["Volatile_Matter_(ARB)"] = arb_vm_avg
+                                grouped_data[do_no]["Fixed_Carbon_(ARB)"] = arb_fc_avg
+                                grouped_data[do_no]["Gross_Calorific_Value_(ARB)"] = arb_gcv_avg
+
+                datasets = list(grouped_data.values())
+
+            return {
+                "headers":header,
+                "datasets": datasets
+            }
 
         elif type == "download":
             del type
@@ -24207,7 +32588,6 @@ def get_wcl_analysis(response: Response,
 
             grouped_data = {}
             for item in alldata:
-                # console_logger.debug(item)
                 rrNo = item.get("sample_id")
                 sapdb_entry = sapdb_dict.get(rrNo)
 
@@ -24222,7 +32602,7 @@ def get_wcl_analysis(response: Response,
                     console_logger.debug(f"No matching entry in sapdb_dict for rrNo: {rrNo}")
             # console_logger.debug(grouped_data)
             path = None
-
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             if os.path.exists(target_directory):
                 path = os.path.join(
                         "static_server",
@@ -24246,12 +32626,47 @@ def get_wcl_analysis(response: Response,
             normal_row_format = workbook.add_format({'bold': True, 'font_size': 10, 'align': 'center', 
                                                      'valign': 'vcenter', 'border': 1, 'border_color': 'black'})
 
+            normal_row_format.set_text_wrap(True)
+            cell_format.set_text_wrap(True)
+            total_row_format.set_text_wrap(True)
+            
+            normal_row_format.set_border(1)
+            cell_format.set_border(1)
+            total_row_format.set_border(1)
+
             for consumer_type, do_grouped_data in grouped_data.items():
                 try:
                     # Create a new worksheet for the current consumer type
                     worksheet = workbook.add_worksheet(consumer_type)
-                    worksheet.set_column("A:AZ", 20)
-                    worksheet.set_default_row(50)
+                    # worksheet.set_column("A:AZ", 20)
+                    worksheet.set_default_row(60)
+
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+
+                    header_format.set_align("vcenter")
+                    date_format.set_align("vcenter")
+                    report_name_format.set_align("vcenter")
+
+                    header_format.set_text_wrap(True)
+                    date_format.set_text_wrap(True)
+                    report_name_format.set_text_wrap(True)
+                    
+                    header_format.set_border(1)
+                    date_format.set_border(1)
+                    report_name_format.set_border(1)
+
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range("A1:Q1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    
+                    # Write the current date on the left side (A2)
+                    worksheet.write("A2", f"Date: {end_date.strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range("C2:Q2", f"Coal Analysis", report_name_format)
 
                     # Write headers only once for the consumer type
                     headers = [
@@ -24277,7 +32692,7 @@ def get_wcl_analysis(response: Response,
                     # for index, header in enumerate(headers):
                         # worksheet.write(0, index, header, normal_row_format)
 
-                    current_row = 1  # Start writing data from the second row after headers
+                    current_row = 2  # Start writing data from the second row after headers
 
                     for do_no, entries in do_grouped_data.items():
                         # Write the headers for each DO No
@@ -24572,7 +32987,7 @@ def get_overall_analysis(response: Response,
                     grouped_data["SECL Linkage"][rr_no].append(item)
 
             path = None
-
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             if os.path.exists(target_directory):
                 path = os.path.join(
                         "static_server",
@@ -24586,6 +33001,7 @@ def get_overall_analysis(response: Response,
 
             workbook = xlsxwriter.Workbook(filename)
             workbook.use_zip64()
+            # worksheet = workbook.add_worksheet()
 
             total_row_format = workbook.add_format({'bold': True, 'font_size': 10, 'align': 'center',
                                                     'valign': 'vcenter', 'border': 1, 'border_color': 'black'}) 
@@ -24595,6 +33011,25 @@ def get_overall_analysis(response: Response,
 
             normal_row_format = workbook.add_format({'bold': True, 'font_size': 10, 'align': 'center', 
                                                      'valign': 'vcenter', 'border': 1, 'border_color': 'black'})
+
+            total_row_format.set_text_wrap(True)
+            cell_format.set_text_wrap(True)
+            normal_row_format.set_text_wrap(True)
+
+            total_row_format.set_border(1)
+            cell_format.set_border(1)
+            normal_row_format.set_border(1)
+
+            header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+            date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+            report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+
+            header_format.set_align("vcenter")
+            date_format.set_align("vcenter")
+            report_name_format.set_align("vcenter")
+            header_format.set_border(1)
+            date_format.set_border(1)
+            report_name_format.set_border(1)
 
             # Write headers only once for the consumer type
             headers = [
@@ -24645,13 +33080,25 @@ def get_overall_analysis(response: Response,
                     worksheet = workbook.add_worksheet(consumer_type)
                     worksheet.set_column("A:AZ", 20)
                     worksheet.set_default_row(50)
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    worksheet.write("A2", f"Date: {end_date.strftime('%d-%m-%Y')}", date_format)
 
                     if consumer_type == "SECL Linkage":
                         headers = secl_headers
+                        worksheet.merge_range("A1:T1", main_header, header_format) 
+                        worksheet.merge_range("C2:T2", f"Coal Analysis", report_name_format)
+
                     else:
                         headers = headers
+                        worksheet.merge_range("A1:Q1", main_header, header_format) 
+                        worksheet.merge_range("C2:Q2", f"Coal Analysis", report_name_format)
 
-                    current_row = 1
+
+
+                    current_row = 2
 
                     secl_linkage_headers_written = False
 
@@ -24662,7 +33109,7 @@ def get_overall_analysis(response: Response,
                             current_row += 1
 
                             if consumer_type == "SECL Linkage":
-                                secl_linkage_headers_written = True  # Mark headers as written for SECL Linkage
+                                secl_linkage_headers_written = True 
                         
                         sorted_entries = []
                         for item in entries:
@@ -24685,18 +33132,15 @@ def get_overall_analysis(response: Response,
                             else:
                                 receive_date, receive_time = None, None
                         else:
-                            console_logger.debug(f"No matching entry in rail_dict for rr_no: {do_no}")
                             receive_date, receive_time = None, None 
 
                         for lot_no, item in sorted_entries:
-                            # console_logger.debug(sorted_entries)
                             if consumer_type == "SECL Linkage":
                                 worksheet.write(current_row, 0, f"Rake-{lot_no}", cell_format)
                                 worksheet.write(current_row, 1, secl_mine, cell_format)
                                 try:
                                     worksheet.write(current_row, 2, datetime.datetime.strptime(secl_month, "%Y-%m").strftime("%b %Y"), cell_format)
                                 except ValueError as e:
-                                    # console_logger.debug(f"Error parsing month '{month}': {e}")
                                     worksheet.write(current_row, 2, "", cell_format)
 
                                 worksheet.write(current_row, 3, do_no, cell_format)
@@ -24720,7 +33164,7 @@ def get_overall_analysis(response: Response,
                                 worksheet.write(current_row, 17, item.get("plant_arb_vm", ""), cell_format)
                                 worksheet.write(current_row, 18, item.get("plant_arb_ash", ""), cell_format)
                                 worksheet.write(current_row, 19, item.get("plant_arb_fc", ""), cell_format)
-                                current_row += 1  # Move to the next row for the next item
+                                current_row += 1
 
                             else:
                                 worksheet.write(current_row, 0, lot_no, cell_format)
@@ -24744,7 +33188,7 @@ def get_overall_analysis(response: Response,
                                 worksheet.write(current_row, 15, item.get("plant_arb_fc", ""), cell_format)
                                 worksheet.write(current_row, 16, item.get("plant_arb_gcv", ""), cell_format)
 
-                                current_row += 1  # Move to the next row for the next item
+                                current_row += 1
 
                         if consumer_type != "SECL Linkage":
                             total_row = current_row
@@ -24791,7 +33235,7 @@ def get_overall_analysis(response: Response,
                             worksheet.write(total_row, 15, arb_fc_avg, total_row_format)
                             worksheet.write(total_row, 16, arb_gcv_avg, total_row_format)
                             
-                            current_row += 3  # Move to the next row for the next DO number
+                            current_row += 3
 
                 except Exception as e:
                     console_logger.error(f"Error while creating the Excel sheet for consumer type {consumer_type}: {e}")
@@ -24824,6 +33268,887 @@ def get_overall_analysis(response: Response,
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return {"detail": str(e)}
 
+
+@router.post("/add/igi/data", tags=["Coal Testing"])
+async def endpoint_to_add_igi_data(response: Response, excelUpload: List[UploadFile] = File(...)):
+    try:
+        for UploadedFile in excelUpload:
+            f_name = UploadedFile.filename
+            
+            # Read the contents of the uploaded file
+            contents = await UploadedFile.read()
+
+            # Check if the file is empty
+            if not contents:
+                return {"error": f"Uploaded file '{f_name}' is empty"}
+
+            # Verify file format (must be .xlsx)
+            if not f_name.endswith(".xlsx"):
+                response.status_code = 400
+                return {"error": f"Uploaded file '{f_name}' is not a .xlsx"}
+
+            # Create the target directory for saving files
+            file_date = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file_date}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+            # Construct full path for the saved file
+            file_extension = f_name.split(".")[-1]
+            file_name = f'igi_{datetime.datetime.now().strftime("%Y-%m-%d:%H:%M")}.{file_extension}'
+            full_path = os.path.join(os.getcwd(), target_directory, file_name)
+
+            with open(full_path, "wb") as file_object:
+                file_object.write(contents)
+            
+            excel_data = pd.read_excel(BytesIO(contents))
+            data_excel_fetch = json.loads(excel_data.to_json(orient="index"))
+            mainDict = {}
+            mainDict['reference_no'] = data_excel_fetch['0']["INSPECTORATE GRIFFITH INDIA PVT. LTD."].split("NO-")[1]
+            mainDict['date'] = data_excel_fetch['1']["INSPECTORATE GRIFFITH INDIA PVT. LTD."].split(": ")[1]
+            mainDict['receiver_client'] = data_excel_fetch['2']["INSPECTORATE GRIFFITH INDIA PVT. LTD."].split(": ")[1]
+            mainDict['comodity'] = data_excel_fetch['3']["INSPECTORATE GRIFFITH INDIA PVT. LTD."].split(": ")[1]
+            mainDict['source_secl'] = data_excel_fetch['4']["INSPECTORATE GRIFFITH INDIA PVT. LTD."].split("-")[2]
+
+            listData = []
+            for key in range(7, 15): 
+                dictData = {}
+                key_str = str(key)
+                if key_str in data_excel_fetch and data_excel_fetch[key_str]["Unnamed: 3"] is not None:
+                    dictData["srno"] = data_excel_fetch[key_str]["INSPECTORATE GRIFFITH INDIA PVT. LTD."]
+                    dictData["sample_id"] = data_excel_fetch[key_str]["Unnamed: 1"]
+                    dictData["ref_id"] = data_excel_fetch[key_str]["Unnamed: 2"]
+                    dictData["cil_sap_no"] = data_excel_fetch[key_str]["Unnamed: 3"]
+                    dictData["sample_date_collection"] = data_excel_fetch[key_str]["Unnamed: 4"]
+                    dictData["sample_date_preparation"] = data_excel_fetch[key_str]["Unnamed: 5"]
+                    dictData["sample_date_received_igi_lab"] = data_excel_fetch[key_str]["Unnamed: 6"]
+                    dictData["quantity"] = data_excel_fetch[key_str]["Unnamed: 7"]
+                    dictData["rr_no"] = data_excel_fetch[key_str]["Unnamed: 8"]
+                    dictData["rr_date"] = data_excel_fetch[key_str]["Unnamed: 9"]
+                    dictData["declared_grade"] = data_excel_fetch[key_str]["Unnamed: 10"]
+                    dictData["igi_lab_code"] = data_excel_fetch[key_str]["Unnamed: 11"]
+                    dictData["total_moisture_arb"] = data_excel_fetch[key_str]["Unnamed: 12"]
+                    dictData["humidity"] = data_excel_fetch[key_str]["Unnamed: 13"]
+                    dictData["temperature"] = data_excel_fetch[key_str]["Unnamed: 14"]
+                    dictData["moisture_adb"] = data_excel_fetch[key_str]["Unnamed: 15"]
+                    dictData["ash_adb"] = data_excel_fetch[key_str]["Unnamed: 16"]
+                    dictData["gcv_adb"] = data_excel_fetch[key_str]["Unnamed: 17"]
+                    dictData["rh_moisture"] = data_excel_fetch[key_str]["Unnamed: 18"]
+                    dictData["rh_ash"] = data_excel_fetch[key_str]["Unnamed: 19"]
+                    dictData["rh_gcv"] = data_excel_fetch[key_str]["Unnamed: 20"]
+                    dictData["analysis_grade"] = data_excel_fetch[key_str]["Unnamed: 21"]
+                    dictData["grade_coking_coal"] = data_excel_fetch[key_str]["Unnamed: 22"]
+                    listData.append(dictData)
+            mainDict['table_data'] = listData
+            console_logger.debug(mainDict)
+
+        return {"detail": "success"}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Key Error")
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug("----- Sap Excel Error -----", e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return {"error": str(e)}
+
+
+def extract_invoice_data_tax_invoice(pdf_path):
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            content = ""
+            for page in pdf.pages:
+                content += page.extract_text() + "\n"
+        # Extract required information
+        invoice_date = re.search(r'Invoice Date\s*:([^\n]+)', content)
+        invoice_no = re.search(r'I:nvoice No\.\s*(\d+)', content)
+        sale_date = re.search(r'Sale Order Date\s*:([^\n]+)', content)
+        grade = re.search(r'Grade\s*:([^\n]+)', content)
+        gcv = re.search(r'GCV\s*:([^\n]+)', content)
+        size = re.search(r'Size\s*:([^\n]+)', content)
+        dispatch_date = re.search(r'Dispatch date\s*:([^\n]+)', content)
+        plant_quantity_pattern =  r"(\d{10})\s+([\w\s&]+)\s+(\d{10})\s+(\w+)\s+Coal\s+\d+\s+TE\s+(\d+\.\d{2})"
+        plant_quantity_match = re.search(plant_quantity_pattern, content)
+        if plant_quantity_match:
+            delivery_plant_name = plant_quantity_match.group(2).strip()
+            delivery_quantity = plant_quantity_match.group(5)
+        else:
+            delivery_plant_name = 'Not found'
+            delivery_quantity = 'Not found'
+
+        # Extract particulars
+        particulars_start = content.find('PARTICULARS')
+        particulars_end = content.find('Remarks/Note/ Declaration')
+        particulars_section = content[particulars_start:particulars_end]
+        particulars_matches = re.findall(r'(.+?)\s+([\d.]+)\s+([\d.]+)', particulars_section)    
+        particulars = {
+            "particulars": {"description":{match[0].strip():
+                {
+                    "rate": match[1],
+                    "amount": match[2]
+                } 
+            for match in particulars_matches},
+            "total": {
+                "amount": sum(float(match[2]) for match in particulars_matches)
+            }
+        }}
+        # Extract dispatch summary
+        plant_pattern = r"Plant\s*:\s*(\d+)"
+        plant_name_pattern = r"Plant Name:\s*(.*)"
+        data_pattern = r"(\d+)\s+(.*?)\s+(\d+)\s+(\d{2}-\d{2}-\d{4})\s+(\d+)\s+(.*?)\s+(.*?)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)"
+        total_pattern = r"Total\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)"
+
+        plant = re.search(plant_pattern, content)
+        plant_name = re.search(plant_name_pattern, content)
+        data_rows = re.findall(data_pattern, content)
+        total = re.search(total_pattern, content)
+        dispatch_summary = {
+            "plant": plant.group(1) if plant else None,
+            "plant_name": plant_name.group(1) if plant_name else None,
+            "data": [
+                {
+                    "delivery_doc_no.": row[0],
+                    "ship_to_party": row[1],
+                    "sales_doc_no": row[2],
+                    "dispatch_date_time": row[3],
+                    "challan_number": row[4],
+                    "grade_size": row[5],
+                    "truck_number": row[6],
+                    "tare": row[7],
+                    "gross_weight": row[8],
+                    "net_weight": row[9]
+                } for row in data_rows
+            ],
+            "total": {
+                "tare": total.group(1) if total else None,
+                "gross_weight": total.group(2) if total else None,
+                "net_weight": total.group(3) if total else None
+            }
+        }
+
+        tax_invoice={
+            'Invoice Date': invoice_date.group(1).strip() if invoice_date else 'Not found',
+            'Invoice No': invoice_no.group(1).strip() if invoice_no else 'Not found',
+            'Sale Date': sale_date.group(1).strip() if sale_date else 'Not found',
+            'Grade': grade.group(1).strip() if grade else 'Not found',
+            'GCV': gcv.group(1).strip() if gcv else 'Not found',
+            'Size': size.group(1).strip() if size else 'Not found',
+            'Dispatch Date': dispatch_date.group(1).strip() if dispatch_date else 'Not found',
+            'Plant Name': delivery_plant_name,
+            'Quantity': delivery_quantity,
+        }
+        
+        results = {
+            "tax_invoice":tax_invoice,
+            'Particulars': particulars,
+            'Dispatch Summary': dispatch_summary
+        }
+        return results
+    except Exception as e:
+        console_logger.debug("----- Sap Excel Error -----", e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return {"error": str(e)}
+
+@router.post("/extract/tax/invoice", tags=["Road Map"])
+async def endpoint_to_extract_tax_invoice_data(response: Response, file: UploadFile = File(...)):
+    try:
+        if file is None:
+            return {"error": "No file Uploaded!"}
+        
+        contents = await file.read()
+        
+        if not contents:
+            return {"error": "Uploaded file is empty!"}
+
+        if not file.filename.endswith(('.pdf','.PDF')):
+            response.status_code = 400
+            return {"error": "Uploaded file is not a PDF"}
+
+        date = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+        target_directory = f"static_server/gmr_ai/{date}"
+        os.umask(0)
+        os.makedirs(target_directory, exist_ok=True, mode=0o777)
+        file_extension = file.filename.split(".")[-1]
+        file_name = f'secl_annexure_{datetime.datetime.now().strftime("%Y-%m-%d:%H:%M")}.{file_extension}'
+        full_path = os.path.join(os.getcwd(), target_directory, file_name)
+        with open(full_path, "wb") as file_object:
+            file_object.write(contents)
+
+        fetchInvoiceData = extract_invoice_data_tax_invoice(full_path)
+
+        mainDict = {"api_data": None, "db_data": None}
+        list_data = []
+        
+        for key, value in fetchInvoiceData.items():
+            if value.get("data") is not None:
+                for single_data in value.get("data"):
+                    db_data = {}
+                    try:
+                        fetchGmrData = Gmrdata.objects.get(arv_cum_do_number=single_data.get("sales_doc_no"), delivery_challan_number=single_data.get("challan_number"), vehicle_number=single_data.get("truck_number").split("MM ")[1])
+                        db_data["sales_doc_no"] = fetchGmrData.arv_cum_do_number
+                        db_data["dispatch_date_time"] = fetchGmrData.delivery_challan_date
+                        db_data["challan_number"] = fetchGmrData.delivery_challan_number
+                        db_data["grade_size"] = fetchGmrData.grade
+                        db_data["truck_number"] = fetchGmrData.vehicle_number
+                        db_data["tare"] = fetchGmrData.tare_qty
+                        db_data["gross_weight"] = fetchGmrData.gross_qty
+                        db_data["net_weight"] = fetchGmrData.net_qty
+                        list_data.append(db_data)
+                    except DoesNotExist as e:
+                        continue
+        
+        headerData = {
+            "invoice_data": fetchInvoiceData.get("tax_invoice").get("Invoice Date"),
+            "invoice_no": fetchInvoiceData.get("tax_invoice").get("Invoice No"),
+            "sale_date": fetchInvoiceData.get("tax_invoice").get("Sale Date"),
+            "grade": f'{fetchInvoiceData.get("tax_invoice").get("Grade")}{fetchInvoiceData.get("tax_invoice").get("Size")}',
+            "dispatch_date": fetchInvoiceData.get("tax_invoice").get("Dispatch Date"),
+            "mine": fetchInvoiceData.get("tax_invoice").get("Plant Name"),
+            "do_qty": fetchInvoiceData.get("tax_invoice").get("Quantity"),
+        }
+
+        mainDict["top_header"] = headerData
+        mainDict["api_data"] = fetchInvoiceData.get("Dispatch Summary").get("data")
+        mainDict["db_data"] = list_data
+        mainDict["footer_total"] = fetchInvoiceData.get("Dispatch Summary").get("total")
+
+        return mainDict
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug("----- Sap Excel Error -----", e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return {"error": str(e)} 
+
+
+@router.get("/fetch/gmrdata/dcdate", tags=["Road Map"])
+async def endpoint_to_fetch_gmrdata_dcdate(response: Response, dc_date: str):
+    try:
+        listData = []
+        dc_date = datetime.datetime.strptime(dc_date, "%d-%m-%Y").strftime("%-d-%-m-%Y")
+        fetchGmrData = Gmrdata.objects(delivery_challan_date=dc_date)
+        if fetchGmrData:
+            for single_data in fetchGmrData:
+                listData.append(single_data.payload())
+            return listData
+        else:
+            raise HTTPException(status_code=404, detail="No data found")
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug("----- Sap Excel Error -----", e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return {"error": str(e)}
+
+
+@router.post("/update/gmrdata/taxinvoice", tags=["Road Map"])
+def endpoint_to_update_gmrdata_taxinvoice(response: Response, data: taxInvoiceGmr):
+    try:
+        invoiceSerializer = data.dict()
+        if invoiceSerializer.get("id"):
+            dc_date = datetime.datetime.strptime(invoiceSerializer.get("dc_date"), "%d-%m-%Y").strftime("%-d-%-m-%Y")
+            if "MM " in invoiceSerializer.get("truck_no"):
+                truck_no = invoiceSerializer.get("truck_no").split("MM ")[1]
+            else:
+                truck_no = invoiceSerializer.get("truck_no")
+            Gmrdata.objects(record_id=invoiceSerializer.get("id")).update(arv_cum_do_number=invoiceSerializer.get("do_no"), 
+                                                  delivery_challan_date=dc_date,
+                                                  delivery_challan_number=invoiceSerializer.get("challan_no"),
+                                                  grade=invoiceSerializer.get("grade").replace(r'/',''),
+                                                  vehicle_number=truck_no,
+                                                  tare_qty=invoiceSerializer.get("tare"),
+                                                  gross_qty=invoiceSerializer.get("gross"),
+                                                  net_qty=invoiceSerializer.get("net"))
+        return {"detail": "success"}
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug("----- Sap Excel Error -----", e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return {"error": str(e)}
+
+  
+@router.post("/saprecordsrcr", tags=["Rail Map"])
+async def endpoint_to_upload_rail_data(response: Response, pdf_upload: List[UploadFile] = File(...)):
+    try:
+        for UploadedFile in pdf_upload:
+
+            f_name = UploadedFile.filename
+            contents = UploadedFile.file
+            # if pdf_upload is None:
+            #     return {"error": "No file uploaded"}
+            # contents = await pdf_upload.read()
+
+            if not contents:
+                return {"error": "Uploaded file is empty"}
+
+            if not f_name.endswith(('.pdf','.PDF')):
+                return {"error": "Uploaded file is not a PDF"}
+            
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+            file_extension = f_name.split(".")[-1]
+            file_name = f'sap_rail_upload_{datetime.datetime.now().strftime("%Y-%m-%d:%H:%M")}.{file_extension}'
+            full_path = os.path.join(os.getcwd(), target_directory, file_name)
+            with open(full_path, "wb") as file_object:
+                # file_object.write(contents)
+                shutil.copyfileobj(contents, file_object)
+
+            fetchRailData = extract_fields_rail(full_path)
+
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug("----- Sap Excel Error -----", e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return {"error": str(e)}
+
+
+@router.get("/logistics/road/cards", tags=["Road Map"])
+def enpoint_to_fetch_logistics_road_cards(
+    response: Response,
+    show_type: Optional[str] = "Daily",
+    Month: Optional[str] = None,
+    Daily: Optional[str] = None,
+    Year: Optional[str] = None
+):
+    """
+    Function that fetches counts from logistics road for multiple cards  
+    Parameters:
+        show_type: Daily, Week, Month, Year |
+        Year: Single Year, for eg: 2024, 2023 |
+        Month: Single Month, for eg: 2024-11, 2024-10 |
+        Week: No Input |
+        Daily: Single Date, for eg: 2024-11-11
+
+    Returns:
+        List of dictionaries for multiple cards containing counts
+    """
+    try:
+        finalList = []
+        current_time = datetime.datetime.now(IST)
+        
+        # Set from_ts based on show_type
+        if show_type == "Daily":
+            date=Daily
+            # today = current_time.date()
+            from_ts = convert_to_utc_format(f"{date} 00:00:00", "%Y-%m-%d %H:%M:%S")
+            to_ts = convert_to_utc_format(f"{date} 23:59:59", "%Y-%m-%d %H:%M:%S")
+        elif show_type == "Week":
+            start_date = current_time - timedelta(days=7)
+            today = current_time.date()
+            from_ts = convert_to_utc_format(start_date.strftime("%Y-%m-%d 00:00:00"), "%Y-%m-%d %H:%M:%S")
+            to_ts = convert_to_utc_format(today.strftime("%Y-%m-%d 00:00:00"), "%Y-%m-%d %H:%M:%S")
+        elif show_type == "Month":
+            date=Month
+            start_date = f'{date}-01'
+            format_data = "%Y-%m-%d"
+            startd_date=datetime.datetime.strptime(start_date, format_data)
+            end_date = startd_date + relativedelta(day=31)
+            end_date.replace(hour=23, minute=59, second=0, microsecond=0)
+            endd_date = end_date.replace(hour=23, minute=59, second=0, microsecond=0)
+            # end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+            from_ts = convert_to_utc_format(f"{startd_date}", "%Y-%m-%d %H:%M:%S")
+            to_ts = convert_to_utc_format(f"{endd_date}", "%Y-%m-%d %H:%M:%S")
+        elif show_type == "Year":
+            date=Year
+            # start_date = datetime(Year, 1, 1)
+            # end_date = datetime(Year, 12, 31)
+            end_date =f'{date}-12-31 23:59:59'
+            start_date = f'{date}-01-01 00:00:00'
+            from_ts = convert_to_utc_format(start_date, "%Y-%m-%d %H:%M:%S")
+            to_ts = convert_to_utc_format(end_date, "%Y-%m-%d %H:%M:%S")
+        else:
+            response.status_code = 400
+            return {"error": "Invalid parameters"}
+
+        # Fetch vehicle counts and append to finalList
+        vehicle_count = Gmrdata.objects(GWEL_Tare_Time__ne=None, GWEL_Tare_Time__gte=from_ts, GWEL_Tare_Time__lte=to_ts).count()
+        finalList.append({
+            "title": "Today's Mine Vehicle Scanned",
+            "icon": "vehicle",
+            "data": vehicle_count,
+            "last_updated": current_time.date()
+        })
+
+        # Fetch vehicle in/out counts
+        vehicle_in_count = Gmrdata.objects(GWEL_Tare_Time__ne=None, GWEL_Tare_Time__gte=from_ts, GWEL_Tare_Time__lte=to_ts).count()
+        vehicle_out_count = Gmrdata.objects(GWEL_Tare_Time__ne=None, GWEL_Tare_Time__gte=from_ts, GWEL_Tare_Time__lte=to_ts).count()
+        finalList.append({
+            "title": "Gate Vehicle",
+            "icon": "vehicle",
+            "data": f"In: {vehicle_in_count} | Out: {vehicle_out_count}",
+            "last_updated": current_time.date()
+        })
+
+        # GRN coal count
+        pipeline_grn = [
+            {"$match": {"GWEL_Tare_Time": {"$gte": from_ts, "$lte": to_ts}, "net_qty": {"$ne": None}}},
+            {"$group": {"_id": None, "total_net_qty": {"$sum": {"$toDouble": "$net_qty"}}}}
+        ]
+        result = Gmrdata.objects.aggregate(pipeline_grn)
+        total_coal = sum(doc["total_net_qty"] for doc in result)
+        finalList.append({
+            "title": "Total GRN Coal(MT)",
+            "icon": "coal",
+            "data": round(total_coal, 2),
+            "last_updated": current_time.date()
+        })
+
+        # GWEL coal count
+        pipeline_gwel = [
+            {"$match": {"GWEL_Tare_Time": {"$gte": from_ts, "$lte": to_ts}, "actual_net_qty": {"$ne": None}}},
+            {"$group": {"_id": None, "total_actual_net_qty": {"$sum": {"$toDouble": "$actual_net_qty"}}}}
+        ]
+        result = Gmrdata.objects.aggregate(pipeline_gwel)
+        total_actual_coal = sum(doc["total_actual_net_qty"] for doc in result)
+        finalList.append({
+            "title": "Total GWEL Coal(MT)",
+            "icon": "coal",
+            "data": round(total_actual_coal, 2),
+            "last_updated": current_time.date()
+        })
+
+        # Transit loss count
+        pipeline_loss = [
+            {"$match": {"GWEL_Tare_Time": {"$gte": from_ts, "$lte": to_ts}}},
+            {"$group": {
+                "_id": None,
+                "net_qty": {"$sum": {"$toDouble": "$net_qty"}},
+                "actual_net_qty": {"$sum": {"$toDouble": "$actual_net_qty"}}
+            }},
+            {"$project": {
+                "net_qty": 1,
+                "actual_net_qty": 1,
+                "transit_loss": {"$subtract": ["$actual_net_qty", "$net_qty"]}
+            }}
+        ]
+        result = Gmrdata.objects.aggregate(pipeline_loss)
+        transit_loss = sum(doc["transit_loss"] for doc in result)
+        finalList.append({
+            "title": "Total Transit Loss (MT)",
+            "icon": "coal",
+            "data": round(transit_loss, 2),
+            "last_updated": current_time.date()
+        })
+
+        return finalList
+
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug(f"Error {e} on line {sys.exc_info()[-1].tb_lineno}")
+        return {"error": str(e)}
+
+
+@router.post("/insert/roadjourneyconsumertype", tags=["Road Map"])
+def endpoint_to_insert_roadjourneyconsumertype(response: Response, consumer_type: str):
+    try:
+        if consumer_type:
+            addroadjourneyconsumertype = roadjourneyconsumertype(consumer_type=consumer_type)
+            addroadjourneyconsumertype.save()
+            
+        return {"detail": "success"}
+    except Exception as e:
+        console_logger.debug("----- Add Consumer Type Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.get("/fetch/consumertype", tags=["Road Map"])
+def endpoint_to_fetch_consumer_type_data(response: Response):
+    try:
+        fetchConsumerType = roadjourneyconsumertype.objects()
+        listData = []
+        for single_consumer in fetchConsumerType:
+            listData.append(single_consumer.consumer_type)
+
+        return list(set(listData))
+    except Exception as e:
+        console_logger.debug("----- consumer type Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+    
+@router.get("/road_journey_table_filter", tags=["Road Map"])
+def gmr_table(response:Response, filter_data: Optional[List[str]] = Query([]), 
+              currentPage: Optional[int] = None, perPage: Optional[int] = None, 
+              date: Optional[str] = None, search_text: Optional[str] = None,
+              start_timestamp: Optional[str] = None, end_timestamp: Optional[str] = None, 
+              type: Optional[str] = "display", 
+              consumer_type: Optional[str] = "All",
+              show_type: Optional[str] = "Daily",
+              Month: Optional[str] = None,
+              Daily: Optional[str] = None,
+              Year: Optional[str] = None
+            ):
+    """
+    Function that fetches counts from GMR Data table  
+    Parameters:
+        search_text: Search data | 
+        type: Display/Download | 
+        show_type: Daily, Week, Month, Year |
+        Year: Single Year, for eg: 2024, 2023 |
+        Month: Single Month, for eg: 2024-11, 2024-10 |
+        Week: No Input |
+        Daily: Single Date, for eg: 2024-11-11
+
+    Returns:
+        List of dictionaries for multiple cards containing counts
+    """
+    try:
+        result = {        
+                "labels": [],
+                "datasets": [],
+                "total" : 0,
+                "page_size": 15
+        }
+        
+        if type and type == "display":
+
+            page_no = 1
+            page_len = result["page_size"]
+
+            if currentPage:
+                page_no = currentPage
+
+            if perPage:
+                page_len = perPage
+                result["page_size"] = perPage
+
+            data = Q()
+            
+            data &= Q(GWEL_Tare_Time__ne=None)
+            # data &= Q(GWEL_Tare_Time__ne=None) & Q(vehicle_out_time__ne=None)
+
+            if date:
+                end =f'{date} 23:59:59'
+                start = f'{date} 00:00:00'
+
+                start_date = convert_to_utc_format(start, "%Y-%m-%d %H:%M:%S")
+                end_date = convert_to_utc_format(end, "%Y-%m-%d %H:%M:%S")
+
+                data &= Q(GWEL_Tare_Time__gte = start_date)
+                data &= Q(GWEL_Tare_Time__lte = end_date)
+
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(GWEL_Tare_Time__gte = start_date)
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
+                data &= Q(GWEL_Tare_Time__lte = end_date)
+
+            if search_text:
+                if search_text.isdigit():
+                    data &= Q(arv_cum_do_number__icontains=search_text) | Q(delivery_challan_number__icontains=search_text)
+                else:
+                    data &= (Q(vehicle_number__icontains=search_text))
+            
+            if consumer_type and consumer_type != "All":
+                data &= Q(type_consumer__icontains=consumer_type)
+            
+            offset = (page_no - 1) * page_len
+            
+            logs = (
+                Gmrdata.objects(data)
+                .order_by("-GWEL_Tare_Time")
+                .skip(offset)
+                .limit(page_len)
+            )        
+            if any(logs):
+                for log in logs:
+                    result["labels"] = list(log.payload().keys())
+                    result["datasets"].append(log.payload())
+
+            result["total"]= len(Gmrdata.objects(data))
+            # console_logger.debug(f"-------- Road Journey Table Response -------- {result}")
+            return result
+
+        elif type and type == "download":
+            del type
+
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+            data = Q()
+
+            data &= Q(GWEL_Tare_Time__ne=None)
+            # data &= Q(GWEL_Tare_Time__ne=None) & Q(vehicle_out_time__ne=None)
+
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(GWEL_Tare_Time__gte = start_date)
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
+                data &= Q(GWEL_Tare_Time__lte = end_date)
+            
+            if search_text:
+                if search_text.isdigit():
+                    data &= Q(arv_cum_do_number__icontains = search_text) | Q(delivery_challan_number__icontains = search_text)
+                else:
+                    data &= Q(vehicle_number__icontains = search_text)
+            
+            # usecase_data = Gmrdata.objects(data).order_by("-GWEL_Tare_Time")
+            # usecase_data = (
+            #     Gmrdata.objects(
+            #         Q(GWEL_Tare_Time__ne=None, GWEL_Tare_Time__gte=start_date, GWEL_Tare_Time__lte=end_date) | 
+            #         Q(GWEL_Tare_Time=None, vehicle_in_time__gte=start_date, vehicle_in_time__lte=end_date)  # OR condition
+            #     )
+            #     # .order_by("-GWEL_Tare_Time")  # Order by GWEL_Tare_Time (if present)
+            # )
+            usecase_data = (
+                Gmrdata.objects(
+                    Q(GWEL_Tare_Time__ne=None, GWEL_Tare_Time__gte=start_date, GWEL_Tare_Time__lte=end_date)
+                )
+                # .order_by("-GWEL_Tare_Time")  # Order by GWEL_Tare_Time (if present)
+            )
+            count = len(usecase_data)
+            path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
+            if usecase_data:
+                try:
+                    # Define the file path and filename
+                    path = os.path.join(
+                        "static_server",
+                        "gmr_ai",
+                        file,
+                        "Road_Report_{}.xlsx".format(
+                            datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                        ),
+                    )
+                    filename = os.path.join(os.getcwd(), path)
+                    
+                    # Create the workbook and worksheet
+                    workbook = xlsxwriter.Workbook(filename)
+                    workbook.use_zip64()
+                    worksheet = workbook.add_worksheet()
+                    
+                    # Define formats for the Excel file
+                    cell_format2 = workbook.add_format()
+                    cell_format2.set_bold()
+                    cell_format2.set_font_size(10)
+                    cell_format2.set_align("center")
+                    cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+                    cell_format2.set_border(1)
+                    
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+                    
+                    header_format.set_align("vcenter")
+                    date_format.set_align("vcenter")
+                    report_name_format.set_align("vcenter")
+
+                    header_format.set_border(1)
+                    date_format.set_border(1)
+                    report_name_format.set_border(1)
+
+                    # report_name_format.set_text_wrap(True)
+                    # Set columns width and default row height
+                    worksheet.set_column("A:AZ", 20)
+                    worksheet.set_default_row(50)
+                    
+                    cell_format = workbook.add_format()
+                    cell_format.set_font_size(10)
+                    cell_format.set_align("center")
+                    cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+                    cell_format.set_border(1)
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    headers = filter_data
+                    header_indexes = {header: index for index, header in enumerate(headers)}
+                    headers = [header.capitalize().replace("_", " ") for header in headers]
+                    input_data = len(headers)
+                    DataExecutionsHandler = DataExecutions()
+                    excelTitle = DataExecutionsHandler.findExcelColumnTitleFromColumnNumber(n=input_data)
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range(f"A1:{excelTitle}1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    
+                    # Write the current date on the left side (A2)
+                    worksheet.write("A2", f"Date: {end_date.strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range(f"C2:{excelTitle}2", f"Road Coal Journey", report_name_format)
+                    # Write headers starting from row 3 (which is Excel row C)
+                    
+                    for index, header in enumerate(headers):
+                        worksheet.write(2, index, header, cell_format2)  # Writing headers in the 3rd row (row C)
+                    
+                    # Write data starting from row 4 (Excel row D)
+                    for row, query in enumerate(usecase_data, start=3):  # Starting from row 4 (index 3)
+                        result = query.payload()
+                        worksheet.write(row, 0, count, cell_format)  # Write count in column A
+                        for header in filter_data:
+                            if header in result:
+                                if header == "GWEL_Net_Wt(MT)":
+                                    worksheet.write(row, header_indexes[header], round(float(result[header]), 2), cell_format)
+                                else:
+                                    worksheet.write(row, header_indexes[header], str(result[header]), cell_format)
+                        count -= 1
+                    
+                    # Close the workbook after writing the data
+                    worksheet.autofit()
+                    workbook.close()
+                    
+                    console_logger.debug("Successfully {} report generated".format(service_id))
+                    console_logger.debug("sent data {}".format(path))
+                    
+                    return {
+                        "Type": "gmr_road_journey_download_event",
+                        "Datatype": "Report",
+                        "File_Path": path,
+                    }
+
+                except Exception as e:
+                    console_logger.debug(e)
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+                    console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+
+            else:
+                console_logger.error("No data found")
+                return {
+                    "Type": "gmr_road_journey_download_event",
+                    "Datatype": "Report",
+                    "File_Path": path,
+                }
+
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.get("/v2/coal_analysis", tags=["Con/Gen V2"])
+def coal_analysis(
+    response: Response,
+    type: Optional[str] = "Daily",
+    Month: Optional[str] = None,
+    Daily: Optional[str] = None,
+    Year: Optional[str] = None
+):
+    try:
+        graph = global_coal_analysis(
+                        type = type,
+                        Month = Month,
+                        Daily = Daily,
+                        Year = Year)
+
+        return graph
+        
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug(f"-----  Global Coal Analysis Error ----- {e}")
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+
+@router.post("/add/sap/rcr/road/excel", tags=["Coal Testing"])
+async def endpoint_to_add_sap_road_excel_data(response: Response, file: UploadFile = File(...)):
+    try:
+        if file is None:
+            return {"error": "No file Uploaded!"}
+        
+        contents = await file.read()
+        if not contents:
+            response.status_code = 400
+            return {"error": "Uploaded file is empty!"}
+
+        if file.filename.endswith(".xlsx"):
+            # file saving start
+            date = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{date}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+            file_extension = file.filename.split(".")[-1]
+            file_name = f'coallab_sap_rcr_road_manual_{datetime.datetime.now().strftime("%Y-%m-%d:%H:%M")}.{file_extension}'
+            full_path = os.path.join(os.getcwd(), target_directory, file_name)
+            with open(full_path, "wb") as file_object:
+                file_object.write(contents)
+            # file saving end
+
+            excel_data = pd.read_excel(BytesIO(contents))
+            data_excel_fetch = json.loads(excel_data.to_json(orient="records"))
+            for single_data in data_excel_fetch:
+                console_logger.debug(single_data)
+                try:
+                    fetchSapRecords = SapRecordsRcr.objects.get(do_no=str(single_data["DO No"]))
+                except DoesNotExist as e:
+                    add_data_excel = SapRecordsRcr(
+                        # slno=single_data["Slno"] if single_data["Slno"] else None,
+                        # source=single_data["source"],
+                        # mine_name=single_data["Mines Name"],
+                        sap_po=str(single_data["SAP PO"]) if single_data["SAP PO"] else None,
+                        do_date=str(single_data["SAP PO Date"]) if single_data["SAP PO Date"] else None,
+                        line_item=str(single_data["Line Item"]) if single_data["Line Item"] else None,
+                        do_no=str(single_data["DO No"]) if single_data["DO No"] else None,
+                        # do_qty=str(single_data["DO QTY"]),
+                        # rake_no=single_data["DO/RR Qty"],
+                        # start_date=single_data["DO Start Date"],
+                        # end_date=single_data["DO End Date"],
+                        # grade=single_data["Grade"]
+                    )
+                    add_data_excel.save()
+
+                # # take it here
+                fetchGmrData = Gmrdata.objects(arv_cum_do_number = str(single_data["DO No"]))
+                for single_gmr_data in fetchGmrData:
+                    single_gmr_data.po_no = str(single_data["SAP PO"]) if single_data["SAP PO"] else None
+                    single_gmr_data.line_item = str(single_data["Line Item"]) if single_data["Line Item"] else None
+                    single_gmr_data.po_date = str(single_data["SAP PO Date"]) if single_data["SAP PO Date"] else None
+                    # single_gmr_data.slno = str(single_data["Slno"]) if single_data["Slno"] else None
+                    single_gmr_data.save()
+
+        return {"detail": "success"}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Key Error")
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug("----- Sap Excel Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
 
 
 #  x------------------------------    Scheduler To Tigger Coal API's    ------------------------------------x
@@ -24878,10 +34203,10 @@ time_to_subtract = datetime.timedelta(hours=5, minutes=30)
 
 
 
-backgroundTaskHandler.run_job(task_name="save consumption data",
-                                func=extract_historian_data,
-                                trigger="cron",
-                                **{"day": "*", "hour": "*", "minute": 0})
+# backgroundTaskHandler.run_job(task_name="save consumption data",
+#                                 func=extract_historian_data,
+#                                 trigger="cron",
+#                                 **{"day": "*", "hour": "*", "minute": 0})
 
 
 # shift_time = "22:00"
@@ -24945,6 +34270,6 @@ if __name__ == "__main__":
     usecase_handler_object.handler.send_status(True)
     pre_processing()
     import uvicorn
-    uvicorn.run("main:router",reload=True, host="0.0.0.0",port=7704)
+    uvicorn.run("main:router", reload=True, host="0.0.0.0", port=7704)
     # sched.add_job(scheduled_job, "interval", seconds=10)
     # sched.start()

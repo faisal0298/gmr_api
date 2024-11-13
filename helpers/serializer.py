@@ -248,6 +248,9 @@ class rakeQuotaUpdate(BaseModel):
     source_type: Optional[str]
     rakes_planned_for_month: Optional[int]
     expected_rakes: Optional[dict]
+    cancelled_rakes: Optional[str]
+    remarks: Optional[str]
+
 
 
 class averyUserData(BaseModel):
@@ -292,6 +295,7 @@ class taxInvoiceGmr(BaseModel):
     tare: Optional[str]
     gross: Optional[str]
     net: Optional[str]
+    invoice_no: Optional[str]
 
 class mineNameUpdate(BaseModel):
     id: Optional[str]
@@ -323,3 +327,39 @@ class roadSapUpload(BaseModel):
     # do_qty: Optional[str]
     # po_amount: Optional[str]
     data: List[dict]
+
+
+class grnStatus(BaseModel):
+    invoice_date: Optional[str]
+    invoice_no: Optional[str]
+    sale_date: Optional[str]
+    grade: Optional[str]
+    dispatch_date: Optional[str]
+    mine: Optional[str]
+    do_qty: Optional[str]
+
+
+class grnPdf(BaseModel):
+    # delivery_doc_no: Optional[str]
+    # ship_to_party: Optional[str]
+    sales_doc_no: Optional[str]
+    dispatch_date_time: Optional[str]
+    challan_number: Optional[str]
+    grade_size: Optional[str]
+    truck_number: Optional[str]
+    tare_weight: Optional[str]
+    gross_weight: Optional[str]
+    net_weight: Optional[str]
+
+
+class GrnFileData(BaseModel):
+    do_no: Optional[str]
+    dc_date: Optional[str]
+    invoice_date: Optional[str]
+    invoice_no: Optional[str]
+    sale_date: Optional[str]
+    grade: Optional[str]
+    dispatch_date: Optional[str]
+    mine: Optional[str]
+    do_qty: Optional[str]
+    table_data: List[grnPdf]

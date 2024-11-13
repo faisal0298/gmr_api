@@ -7,11 +7,12 @@ from datetime import timedelta
 from dateutil.relativedelta import relativedelta
 from database.models import *
 import copy
-
+from functools import lru_cache
 
 
 UTC_OFFSET_TIMEDELTA = datetime.datetime.utcnow() - datetime.datetime.now()
 
+@lru_cache(maxsize=None)
 def global_coal_analysis(                                  # contains graph, table & infocard
     type: Optional[str] = "Daily",
     Month: Optional[str] = None,
@@ -266,22 +267,30 @@ def global_coal_analysis(                                  # contains graph, tab
         specific_coal_unit1 = round(total_consumption_unit1 / total_generation_unit1, 2) if total_generation_unit1 > 0 else 0
         specific_coal_unit2 = round(total_consumption_unit2 / total_generation_unit2, 2) if total_generation_unit2 > 0 else 0
 
-        result["data"]["total_averages"] = [
-                        {"generation_unit1": total_avg_generation_unit1,
+        result["data"]["total_average"] = {
+                    "generation_unit1": {
+                        "sum":total_generation_unit1,
+                        "value": total_avg_generation_unit1,
                         "title": "Unit 1 Average Generation(MW)",
                         "icon": "energy"},
-                        
-                        {"generation_unit2": total_avg_generation_unit2,
+
+                    "generation_unit2": {
+                        "sum":total_generation_unit2,
+                        "value": total_avg_generation_unit2,
                         "title": "Unit 2 Average Generation(MW)",
                         "icon": "energy"},
 
-                        {"consumption_unit1": total_avg_consumption_unit1,
+                    "consumption_unit1": {
+                        "sum":total_consumption_unit1,
+                        "value": total_avg_consumption_unit1,
                         "title": "Unit 1 Coal Consumption(MT)",
                         "icon": "coal"},
 
-                        {"consumption_unit2": total_avg_consumption_unit2,
+                    "consumption_unit2": {
+                        "sum":total_consumption_unit2,
+                        "value": total_avg_consumption_unit2,
                         "title": "Unit 2 Coal Consumption(MT)",
-                        "icon": "coal"}]
+                        "icon": "coal"}}
         
         result["data"]["total_specific_coal"] = {
             "Unit 1": specific_coal_unit1,

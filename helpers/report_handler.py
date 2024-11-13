@@ -527,6 +527,7 @@ def logistic_report_table(data):
         final_total_balance_qty = 0
 
         ordered_source_types = [
+            "SECL-RCR Coal",
             "WCL FSA Coal",
             "WCL E Auction Coal",
             "WCL Shakti B(iii) Round 5 Coal",
@@ -909,9 +910,9 @@ def profit_loss_final_data(yearly_final_data, yearly_rail_final_data):
             # console_logger.debug(net_qty_rail)
 
             if net_qty_road < net_qty_rail:
-                net_transit_gain_loss = net_qty_rail-net_qty_road
+                net_transit_gain_loss = net_qty_rail+net_qty_road
             else:
-                net_transit_gain_loss = net_qty_road-net_qty_rail
+                net_transit_gain_loss = net_qty_road+net_qty_rail
 
             # net_transit_gain_loss = net_qty_road - net_qty_rail
 
@@ -980,10 +981,12 @@ def transit_loss_gain_road_mode_month(total_monthly_final_net_qty):
             plt.tight_layout()
             pop_a = mpatches.Patch(color="#3a62ff", label='Months') 
             lgd = plt.legend(handles=[pop_a], facecolor='white', framealpha=1, loc='upper center', bbox_to_anchor=(0.5, 1.10), fancybox=True, shadow=True, ncol=3)  
-            title_font = {'size':'18', 'color':'#000', 'weight':'bold', 'verticalalignment':'bottom'}
+            title_font = {'size':'16', 'color':'#000', 'weight':'bold', 'verticalalignment':'bottom'}
             for bar in bars:
                 height = bar.get_height()
-                plt.text(bar.get_x() + bar.get_width() / 2.0, -abs(height), f"{height:.2f}", ha='center', va='bottom', **title_font)
+                # plt.text(bar.get_x() + bar.get_width() / 2.0, -abs(height), f"{height:.2f}", ha='center', va='bottom', **title_font)
+                plt.text(bar.get_x() + bar.get_width() / 2.0, height if height >= 0 else -abs(height), 
+                            f"{height:.2f}", ha='center', va='bottom' if height >= 0 else 'top', **title_font)
             # plt.show()
             
             file = "reports_img"
@@ -1021,6 +1024,8 @@ def rake_quota_data(fetchRakeQuota):
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Total rakes received for month</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Balance rakes to receive</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>No of rakes in transit</th>"
+        single_html += "<th class='logic_table_th' style='font-size: 12px;'>Cancelled Rakes</th>"
+        single_html += "<th class='logic_table_th' style='font-size: 12px;'>Remarks</th>"
         single_html += "</tr></thead><tbody style='border: 1px solid gray;'>"
 
         for single_rake_quota in fetchRakeQuota['data']:
@@ -1036,6 +1041,8 @@ def rake_quota_data(fetchRakeQuota):
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('total_rakes_received_for_month')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('balance_rakes_to_receive')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('no_of_rakes_in_transist')}</span></td>"
+            single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('cancelled_rakes')}</span></td>"
+            single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('remarks')}</span></td>"
             single_html += "</tr>"
 
         single_html += "<tr style='background-color: #3a62ff; color: #ffffff;'>"
@@ -1048,6 +1055,9 @@ def rake_quota_data(fetchRakeQuota):
         single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_total_rakes_received_for_month')}</strong></td>"
         single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_balance_rakes_to_receive')}</strong></td>"
         single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_no_of_rakes_in_transist')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_cancelled_rakes')}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong></strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong></strong></td>"
         # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_expected_rakes_date')}</strong></td>"
         # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_expected_rakes_value')}</strong></td>"
         single_html += "</tr>"
@@ -1075,6 +1085,8 @@ def rcr_rake_quota_data(fetchRcrRakeQuota):
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Total rakes received for month</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Balance rakes to receive</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>No of rakes in transit</th>"
+        single_html += "<th class='logic_table_th' style='font-size: 12px;'>Cancelled Rakes</th>"
+        single_html += "<th class='logic_table_th' style='font-size: 12px;'>Remarks</th>"
         single_html += "</tr></thead><tbody style='border: 1px solid gray;'>"
 
         for single_rake_quota in fetchRcrRakeQuota['data']:
@@ -1090,6 +1102,8 @@ def rcr_rake_quota_data(fetchRcrRakeQuota):
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('total_rakes_received_for_month')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('balance_rakes_to_receive')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('no_of_rakes_in_transist')}</span></td>"
+            single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('cancelled_rakes')}</span></td>"
+            single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('remarks')}</span></td>"
             single_html += "</tr>"
 
         single_html += "<tr style='background-color: #3a62ff; color: #ffffff;'>"
@@ -1102,6 +1116,9 @@ def rcr_rake_quota_data(fetchRcrRakeQuota):
         single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_total_rakes_received_for_month')}</strong></td>"
         single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_balance_rakes_to_receive')}</strong></td>"
         single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_no_of_rakes_in_transist')}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong></strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_cancelled_rakes')}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong></strong></td>"
         # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_expected_rakes_date')}</strong></td>"
         # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_expected_rakes_value')}</strong></td>"
         single_html += "</tr>"
@@ -1294,6 +1311,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
         # supplierResult = supplier_collection.find({}, {"_id": 0})
         # consigneeResult = consignee_collection.find({}, {"_id": 0})
         # transportResult = transporter_collection.find({}, {"_id": 0})
+        console_logger.debug(rrNo_values.items())
         if rrNo_values:
             # Find the key-value pair with the highest value
             max_pair = max(rrNo_values.items(), key=lambda x: x[1])
@@ -1370,7 +1388,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
             gcv_bar_data = f"<div style='color: #000; font-size: 16px; margin: 5px ;font-weight: 600;'><b>No data found for {datetime.strptime(month_date,'%Y-%m-%d').strftime('%d %B %Y')}</b></div>"
 
         if profit_loss_gmr:
-            profit_loss_gmr = f'<img src="data:image/png;base64,{profit_loss_gmr}" alt="img not present" style="width:100%; height:600px; object-fit: scale-down;"/>'
+            profit_loss_gmr = f'<img src="data:image/png;base64,{profit_loss_gmr}" alt="img not present" style="width:100%; height:680px; object-fit: scale-down;"/>'
         else:
             profit_loss_gmr = f"<div style='color: #000; font-size: 16px; margin: 5px ;font-weight: 600;'><b>No data found for {datetime.strptime(month_date,'%Y-%m-%d').strftime('%d %B %Y')}</b></div>"
 
@@ -1412,7 +1430,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
                                     <span style="font-weight: 500;">
                                                 Highest GWEL GCV ({max_key}):
                                             </span>
-                                    <b style="color: #3a62ff;"> {max_value} </b>
+                                    <b style="color: #3a62ff;"> {round(max_value, 2)} </b>
                                 </td>
                             </tr>
                             <tr style="height: 30px">
@@ -1420,7 +1438,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
                                     <span style="font-weight: 500;">
                                                 Lowest GWEL GCV ({min_key}):
                                             </span>
-                                    <b style="color: #3a62ff;"> {min_value} </b>
+                                    <b style="color: #3a62ff;"> {round(min_value, 2)} </b>
                                 </td>
                             </tr>
                             <tr style="height: 30px">
@@ -1603,3 +1621,8 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
         return data_file
     except Exception as e:
         console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e

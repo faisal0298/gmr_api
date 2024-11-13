@@ -2306,6 +2306,54 @@ def get_mine_name_from_sap_records(do_no, data_type):
                 elif data_type == "grade":
                     # console_logger.debug(fetchMineNameSapRecords.grade)
                     return fetchMineNameSapRecords.grade.split("-")[0] if fetchMineNameSapRecords.grade else None
+                elif data_type == "consumer_type":
+                    return fetchMineNameSapRecords.consumer_type if fetchMineNameSapRecords.consumer_type else None
+            except DoesNotExist as e:
+                return None
+        except Exception as e:
+            success = False
+            console_logger.debug("----- Coal Testing Error -----",e)
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+            console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            success = e
+
+
+# def get_mine_name_from_sap_records_rail(rr_no, data_type):
+#         try:
+#             try:
+#                 fetchMineNameSapRecords = RailData.objects.get(rr_no=rr_no)
+#                 if data_type == "mine_name":
+#                     # console_logger.debug(fetchMineNameSapRecords.mine_name)
+#                     return fetchMineNameSapRecords.mine
+#                 elif data_type == "grade":
+#                     # console_logger.debug(fetchMineNameSapRecords.grade)
+#                     return fetchMineNameSapRecords.grade.split("-")[0] if fetchMineNameSapRecords.grade else None
+#                 elif data_type == "consumer_type":
+#                     return fetchMineNameSapRecords.consumer_type if fetchMineNameSapRecords.consumer_type else None
+#             except DoesNotExist as e:
+#                 return None
+#         except Exception as e:
+#             success = False
+#             console_logger.debug("----- Coal Testing Error -----",e)
+#             exc_type, exc_obj, exc_tb = sys.exc_info()
+#             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#             console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#             console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#             success = e
+
+
+def get_mine_name_from_railData(rr_no, data_type):
+        try:
+            try:
+                fetchMineNameRailData = RailData.objects.get(rr_no=rr_no)
+                if data_type == "mine_name":
+                    return fetchMineNameRailData.source
+                elif data_type == "type_consumer":
+                    return fetchMineNameRailData.source_type
+                elif data_type == "grade":
+                    return fetchMineNameRailData.grade
             except DoesNotExist as e:
                 return None
         except Exception as e:
@@ -2354,6 +2402,7 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
             testing_data = response.json()
             if testing_data.get("statusCode") == 200:
                 for entry in testing_data["responseData"]:
+                    # console_logger.debug(entry)
                     if entry.get("supplier") == "WCL" and entry.get("rrNo") != "" and entry.get("rrNo") != "NA":
                         gcv_value = get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)")
                         # console_logger.debug(entry.get("rake_No"))
@@ -2377,12 +2426,9 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
 
                         fetchMineName = get_mine_name_from_sap_records(entry.get("rrNo"), "mine_name")
                         fetchMineGrade = get_mine_name_from_sap_records(entry.get("rrNo"), "grade")
+                        fetchtypeConsumerRoad = get_mine_name_from_sap_records(entry.get("rrNo"), "consumer_type")
                         
                         try:
-                            # console_logger.debug(entry.get("rrNo"))
-                            # console_logger.debug(entry.get("test_Report_No"))
-                            # fetchReceiptCoalQualityAnalysis = RecieptCoalQualityAnalysis.objects.get(sample_id=entry.get("rrNo"), plant_certificate_id=entry.get("test_Report_No"))
-                            # fetchReceiptCoalQualityAnalysis = RecieptCoalQualityAnalysis.objects.get(plant_sample_id=entry.get("sample_Id_No"))
                             receipt = RecieptCoalQualityAnalysis.objects.get(
                                 plant_sample_id=entry.get("sample_Id_No")
                             )
@@ -2396,6 +2442,7 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
                                 mine=fetchMineName or entry.get("supplier"),
                                 mine_grade=fetchMineGrade.replace(" ", "") if fetchMineGrade else None,
                                 mode="Road",
+                                type_consumer=fetchtypeConsumerRoad if fetchtypeConsumerRoad else None,
                                 plant_lab_temp=float(entry.get("test_Temp")),
                                 plant_lab_rh=float(entry.get("humidity")),
                                 plant_adb_im=get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)"),
@@ -2424,6 +2471,7 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
                                 mine = fetchMineName if fetchMineName else entry.get("supplier"),
                                 mine_grade = fetchMineGrade.replace(" ", "") if fetchMineGrade else None,
                                 mode = "Road",
+                                type_consumer=fetchtypeConsumerRoad if fetchtypeConsumerRoad else None,
                                 plant_lab_temp = float(entry.get("test_Temp")),
                                 plant_lab_rh = float(entry.get("humidity")),
                                 plant_adb_im = get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)"),
@@ -2446,7 +2494,6 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
                         and entry["rrNo"] != ""
                         and entry["rrNo"] != "NA"
                     ):
-                        console_logger.debug(entry.get("rake_No"))
                         gcv_value = get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)")
 
                         # Fetch grade directly while inserting the RecieptCoalQualityAnalysis object
@@ -2466,38 +2513,13 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
                             )
                         else:
                             grade = None
-                        fetchMineName = get_mine_name_from_sap_records(entry.get("rrNo"), "mine_name")
-                        fetchMineGrade = get_mine_name_from_sap_records(entry.get("rrNo"), "grade")
+                        # fetchMineName = get_mine_name_from_sap_records(entry.get("rrNo"), "mine_name")
+                        # fetchMineGrade = get_mine_name_from_sap_records(entry.get("rrNo"), "grade")
+                        fetchMineGrade = get_mine_name_from_railData(entry.get("rrNo"), "grade")
+                        fetchMineName = get_mine_name_from_railData(entry.get("rrNo"), "mine_name")
+                        fetchTypeConsumerRail = get_mine_name_from_railData(entry.get("rrNo"), "type_consumer")
+
                         try:
-                            # RecieptCoalQualityAnalysis.objects.get(sample_id=entry.get("rrNo"), plant_certificate_id=entry.get("test_Report_No"))
-
-                            # fetchReceiptCoalQualityAnalysisRail = RecieptCoalQualityAnalysis.objects.get(plant_sample_id=entry.get("sample_Id_No"))
-                            # fetchReceiptCoalQualityAnalysisRail.plant_certificate_id = entry.get("test_Report_No")
-                            # fetchReceiptCoalQualityAnalysisRail.sample_no = str(int(entry.get("rake_No").split("-")[1]))
-                            # fetchReceiptCoalQualityAnalysisRail.sample_id = entry.get("rrNo")
-                            # fetchReceiptCoalQualityAnalysisRail.plant_sample_date = entry.get("sample_Date")
-                            # fetchReceiptCoalQualityAnalysisRail.plant_preperation_date = entry.get("sample_Received_Date")
-                            # fetchReceiptCoalQualityAnalysisRail.plant_analysis_date = entry.get("analysis_Date")
-                            # fetchReceiptCoalQualityAnalysisRail.sample_qty = float(entry.get("rR_Qty"))
-                            # fetchReceiptCoalQualityAnalysisRail.mine = fetchMineName if fetchMineName else entry.get("supplier")
-                            # fetchReceiptCoalQualityAnalysisRail.mine_grade = fetchMineGrade.replace(" ", "") if fetchMineGrade else None
-                            # fetchReceiptCoalQualityAnalysisRail.mode = "Rail"
-                            # fetchReceiptCoalQualityAnalysisRail.plant_lab_temp = float(entry.get("test_Temp"))
-                            # fetchReceiptCoalQualityAnalysisRail.plant_lab_rh = float(entry.get("humidity"))
-                            # fetchReceiptCoalQualityAnalysisRail.plant_adb_im = get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)")
-                            # fetchReceiptCoalQualityAnalysisRail.plant_adb_vm = get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ADB)")
-                            # fetchReceiptCoalQualityAnalysisRail.plant_adb_ash = get_val_from_sample_params(entry['sample_Parameters'], "ASH (ADB)")
-                            # fetchReceiptCoalQualityAnalysisRail.plant_adb_fc = 0
-                            # fetchReceiptCoalQualityAnalysisRail.plant_adb_gcv = get_val_from_sample_params(entry['sample_Parameters'], "Gross calorific value (ADB)")
-                            # fetchReceiptCoalQualityAnalysisRail.plant_arb_tm = get_val_from_sample_params(entry['sample_Parameters'], "Total Moisture")
-                            # fetchReceiptCoalQualityAnalysisRail.plant_arb_vm = get_val_from_sample_params(entry['sample_Parameters'], "Volatile Matter (ARB)")
-                            # fetchReceiptCoalQualityAnalysisRail.plant_arb_ash = get_val_from_sample_params(entry['sample_Parameters'], "ASH (ARB)")
-                            # fetchReceiptCoalQualityAnalysisRail.plant_arb_fc = get_val_from_sample_params(entry['sample_Parameters'], "Fixed Carbon (ARB)")
-                            # fetchReceiptCoalQualityAnalysisRail.plant_arb_gcv = get_val_from_sample_params(entry['sample_Parameters'], "Gross Calorific Value (ARB)")
-                            # fetchReceiptCoalQualityAnalysisRail.plant_ulr_id = entry.get("ulrNo")
-                            # fetchReceiptCoalQualityAnalysisRail.plant_gcv_grade = grade
-                            # fetchReceiptCoalQualityAnalysisRail.save()
-
                             receipt = RecieptCoalQualityAnalysis.objects.get(
                                 plant_sample_id=entry.get("sample_Id_No")
                             )
@@ -2508,9 +2530,10 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
                                 plant_preperation_date=entry.get("sample_Received_Date"),
                                 plant_analysis_date=entry.get("analysis_Date"),
                                 sample_qty=float(entry.get("rR_Qty")),
-                                mine=fetchMineName or entry.get("supplier"),
+                                mine=fetchMineName if fetchMineName else entry.get("supplier"),
                                 mine_grade=fetchMineGrade.replace(" ", "") if fetchMineGrade else None,
                                 mode="Rail",
+                                type_consumer=fetchTypeConsumerRail if fetchTypeConsumerRail else None,
                                 plant_lab_temp=float(entry.get("test_Temp")),
                                 plant_lab_rh=float(entry.get("humidity")),
                                 plant_adb_im=get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)"),
@@ -2540,6 +2563,7 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
                                 mine = fetchMineName if fetchMineName else entry.get("supplier"),
                                 mine_grade = fetchMineGrade.replace(" ", "") if fetchMineGrade else None,
                                 mode = "Rail",
+                                type_consumer = fetchTypeConsumerRail if fetchTypeConsumerRail else None,
                                 plant_lab_temp = float(entry.get("test_Temp")),
                                 plant_lab_rh = float(entry.get("humidity")),
                                 plant_adb_im = get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)"),
@@ -2556,6 +2580,18 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
                                 plant_gcv_grade = grade,
                             )
                             insertRailReceipt.save()
+
+                    # update based on rr_No from Rcr_Data changes on 11-11-2004 on 04:21 pm (changes said by sachin bhai)
+                    try:
+                        fetchRcrData = RcrData.objects.get(rr_no = entry.get("rrNo"))
+                        console_logger.debug(fetchRcrData.rr_no)
+                        updateDataReciept = RecieptCoalQualityAnalysis.objects.get(sample_id=fetchRcrData.rr_no, sample_no=str(int(entry.get("rake_No").split("-")[1])))
+                        updateDataReciept.update(mine=fetchRcrData.source, type_consumer=fetchRcrData.source_type, mine_grade=fetchRcrData.grade)
+
+                    except DoesNotExist as e:
+                        continue
+                    
+
             success = "completed"
         except requests.exceptions.Timeout:
             console_logger.debug("Request timed out!")
@@ -2573,6 +2609,48 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
     finally:
         SchedulerResponse("save testing data", f"{success}")
         return {"message": "Successful"}
+
+
+@router.get("/delete/duplicate/receiptcoalquality")
+def endpoint_to_delete_duplicate_data_from_receiptcoalquality(response: Response):
+    try:
+        pipeline = [
+            {
+                "$group": {
+                    "_id": { "sample_id": "$sample_id", "plant_certificate_id": "$plant_certificate_id", "sample_no": "$sample_no" },
+                    "ids": { "$push": "$_id" },
+                    "count": { "$sum": 1 }
+                }
+            },
+            {
+                "$match": {
+                    "count": { "$gt": 1 }
+                }
+            }
+        ]
+
+        # Step 2: Run aggregation pipeline to get duplicates
+        duplicate_groups = list(RecieptCoalQualityAnalysis.objects.aggregate(pipeline))
+
+        # Step 3: Delete only the first duplicate in each group
+        for group in duplicate_groups:
+            first_duplicate_id = group["ids"][0]  # Get the first document's ID in each duplicate group
+            RecieptCoalQualityAnalysis.objects.filter(id=first_duplicate_id).delete()  # Delete only the first duplicate
+
+        console_logger.debug("First duplicate in each group has been deleted.")
+
+        return {"detail": "success"}
+
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug("----- Sap Excel Error -----", e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return {"error": str(e)} 
+    
+
 
 
 @router.get("/extract_coal_test_old", tags=["Coal Testing"])
@@ -10319,6 +10397,10 @@ def bar_graph_data(specified_date):
             # )
             # console_logger.debug()
             # fetchGmrData = Gmrdata.objects(created_at__gte=datetime.datetime.strptime(start_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), created_at__lte=datetime.datetime.strptime(end_of_month, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"))
+            
+            console_logger.debug(start_of_month)
+            console_logger.debug(end_of_month)
+
             fetchGmrData = Gmrdata.objects(
                 GWEL_Tare_Time__gte=f"{start_of_month}T00:00:00",
                 GWEL_Tare_Time__lte=f"{end_of_month}T23:59:59"
@@ -10329,23 +10411,6 @@ def bar_graph_data(specified_date):
             )
             
             rrNo_values = {}
-
-            for single_coal_testing in fetchCoalTesting:
-                roadrrNo = single_coal_testing.sample_id
-                location = single_coal_testing.mine
-                calorific_value = single_coal_testing.plant_arb_gcv
-                # for param in single_coal_testing.parameters:
-                #     if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
-                #         if param["val1"] != None and param["val1"] != "":
-                #             calorific_value = float(param["val1"])
-                #             break
-                # else:
-                #     continue
-
-                if roadrrNo in rrNo_values:
-                    rrNo_values[location] += calorific_value
-                else:
-                    rrNo_values[location] = calorific_value
 
             for single_coal_testing_train in fetchCoalTestingTrain:
                 trainrrNo = single_coal_testing_train.sample_id
@@ -10360,6 +10425,23 @@ def bar_graph_data(specified_date):
                 #     continue
 
                 if trainrrNo in rrNo_values:
+                    rrNo_values[location] += calorific_value
+                else:
+                    rrNo_values[location] = calorific_value
+
+            for single_coal_testing in fetchCoalTesting:
+                roadrrNo = single_coal_testing.sample_id
+                location = single_coal_testing.type_consumer if single_coal_testing.type_consumer is not None else "None"
+                calorific_value = single_coal_testing.plant_arb_gcv
+                # for param in single_coal_testing.parameters:
+                #     if param["parameter_Name"] == "Gross_Calorific_Value_(Arb)":
+                #         if param["val1"] != None and param["val1"] != "":
+                #             calorific_value = float(param["val1"])
+                #             break
+                # else:
+                #     continue
+
+                if roadrrNo in rrNo_values:
                     rrNo_values[location] += calorific_value
                 else:
                     rrNo_values[location] = calorific_value
@@ -10392,25 +10474,47 @@ def bar_graph_data(specified_date):
                         actual_net_qty_totals[mine_name] = float(actual_net_qty)
 
             for single_rail_data in fetchRailData:
+
+
+                # console_logger.debug(single_rail_data.Total_gwel_net)
+                
+                # Skip record if Total_gwel_net is empty or 'NaN'
+                if not single_rail_data.Total_gwel_net or single_rail_data.Total_gwel_net == "NaN":
+                    continue
+
+                # console_logger.debug(single_rail_data.Total_gwel_net)
+
                 rail_mine_name = single_rail_data.source
                 rail_net_qty = single_rail_data.total_secl_net_wt
-                rail_actual_net_qty = single_rail_data.total_rly_net_wt
+                # rail_actual_net_qty = single_rail_data.total_rly_net_wt
+                
+                if single_rail_data.Total_gwel_net:
+                    rail_actual_net_qty = single_rail_data.Total_gwel_net
+                else:
+                    rail_actual_net_qty = 0
+                
+                # console_logger.debug(rail_actual_net_qty)
 
                 if rail_mine_name in net_qty_totals:
                     net_qty_totals[rail_mine_name] += float(rail_net_qty)
                 else:
                     net_qty_totals[rail_mine_name] = float(rail_net_qty)
-                if rail_actual_net_qty:
+                # if rail_actual_net_qty:
                     # actual_net_qty_totals[mine_name] += float(actual_net_qty)
-                    if rail_mine_name in actual_net_qty_totals:
-                        actual_net_qty_totals[rail_mine_name] += float(rail_actual_net_qty)
-                    else:
-                        actual_net_qty_totals[rail_mine_name] = float(rail_actual_net_qty)
+                if rail_mine_name in actual_net_qty_totals:
+                    actual_net_qty_totals[rail_mine_name] += float(rail_actual_net_qty)
+                else:
+                    actual_net_qty_totals[rail_mine_name] = float(rail_actual_net_qty)
 
+            # console_logger.debug(net_qty_totals)
+            # console_logger.debug(actual_net_qty_totals)
+            # console_logger.debug({mine: actual_net_qty_totals[mine] for mine in net_qty_totals})
+            # console_logger.debug({mine: net_qty_totals[mine] for mine in net_qty_totals})
             clubbed_data = {
                 mine: actual_net_qty_totals[mine] - net_qty_totals[mine]
                 for mine in net_qty_totals
             }
+            # console_logger.debug(clubbed_data)
             return rrNo_values, clubbed_data, aopList
     except Exception as e:
         console_logger.debug("----- Gate Vehicle Count Error -----",e)
@@ -10668,7 +10772,72 @@ def transit_loss_gain_road_mode_month(date_object):
         specified_date = get_date.year
         dictData = {}
         timezone = pytz.timezone('Asia/Kolkata')
+        created_at_date = datetime.datetime(2024, 9, 23, 19, 50, 51, 572000)
         basePipeline = [
+            {
+                '$match': {
+                    'created_at': {
+                        '$gt': created_at_date,
+                    }
+                }
+            },
+            {
+                "$match": {
+                        "GWEL_Tare_Time": {
+                            "$gte": None,
+                        },
+                },
+            },
+            {
+                '$project': {
+                    'ts': None,
+                    'actual_net_qty': {
+                        '$toDouble': '$actual_net_qty'
+                    }, 
+                    'net_qty': {
+                        '$toDouble': '$net_qty'
+                    }, 
+                    'label': {
+                        '$cond': {
+                            'if': {
+                                '$ne': [
+                                    '$vehicle_number', None
+                                ]
+                            }, 
+                            'then': 'Road', 
+                            'else': 'Rail'
+                        }
+                    }, 
+                    '_id': 0
+                }
+            }, {
+                '$group': {
+                    '_id': {
+                        'ts': '$ts', 
+                        'label': '$label'
+                    }, 
+                    'actual_net_qty_sum': {
+                        '$sum': '$actual_net_qty'
+                    }, 
+                    'net_qty_sum': {
+                        '$sum': '$net_qty'
+                    }
+                }
+            }, {
+                '$project': {
+                    '_id': 0, 
+                    'ts': '$_id.ts', 
+                    'label': '$_id.label', 
+                    'data': {
+                        '$subtract': [
+                            '$actual_net_qty_sum', '$net_qty_sum'
+                        ]
+                    }
+                }
+            }
+        ]
+
+        historicBasePipeline = [
             {
                 "$match": {
                         "GWEL_Tare_Time": {
@@ -10733,16 +10902,22 @@ def transit_loss_gain_road_mode_month(date_object):
         endd_date = timezone.localize(datetime.datetime.strptime(end_date, format_data))
         startd_date = timezone.localize(datetime.datetime.strptime(start_date, format_data))
 
-        basePipeline[0]["$match"]["GWEL_Tare_Time"]["$lte"] = endd_date
-        basePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
+        basePipeline[1]["$match"]["GWEL_Tare_Time"]["$lte"] = endd_date
+        basePipeline[1]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
 
         # basePipeline[1]["$project"]["ts"] = {"$month": "$GWEL_Tare_Time"}
-        basePipeline[1]["$project"]["ts"] = {"$month": {"date": "$GWEL_Tare_Time", "timezone": "Asia/Kolkata"}}
+        basePipeline[2]["$project"]["ts"] = {"$month": {"date": "$GWEL_Tare_Time", "timezone": "Asia/Kolkata"}}
+
+        historicBasePipeline[0]["$match"]["GWEL_Tare_Time"]["$lte"] = endd_date
+        historicBasePipeline[0]["$match"]["GWEL_Tare_Time"]["$gte"] = startd_date
+
+        # basePipeline[1]["$project"]["ts"] = {"$month": "$GWEL_Tare_Time"}
+        historicBasePipeline[1]["$project"]["ts"] = {"$month": {"date": "$GWEL_Tare_Time", "timezone": "Asia/Kolkata"}}
 
         labels = [(startd_date + relativedelta(months=i)).strftime("%b %y")
                     for i in range(12)]
-        
         output = Gmrdata.objects().aggregate(basePipeline)
+        historicoutput = gmrdataHistoric.objects().aggregate(historicBasePipeline)
         outputDict = {}
         for data in output:
             ts = data["ts"]
@@ -10755,6 +10930,19 @@ def transit_loss_gain_road_mode_month(date_object):
                     outputDict[ts][label] = sum_value
                 else:
                     outputDict[ts][label] += sum_value
+
+        for histdata in historicoutput:
+            ts = histdata["ts"]
+            label = histdata["label"]
+            sum_value = histdata["data"]
+            if ts not in outputDict:
+                outputDict[ts] = {label: sum_value}
+            else:
+                if label not in outputDict[ts]:
+                    outputDict[ts][label] = sum_value
+                else:
+                    outputDict[ts][label] += sum_value
+                    
         # console_logger.debug(outputDict)
         for index, label in enumerate(labels):
             # console_logger.debug(index)
@@ -10772,6 +10960,8 @@ def transit_loss_gain_road_mode_month(date_object):
                         # result["data"]["datasets"][1]["data"][index-1] = val
                         console_logger.debug(index)
                         console_logger.debug(val)
+
+        # console_logger.debug(dictData)
         return dictData
     
     except Exception as e:
@@ -10918,14 +11108,22 @@ def transit_loss_gain_road_mode():
         
         financial_year = get_financial_year(datetime.date.today().strftime("%Y-%m-%d"))
 
+        console_logger.debug(financial_year.get("start_date"))
+        console_logger.debug(financial_year.get("end_date"))
+
         # logs = (
         #     Gmrdata.objects(created_at__gte=financial_year.get("start_date"), created_at__lte=financial_year.get("end_date"))
         # )
+        created_at_date = datetime.datetime(2024, 9, 23, 19, 50, 51, 572000)
         logs = (
-            Gmrdata.objects(GWEL_Tare_Time__gte=financial_year.get("start_date"), GWEL_Tare_Time__lte=financial_year.get("end_date"))
+            Gmrdata.objects(GWEL_Tare_Time__gte=financial_year.get("start_date"), GWEL_Tare_Time__lte=financial_year.get("end_date"), created_at__gt=created_at_date)
         )
 
-        if any(logs):
+        historiclogs = (
+            gmrdataHistoric.objects(GWEL_Tare_Time__gte=financial_year.get("start_date"), GWEL_Tare_Time__lte=financial_year.get("end_date"))
+        )
+
+        if any(logs) or any(historiclogs):
             aggregated_data = defaultdict(
                 lambda: defaultdict(
                     lambda: {
@@ -10965,6 +11163,62 @@ def transit_loss_gain_road_mode():
                         aggregated_data[month][do_no]["mine_name"] = "-"
                     aggregated_data[month][do_no]["count"] += 1 
 
+            for log in historiclogs:
+                if log.GWEL_Tare_Time is not None:
+                    month = log.GWEL_Tare_Time.strftime("%Y-%m")
+                    payload = log.payload()
+                    result["labels"] = list(payload.keys())
+                    mine_name = payload.get("Mines_Name")
+                    do_no = payload.get("DO_No")
+
+                    if do_no not in start_dates:
+                        start_dates[do_no] = month
+                    elif month < start_dates[do_no]:
+                        start_dates[do_no] = month
+
+                    # if payload.get("GWEL_Net_Wt(MT)") and payload.get("GWEL_Net_Wt(MT)") != "NaN":
+                    #     aggregated_data[month][do_no]["actual_net_qty"] += float(payload["GWEL_Net_Wt(MT)"])
+                    # else:
+                    #     aggregated_data[month][do_no]["actual_net_qty"] = 0
+                    # if payload.get("Challan_Net_Wt(MT)") and payload.get("Challan_Net_Wt(MT)") != "NaN":
+                    #     aggregated_data[month][do_no]["net_qty"] += float(payload.get("Challan_Net_Wt(MT)"))
+                    # else:
+                    #     aggregated_data[month][do_no]["net_qty"] = 0
+                    # if payload.get("Mines_Name"):
+                    #     aggregated_data[month][do_no]["mine_name"] = payload["Mines_Name"]
+                    # else:
+                    #     aggregated_data[month][do_no]["mine_name"] = "-"
+                    # aggregated_data[month][do_no]["count"] += 1 
+
+                    if do_no in aggregated_data[month]:
+                        if payload.get("GWEL_Net_Wt(MT)") and payload.get("GWEL_Net_Wt(MT)") != "NaN":
+                            aggregated_data[month][do_no]["actual_net_qty"] += float(payload["GWEL_Net_Wt(MT)"])
+                        else:
+                            aggregated_data[month][do_no]["actual_net_qty"] = 0
+
+                        if payload.get("Challan_Net_Wt(MT)") and payload.get("Challan_Net_Wt(MT)") != "NaN":
+                            aggregated_data[month][do_no]["net_qty"] += float(payload.get("Challan_Net_Wt(MT)"))
+                        else:
+                            aggregated_data[month][do_no]["net_qty"] = 0
+
+                        if payload.get("Mines_Name"):
+                            aggregated_data[month][do_no]["mine_name"] = payload["Mines_Name"]
+                        else:
+                            aggregated_data[month][do_no]["mine_name"] = "-"
+                        
+                        aggregated_data[month][do_no]["count"] += 1
+                    else:
+                        aggregated_data[month][do_no] = {
+                            "net_qty": 0,
+                            "mine_name": payload.get("Mines_Name", "-"),
+                            "actual_net_qty": 0,
+                            "count": 1,
+                        }
+                        if payload.get("GWEL_Net_Wt(MT)") and payload.get("GWEL_Net_Wt(MT)") != "NaN":
+                            aggregated_data[month][do_no]["actual_net_qty"] += float(payload["GWEL_Net_Wt(MT)"])
+                        if payload.get("Challan_Net_Wt(MT)") and payload.get("Challan_Net_Wt(MT)") != "NaN":
+                            aggregated_data[month][do_no]["net_qty"] += float(payload.get("Challan_Net_Wt(MT)"))
+
             dataList = [
                 {
                     "month": month,
@@ -10994,10 +11248,10 @@ def transit_loss_gain_road_mode():
                 year = datetime.datetime.strptime(key, "%Y-%m").year
                 if year in yearly_final_data:
                     # yearly_final_data[year] += single_count
-                    yearly_final_data["road_mode"] += single_count
+                    yearly_final_data[year] += single_count
                 else:
                     # yearly_final_data[year] = single_count
-                    yearly_final_data["road_mode"] = single_count
+                    yearly_final_data[year] = single_count
 
             yearly_final_data_sort = dict(sorted(yearly_final_data.items()))
         return yearly_final_data_sort
@@ -11132,7 +11386,7 @@ def transit_loss_gain_rail_mode():
         financial_year = get_financial_year(datetime.date.today().strftime("%Y-%m-%d"))
 
         logs = (
-            RailData.objects(created_at__gte=financial_year.get("start_date"), created_at__lte=financial_year.get("end_date"))
+            RailData.objects(avery_placement_date__gte=financial_year.get("start_date"), avery_placement_date__lte=financial_year.get("end_date"))
         )
 
         if any(logs):
@@ -11156,17 +11410,21 @@ def transit_loss_gain_rail_mode():
                     mine_name = payload.get("source")
                     rr_no = payload.get("rr_no")
 
+                    # Skip record if Total_gwel_net is empty or 'NaN'
+                    if not payload.get("Total_gwel_net") or payload.get("Total_gwel_net") == "NaN":
+                        continue
+
                     if rr_no not in start_dates:
                         start_dates[rr_no] = month
                     elif month < start_dates[rr_no]:
                         start_dates[rr_no] = month
 
-                    if payload.get("total_rly_net_wt") and payload.get("total_rly_net_wt") != "NaN":
-                        aggregated_data[month][rr_no]["actual_net_qty"] += float(payload["total_rly_net_wt"])
+                    if payload.get("total_secl_net_wt") and payload.get("total_secl_net_wt") != "NaN":
+                        aggregated_data[month][rr_no]["actual_net_qty"] += float(payload["total_secl_net_wt"])
                     else:
                         aggregated_data[month][rr_no]["actual_net_qty"] = 0
-                    if payload.get("total_secl_net_wt") and payload.get("total_secl_net_wt") != "NaN":
-                        aggregated_data[month][rr_no]["net_qty"] += float(payload.get("total_secl_net_wt"))
+                    if payload.get("Total_gwel_net") and payload.get("Total_gwel_net") != "NaN":
+                        aggregated_data[month][rr_no]["net_qty"] += float(payload.get("Total_gwel_net"))
                     else:
                         aggregated_data[month][rr_no]["net_qty"] = 0
                     if payload.get("Mines_Name"):
@@ -11204,10 +11462,10 @@ def transit_loss_gain_rail_mode():
                 year = datetime.datetime.strptime(key, "%Y-%m").year
                 if year in yearly_final_data:
                     # yearly_final_data[year] += single_count
-                    yearly_final_data["rail_mode"] += single_count
+                    yearly_final_data[year] += single_count
                 else:
                     # yearly_final_data[year] = single_count
-                    yearly_final_data["rail_mode"] = single_count
+                    yearly_final_data[year] = single_count
 
             yearly_final_data_sort = dict(sorted(yearly_final_data.items()))
 
@@ -11232,11 +11490,11 @@ def gmr_main_graph():
             mine_name = single_gmr_data.mine
             net_qty = single_gmr_data.net_qty
             actual_net_qty = single_gmr_data.actual_net_qty
-        
-            if mine_name in actual_net_qty_all_totals:
-                net_qty_all_totals[mine_name] += float(net_qty)
-            else:
-                net_qty_all_totals[mine_name] = float(net_qty)
+            if net_qty and net_qty != "undefined":
+                if mine_name in actual_net_qty_all_totals:
+                    net_qty_all_totals[mine_name] += float(net_qty)
+                else:
+                    net_qty_all_totals[mine_name] = float(net_qty)
             if actual_net_qty:
                 if mine_name in actual_net_qty_all_totals:
                     actual_net_qty_all_totals[mine_name] += float(actual_net_qty)
@@ -11953,7 +12211,10 @@ def generate_gmr_report_old_python(
                 #     datetime.datetime.strptime(d['end_date'], '%Y-%m-%d').date() > datetime.datetime.now().date()
                 # ]
 
-        rrNo_values, clubbed_data, aopList = bar_graph_data(specified_date)
+        rrNo_values_old, clubbed_data, aopList_old = bar_graph_data(specified_date)
+        rrNo_values, aopList = endpoint_to_fetch_report_name(type="Daily", Daily=specified_date)
+        console_logger.debug(rrNo_values)
+        console_logger.debug(aopList)
         clubbed_data_final = gmr_main_graph()
         total_monthly_final_net_qty = transit_loss_gain_road_mode_month(specified_date)
         yearly_final_data = transit_loss_gain_road_mode()
@@ -12246,7 +12507,23 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                     'foreignField': 'arv_cum_do_number', 
                     'as': 'cumulative_data'
                 }
-            }, {
+            }, 
+            # {
+            #     '$addFields': {
+            #         'cumulative_challan_lr_qty': {
+            #             '$sum': {
+            #                 '$map': {
+            #                     'input': '$cumulative_data', 
+            #                     'as': 'item', 
+            #                     'in': {
+            #                         '$toDouble': '$$item.net_qty'
+            #                     }
+            #                 }
+            #             }
+            #         }
+            #     }
+            # }
+            {
                 '$addFields': {
                     'cumulative_challan_lr_qty': {
                         '$sum': {
@@ -12254,7 +12531,12 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                                 'input': '$cumulative_data', 
                                 'as': 'item', 
                                 'in': {
-                                    '$toDouble': '$$item.net_qty'
+                                    '$convert': {
+                                        'input': '$$item.net_qty', 
+                                        'to': 'double', 
+                                        'onError': 0, 
+                                        'onNull': 0
+                                    }
                                 }
                             }
                         }
@@ -12322,7 +12604,23 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                     'foreignField': 'arv_cum_do_number', 
                     'as': 'cumulative_data'
                 }
-            }, {
+            }, 
+            # {
+            #     '$addFields': {
+            #         'cumulative_challan_lr_qty': {
+            #             '$sum': {
+            #                 '$map': {
+            #                     'input': '$cumulative_data', 
+            #                     'as': 'item', 
+            #                     'in': {
+            #                         '$toDouble': '$$item.net_qty'
+            #                     }
+            #                 }
+            #             }
+            #         }
+            #     }
+            # }
+            {
                 '$addFields': {
                     'cumulative_challan_lr_qty': {
                         '$sum': {
@@ -12330,7 +12628,12 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                                 'input': '$cumulative_data', 
                                 'as': 'item', 
                                 'in': {
-                                    '$toDouble': '$$item.net_qty'
+                                    '$convert': {
+                                        'input': '$$item.net_qty', 
+                                        'to': 'double', 
+                                        'onError': 0, 
+                                        'onNull': 0
+                                    }
                                 }
                             }
                         }
@@ -12390,7 +12693,23 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                     'foreignField': 'arv_cum_do_number', 
                     'as': 'cumulative_data'
                 }
-            }, {
+            }, 
+            # {
+            #     '$addFields': {
+            #         'cumulative_challan_lr_qty': {
+            #             '$sum': {
+            #                 '$map': {
+            #                     'input': '$cumulative_data', 
+            #                     'as': 'item', 
+            #                     'in': {
+            #                         '$toDouble': '$$item.net_qty'
+            #                     }
+            #                 }
+            #             }
+            #         }
+            #     }
+            # }
+            {
                 '$addFields': {
                     'cumulative_challan_lr_qty': {
                         '$sum': {
@@ -12398,7 +12717,12 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                                 'input': '$cumulative_data', 
                                 'as': 'item', 
                                 'in': {
-                                    '$toDouble': '$$item.net_qty'
+                                    '$convert': {
+                                        'input': '$$item.net_qty', 
+                                        'to': 'double', 
+                                        'onError': 0, 
+                                        'onNull': 0
+                                    }
                                 }
                             }
                         }
@@ -12459,7 +12783,23 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                     'foreignField': 'arv_cum_do_number', 
                     'as': 'cumulative_data'
                 }
-            }, {
+            }, 
+            # {
+            #     '$addFields': {
+            #         'cumulative_challan_lr_qty': {
+            #             '$sum': {
+            #                 '$map': {
+            #                     'input': '$cumulative_data', 
+            #                     'as': 'item', 
+            #                     'in': {
+            #                         '$toDouble': '$$item.net_qty'
+            #                     }
+            #                 }
+            #             }
+            #         }
+            #     }
+            # }
+            {
                 '$addFields': {
                     'cumulative_challan_lr_qty': {
                         '$sum': {
@@ -12467,7 +12807,12 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                                 'input': '$cumulative_data', 
                                 'as': 'item', 
                                 'in': {
-                                    '$toDouble': '$$item.net_qty'
+                                    '$convert': {
+                                        'input': '$$item.net_qty', 
+                                        'to': 'double', 
+                                        'onError': 0, 
+                                        'onNull': 0
+                                    }
                                 }
                             }
                         }
@@ -12475,6 +12820,193 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                 }
             }
         ]
+
+
+        # roadrcr start
+
+        basePipelineRcrRoad = [
+            {
+                '$match': {
+                    'tar_wt_date': {
+                        '$ne': None, 
+                        # '$gte': from_ts, 
+                        '$lte': to_ts,
+                    }
+                }
+            }, {
+                '$group': {
+                    '_id': '$do_number', 
+                    'challan_lr_qty': {
+                        '$sum': {
+                            '$toDouble': '$dc_net_wt'
+                        }
+                    }, 
+                    'Grade': {
+                        '$first': '$grade'
+                    }, 
+                    'slno': {
+                        '$first': '$slno'
+                    }, 
+                    'start_date': {
+                        '$first': '$start_date'
+                    }, 
+                    'end_date': {
+                        '$first': '$end_date'
+                    }, 
+                    'type_consumer': {
+                        '$first': '$type_consumer'
+                    }, 
+                    'do_qty': {
+                        '$first': '$po_qty'
+                    }, 
+                    'mine_name': {
+                        '$first': '$mine'
+                    }, 
+                    # 'grn_status': {
+                    #     '$first': '$grn_status'
+                    # },
+                    'date': {
+                        '$last': '$tar_wt_date'
+                    }
+                }
+            }, {
+                '$lookup': {
+                    'from': 'RcrRoadData', 
+                    'localField': '_id', 
+                    'foreignField': 'do_number', 
+                    'as': 'cumulative_data'
+                }
+            }, 
+            # {
+            #     '$addFields': {
+            #         'cumulative_challan_lr_qty': {
+            #             '$sum': {
+            #                 '$map': {
+            #                     'input': '$cumulative_data', 
+            #                     'as': 'item', 
+            #                     'in': {
+            #                         '$toDouble': '$$item.dc_net_wt'
+            #                     }
+            #                 }
+            #             }
+            #         }
+            #     }
+            # }
+            {
+                '$addFields': {
+                    'cumulative_challan_lr_qty': {
+                        '$sum': {
+                            '$map': {
+                                'input': '$cumulative_data', 
+                                'as': 'item', 
+                                'in': {
+                                    '$convert': {
+                                        'input': '$$item.net_qty', 
+                                        'to': 'double', 
+                                        'onError': 0, 
+                                        'onNull': 0
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+
+
+        basepipelineRcrRoadChallanLrQty = [
+            {
+                '$match': {
+                    'tar_wt_date': {
+                        '$ne': None, 
+                        '$gte': from_ts, 
+                        '$lte': to_ts,
+                    }
+                }
+            }, {
+                '$group': {
+                    '_id': '$do_number', 
+                    'challan_lr_qty': {
+                        '$sum': {
+                            '$toDouble': '$dc_net_wt'
+                        }
+                    }, 
+                    'Grade': {
+                        '$first': '$grade'
+                    }, 
+                    'slno': {
+                        '$first': '$slno'
+                    }, 
+                    'start_date': {
+                        '$first': '$start_date'
+                    }, 
+                    'end_date': {
+                        '$first': '$end_date'
+                    }, 
+                    'type_consumer': {
+                        '$first': '$type_consumer'
+                    }, 
+                    'do_qty': {
+                        '$first': '$po_qty'
+                    }, 
+                    'mine_name': {
+                        '$first': '$mine'
+                    }, 
+                    # 'grn_status': {
+                    #     '$first': '$grn_status'
+                    # },
+                    'date': {
+                        '$last': '$tar_wt_date'
+                    }
+                }
+            }, {
+                '$lookup': {
+                    'from': 'RcrRoadData', 
+                    'localField': '_id', 
+                    'foreignField': 'do_number', 
+                    'as': 'cumulative_data'
+                }
+            }, 
+            # {
+            #     '$addFields': {
+            #         'cumulative_challan_lr_qty': {
+            #             '$sum': {
+            #                 '$map': {
+            #                     'input': '$cumulative_data', 
+            #                     'as': 'item', 
+            #                     'in': {
+            #                         '$toDouble': '$$item.dc_net_wt'
+            #                     }
+            #                 }
+            #             }
+            #         }
+            #     }
+            # }
+            {
+                '$addFields': {
+                    'cumulative_challan_lr_qty': {
+                        '$sum': {
+                            '$map': {
+                                'input': '$cumulative_data', 
+                                'as': 'item', 
+                                'in': {
+                                    '$convert': {
+                                        'input': '$$item.net_qty', 
+                                        'to': 'double', 
+                                        'onError': 0, 
+                                        'onNull': 0
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+        
+        # roadrcr end 
+
         # saprecordsPipeline = [
         #     {
         #         '$match': {
@@ -12583,11 +13115,66 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
             }
         ]
 
+
+        saprecordsRcrRoadPipeline = [
+            {
+                '$match': {
+                    '$expr': {
+                        '$and': [
+                            {
+                                '$lte': [
+                                    { '$dateFromString': { 'dateString': '$start_date' } }, 
+                                    datetime.datetime.strptime(specified_date, "%Y-%m-%d")
+                                ]
+                            }, 
+                            {
+                                '$gte': [
+                                    { '$dateFromString': { 'dateString': '$end_date' } }, 
+                                    datetime.datetime.strptime(specified_date, "%Y-%m-%d")
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }, 
+            {
+                '$group': {
+                    '_id': '$do_no',  # Grouping by do_no
+                    'mine_name': { '$first': '$mine_name' },  # Getting the first mine_name in the group
+                    'do_qty': { '$sum': { '$toDouble': '$do_qty' } },  # Summing up the do_qty as double
+                    'start_date': { '$first': '$start_date' },  # Getting the first start_date
+                    'end_date': { '$first': '$end_date' },  # Getting the first end_date
+                    'source_type': { '$first': '$consumer_type' },  # Getting the first source_type
+                    'slno': { '$first': '$slno' },  # Getting the first slno
+                    'Grade': {'$first': '$grade'}
+                }
+            }, 
+            {
+                '$project': {
+                    '_id': 1, 
+                    'mine_name': 1, 
+                    'do_qty': 1, 
+                    'start_date': 1, 
+                    'end_date': 1, 
+                    'source_type': 1, 
+                    'slno': 1,
+                    'Grade': 1,
+                }
+            }
+        ]
+
+
         fetchGmrData = Gmrdata.objects.aggregate(basePipeline)
         fetchGmrDatachallanltqty = Gmrdata.objects.aggregate(challanlrqtybasePipeline)
         fetchGmrHistoricData = gmrdataHistoric.objects.aggregate(basePipelineHistoric)
         fetchGmrHistoricDataChallanLrQty = gmrdataHistoric.objects.aggregate(basepipelineHistoricChallanLrQty)
+        
+        fetchRcrRoadData = RcrRoadData.objects.aggregate(basePipelineRcrRoad)
+        fetchRcrRoadchallanlrqty = RcrRoadData.objects.aggregate(basepipelineRcrRoadChallanLrQty)
+        
         fetchSapRecordsData = SapRecords.objects.aggregate(saprecordsPipeline)
+
+        fetchSapRecordsRcrData = SapRecordsRcrRoad.objects.aggregate(saprecordsRcrRoadPipeline)
         listData= []
         for singleData in fetchGmrData:
             dictData = {}
@@ -12633,6 +13220,7 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
             else:
                 dictData["asking_rate"] = 0
             listData.append(dictData)
+
 
         # console_logger.debug(listData)
         
@@ -12688,6 +13276,53 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                 console_logger.debug("DO_No does not exist in final_data.")
                 listData.append(dictDataHIstoric)
 
+
+        for singleDataRcrData in fetchRcrRoadData:
+            dictDataRcr = {}
+            dictDataRcr["DO_No"] = singleDataRcrData.get("_id")
+            dictDataRcr["mine_name"] = singleDataRcrData.get("mine_name")
+            if singleDataRcrData.get("do_qty"):
+                dictDataRcr["DO_Qty"] = int(singleDataRcrData.get("do_qty"))
+            else:
+                dictDataRcr["DO_Qty"] = 0
+            dictDataRcr["cumulative_challan_lr_qty"] = round(singleDataRcrData.get("cumulative_challan_lr_qty"), 2)
+            dictDataRcr["grn_status"] = singleDataRcrData.get("grn_status")
+            dictDataRcr["date"] = singleDataRcrData.get("date").strftime("%Y-%m-%d")
+            dictDataRcr["start_date"] = singleDataRcrData.get("start_date")
+            dictDataRcr["end_date"] = singleDataRcrData.get("end_date")
+            dictDataRcr["source_type"] = singleDataRcrData.get("type_consumer")
+            dictDataRcr["slno"] = datetime.datetime.strptime(singleDataRcrData.get("slno"), "%Y%m").strftime("%B %Y") if singleDataRcrData.get("slno") else "-"
+            if singleDataRcrData.get("Grade") is not None:
+                if '-' in singleDataRcrData.get("Grade"):
+                    dictDataRcr["average_GCV_Grade"] = singleDataRcrData.get("Grade").split("-")[0]
+                elif " " in singleDataRcrData.get("Grade"):
+                    dictDataRcr["average_GCV_Grade"] = singleDataRcrData.get("Grade").split(" ")[0]
+                else:
+                    dictDataRcr["average_GCV_Grade"] = singleDataRcrData.get("Grade")
+            if singleDataRcrData.get("start_date") is not None and singleDataRcrData.get("end_date") is not None:
+                tomorrow_date = datetime.datetime.strptime(singleDataRcrData.get("end_date"), "%Y-%m-%d").date() + datetime.timedelta(days=1)
+                balance_days = tomorrow_date - datetime.datetime.strptime(specified_date, "%Y-%m-%d").date()
+                dictDataRcr["balance_days"] = balance_days.days
+            else:
+                dictDataRcr["balance_days"] = 0
+            if singleDataRcrData.get("do_qty") is not None:
+                single_do_qty = singleDataRcrData.get("do_qty")
+            else:
+                single_do_qty = 0
+            if single_do_qty != 0:
+                dictDataRcr['percent_supply'] = round((singleDataRcrData.get('cumulative_challan_lr_qty') / int(single_do_qty)) * 100, 2)
+            else:
+                dictDataRcr['percent_supply'] = 0
+                
+            dictDataRcr["balance_qty"] = round(int(single_do_qty) - singleDataRcrData.get("cumulative_challan_lr_qty"), 2)
+                
+            if dictDataRcr['balance_days'] and dictDataRcr['balance_qty'] != 0:
+                dictDataRcr['asking_rate'] = round(dictDataRcr['balance_qty'] / dictDataRcr['balance_days'], 2)
+            else:
+                dictDataRcr["asking_rate"] = 0
+            listData.append(dictDataRcr)
+        
+
         for saprecordsSingle in fetchSapRecordsData:
             sapdict = {}
             sapdict["DO_No"] = saprecordsSingle.get("_id")
@@ -12731,13 +13366,59 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
             if not sap_do_no_exists:
                 console_logger.debug("DO_No does not exist in final_data for sap_records")
                 listData.append(sapdict)
+        
+
+        for saprecordsRcrSingle in fetchSapRecordsRcrData:
+            sapdictRcr = {}
+            sapdictRcr["DO_No"] = saprecordsRcrSingle.get("_id")
+            sapdictRcr["mine_name"] = saprecordsRcrSingle.get("mine_name")
+            sapdictRcr["DO_Qty"] = int(saprecordsRcrSingle.get("do_qty"))
+            sapdictRcr["start_date"] = saprecordsRcrSingle.get("start_date")
+            sapdictRcr["end_date"] = saprecordsRcrSingle.get("end_date")
+            sapdictRcr["source_type"] = saprecordsRcrSingle.get("source_type")
+            sapdictRcr["challan_lr_qty"] = 0
+            sapdictRcr["cumulative_challan_lr_qty"] = 0
+            sapdictRcr["slno"] = datetime.datetime.strptime(saprecordsRcrSingle.get("slno"), "%Y%m").strftime("%B %Y") if saprecordsRcrSingle.get("slno") else "-"
+            if saprecordsRcrSingle.get("Grade") is not None:
+                if '-' in saprecordsRcrSingle.get("Grade"):
+                    sapdictRcr["average_GCV_Grade"] = saprecordsRcrSingle.get("Grade").split("-")[0]
+                elif " " in saprecordsRcrSingle.get("Grade"):
+                    sapdictRcr["average_GCV_Grade"] = saprecordsRcrSingle.get("Grade").split(" ")[0]
+                else:
+                    sapdictRcr["average_GCV_Grade"] = saprecordsRcrSingle.get("Grade")
+            if saprecordsRcrSingle.get("start_date") is not None and saprecordsRcrSingle.get("end_date") is not None:
+                tomorrow_date = datetime.datetime.strptime(saprecordsRcrSingle.get("end_date"), "%Y-%m-%d").date() + datetime.timedelta(days=1)
+                balance_days = tomorrow_date - datetime.datetime.strptime(specified_date, "%Y-%m-%d").date()
+                sapdictRcr["balance_days"] = balance_days.days
+            else:
+                sapdictRcr["balance_days"] = 0
+            if saprecordsRcrSingle.get("do_qty") is not None:
+                do_qty_val = saprecordsRcrSingle.get("do_qty")
+            else:
+                do_qty_val = 0
+            if do_qty_val != 0:
+                sapdictRcr['percent_supply'] = round((sapdictRcr["cumulative_challan_lr_qty"] / int(do_qty_val)) * 100, 2)
+            else:
+                sapdictRcr['percent_supply'] = 0
+            sapdictRcr["balance_qty"] = round(int(do_qty_val) - sapdictRcr["cumulative_challan_lr_qty"], 2)
+            if sapdictRcr['balance_days'] and sapdictRcr['balance_qty'] != 0:
+                sapdictRcr['asking_rate'] = round(sapdictRcr['balance_qty'] / sapdictRcr['balance_days'], 2)
+            else:
+                sapdictRcr["asking_rate"] = 0
+
+            sap_do_no_exists = any(item['DO_No'] == sapdictRcr.get("DO_No") for item in listData)
+            
+            if not sap_do_no_exists:
+                console_logger.debug("DO_No does not exist in final_data for sap_records")
+                listData.append(sapdictRcr)
+
 
         for singlelrqtyData in fetchGmrDatachallanltqty:
             dictDatalrQty = {}
             dictDatalrQty["DO_No"] = singlelrqtyData.get("_id")
             dictDatalrQty["mine_name"] = singlelrqtyData.get("mine_name")
-            if singleData.get("do_qty"):
-                dictDatalrQty["DO_Qty"] = int(singlelrqtyData.get("do_qty"))
+            if singlelrqtyData.get("do_qty"):
+                dictDatalrQty["DO_Qty"] = int(float(singlelrqtyData.get("do_qty")))
             else:
                 dictDatalrQty["DO_Qty"] = 0
             dictDatalrQty["challan_lr_qty"] = round(singlelrqtyData.get("challan_lr_qty"), 2)
@@ -12753,8 +13434,8 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
             dictDatahistoriclrQty = {}
             dictDatahistoriclrQty["DO_No"] = singlehistoriclrqty.get("_id")
             dictDatahistoriclrQty["mine_name"] = singlehistoriclrqty.get("mine_name")
-            if singleData.get("do_qty"):
-                dictDatahistoriclrQty["DO_Qty"] = int(singlehistoriclrqty.get("do_qty"))
+            if singlehistoriclrqty.get("do_qty"):
+                dictDatahistoriclrQty["DO_Qty"] = int(float(singlehistoriclrqty.get("do_qty")))
             else:
                 dictDatahistoriclrQty["DO_Qty"] = 0
             dictDatahistoriclrQty["challan_lr_qty"] = round(singlehistoriclrqty.get("challan_lr_qty"), 2)
@@ -12763,8 +13444,27 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
             do_no_exists_historic = next((item for item in listData if item["DO_No"] == dictDatahistoriclrQty["DO_No"]), None)
             
             # If it exists, update the "challan_lr_qty" in listData
-            if do_no_exists_data:
+            if do_no_exists_historic:
                 do_no_exists_historic["challan_lr_qty"] = dictDatahistoriclrQty["challan_lr_qty"]
+
+
+        
+        for singlercrroadlrqty in fetchRcrRoadchallanlrqty:
+            dictDataRcrRoadlrQty = {}
+            dictDataRcrRoadlrQty["DO_No"] = singlercrroadlrqty.get("_id")
+            dictDataRcrRoadlrQty["mine_name"] = singlercrroadlrqty.get("mine_name")
+            if singlercrroadlrqty.get("do_qty"):
+                dictDataRcrRoadlrQty["DO_Qty"] = int(float(singlercrroadlrqty.get("do_qty")))
+            else:
+                dictDataRcrRoadlrQty["DO_Qty"] = 0
+            dictDataRcrRoadlrQty["challan_lr_qty"] = round(singlercrroadlrqty.get("challan_lr_qty"), 2)
+            
+            # Check if there is an item with the same DO_No in listData
+            do_no_exists_rcr_road = next((item for item in listData if item["DO_No"] == dictDataRcrRoadlrQty["DO_No"]), None)
+            
+            # If it exists, update the "challan_lr_qty" in listData
+            if do_no_exists_rcr_road:
+                do_no_exists_historic["challan_lr_qty"] = dictDataRcrRoadlrQty["challan_lr_qty"]
             
         
         # final_data = [
@@ -12804,7 +13504,9 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
 
         final_data = final_data_check
 
-        rrNo_values, clubbed_data, aopList = bar_graph_data(specified_date)
+        # rrNo_values, clubbed_data, aopList = bar_graph_data(specified_date)
+        rrNo_values_old, clubbed_data, aopList_old = bar_graph_data(specified_date)
+        rrNo_values, aopList = endpoint_to_fetch_report_name_pdf(Daily=specified_date)
         clubbed_data_final = gmr_main_graph()
         total_monthly_final_net_qty = transit_loss_gain_road_mode_month(specified_date)
         yearly_final_data = transit_loss_gain_road_mode()
@@ -12818,6 +13520,8 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
         fetchRailData = rail_pdf(specified_date)
 
         fetchRakeQuota = end_point_to_fetch_rake_quota_test(response)
+
+        # console_logger.debug(fetchRakeQuota)
 
         fetchRcrRakeQuota = end_point_to_fetch_rcr_rake_quota_pdf(response)
 
@@ -13481,11 +14185,14 @@ def endpoint_to_update_minename_data(response: Response, data: mineNameUpdate):
 @router.get("/fetch/similarminelocation", tags=["PDF Report"])
 def endpoint_to_fetch_aoptarget(response: Response, mine_name: str):
     try:    
-        fetchCoalTestingLocation = CoalTesting.objects.filter(location__contains = mine_name)
-        fetchCoalTestingTrainLocation = CoalTestingTrain.objects.filter(location__contains = mine_name)
+        # fetchCoalTestingLocation = CoalTesting.objects.filter(location__contains = mine_name)
+        # fetchCoalTestingTrainLocation = CoalTestingTrain.objects.filter(location__contains = mine_name)
 
-        coalTestingData = [singlecoalTesting["location"] for singlecoalTesting in fetchCoalTestingLocation]
-        coalTestingTrainData = [singlecoalTestingTrain["location"] for singlecoalTestingTrain in fetchCoalTestingTrainLocation]
+        fetchCoalTestingLocation = RecieptCoalQualityAnalysis.objects.filter(mine__icontains = mine_name, mode="Road")
+        fetchCoalTestingTrainLocation = RecieptCoalQualityAnalysis.objects.filter(mine__icontains = mine_name, mode="Rail")
+
+        coalTestingData = [singlecoalTesting["mine"] for singlecoalTesting in fetchCoalTestingLocation]
+        coalTestingTrainData = [singlecoalTestingTrain["mine"] for singlecoalTestingTrain in fetchCoalTestingTrainLocation]
 
         return list(set(coalTestingData)) + list(set(coalTestingTrainData))
     except Exception as e:
@@ -17599,6 +18306,13 @@ async def endpoint_to_add_sap_excel_data(response: Response, file: UploadFile = 
                         # grade=single_data["Grade"]
                     )
                     add_data_excel.save()
+            
+                fetchGmrData = RcrData.objects(rr_no = str(single_data["RR No"]))
+                for single_gmr_data in fetchGmrData:
+                    single_gmr_data.po_no = str(single_data["SAP PO"]) if single_data["SAP PO"] else None
+                    single_gmr_data.line_item = str(single_data["Line Item"]) if single_data["Line Item"] else None
+                    single_gmr_data.po_date = str(single_data["SAP PO Date"]) if single_data["SAP PO Date"] else None
+                    single_gmr_data.save()
 
         return {"detail": "success"}
     except KeyError as e:
@@ -18174,9 +18888,132 @@ def endpoint_to_fetch_report_name_extra():
 #         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
 #         return e
 
+
 @router.get("/coallabtestanalysis", tags=["Coal Testing"])
-def endpoint_to_fetch_report_name(response: Response,
+def endpoint_to_fetch_report_name_data(response: Response,
     type: Optional[str] = "Daily",
+    Month: Optional[str] = None, 
+    Daily: Optional[str] = None, 
+    Year: Optional[str] = None):
+    try:
+        if type == "Daily":
+            specified_date = datetime.datetime.strptime(Daily, "%Y-%m-%d")
+            start_of_month = specified_date.replace(day=1)
+            start_date = datetime.datetime.strftime(start_of_month, '%Y-%m-%d')
+            end_date = datetime.datetime.strftime(specified_date, '%Y-%m-%d')
+        elif type == "Week":
+            specified_date = datetime.datetime.now().date()
+            start_of_week = specified_date - datetime.timedelta(days=7)
+            start_date = datetime.datetime.strftime(start_of_week, '%Y-%m-%d')
+            end_date = datetime.datetime.strftime(specified_date, '%Y-%m-%d')
+        elif type == "Month":
+            date=Month
+            datestructure = date.replace(" ", "").split("-")
+            final_month = f"{datestructure[0]}-{str(datestructure[1]).zfill(2)}"
+            start_month = f"{final_month}-01"
+            startd_date = datetime.datetime.strptime(start_month, "%Y-%m-%d")
+            endd_date = startd_date + datetime.timedelta(days=31)
+            start_date = datetime.datetime.strftime(startd_date, '%Y-%m-%d')
+            end_date = datetime.datetime.strftime(endd_date, '%Y-%m-%d')
+        elif type == "Year":
+            date = Year
+            endd_date =f'{date}-12-31'
+            startd_date = f'{date}-01-01'
+            format_data = "%Y-%m-%d"
+            end_date=datetime.datetime.strftime(datetime.datetime.strptime(endd_date,format_data), format_data)
+            start_date=datetime.datetime.strftime(datetime.datetime.strptime(startd_date,format_data), format_data)
+            
+        if "RecieptCoalQualityAnalysis" not in collectionList:
+            RCA = gmrDB.create_collection("RecieptCoalQualityAnalysis")
+        else:
+            RCA = gmrDB.get_collection("RecieptCoalQualityAnalysis")
+
+        listData = []
+        rr_no_values = {}
+        fetchRCAQuality = RecieptCoalQualityAnalysis.objects(plant_analysis_date__gte=datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), plant_analysis_date__lte=datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"))
+        for single_data in fetchRCAQuality:
+            console_logger.debug(single_data.mine)
+            filter = {
+            'mine':single_data.mine,
+            'plant_analysis_date': {
+                '$gte': datetime.datetime.now(datetime.timezone.utc).replace(day=1,month=11,hour=0,minute=0,second=0,microsecond=0),
+                # '$lte':end_day,
+            }, }
+
+            df = pl.DataFrame(list(RCA.find(filter=filter)))
+            
+            df = df.with_columns([
+                pl.lit(0.0).alias("cum_wt"),
+                pl.lit(0.0).alias("weighted_gcv"),
+                pl.lit(0.0).alias("cum_weighted_gcv"),
+                pl.lit(0.0).alias("gcv")
+            ])
+            
+            df = df.with_columns([
+                pl.lit(float(df["sample_qty"][0])).alias('cum_wt')
+            ])
+            
+            # initialize data to previous values    
+            cum_wt_list = [float(df['sample_qty'][0])]
+            weighted_gcv_list = [float(df['sample_qty'][0]) * float(df['plant_arb_gcv'][0])]
+            cum_weighted_gcv_list = [weighted_gcv_list[0]]
+            gcv_list = [cum_weighted_gcv_list[0]/cum_wt_list[0]]
+            
+            for i in range(1, len(df)):
+                
+                cum_wt_total = float(df['sample_qty'][i]) + cum_wt_list[i-1]
+                weighted_gcv_total = float(df['sample_qty'][i]) * float(df['plant_arb_gcv'][i])
+                cum_weighted_gcv_total = float(weighted_gcv_total) + cum_weighted_gcv_list[i-1]
+                gcv_total = cum_weighted_gcv_total/cum_wt_total
+                
+                cum_wt_list.append(cum_wt_total)
+                weighted_gcv_list.append(weighted_gcv_total)
+                cum_weighted_gcv_list.append(cum_weighted_gcv_total)
+                gcv_list.append(gcv_total)
+            
+            df = df.with_columns(
+                pl.Series('cum_wt', cum_wt_list),
+                pl.Series('weighted_gcv', weighted_gcv_list),
+                pl.Series('cum_weighted_gcv',cum_weighted_gcv_list),
+                pl.Series('gcv', gcv_list)
+            )
+            rr_no_values[single_data.mine] = gcv_list[-1]
+            # df.write_excel("gcv_calculation.xlsx")
+        console_logger.debug(rr_no_values)
+        aopList = []
+        fetchAopTarget = AopTarget.objects()
+        if fetchAopTarget:
+            for single_aop_target in fetchAopTarget:
+                aopList.append(single_aop_target.payload())
+
+
+        target_dict = {item['source_name']: int(item['aop_target']) for item in aopList}
+        
+        aligned_target_data = [target_dict.get(label.strip(), 0) for label in rr_no_values.keys()]
+
+        console_logger.debug(rr_no_values)
+        result = {
+                "data": {
+                    "labels": list(rr_no_values.keys()),
+                    "datasets": [
+                        {"label": "GWEL", "data": [data for data in list(rr_no_values.values())], "order": 1, "type": "bar"},
+                        {"label": "Target", "data": aligned_target_data, "order": 0, "type": "line"},
+                    ],
+                }
+            }
+        
+        return result
+
+    except Exception as e:
+        console_logger.debug("----- Gate Vehicle Count Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+@router.get("/coallabtestanalysisold", tags=["Coal Testing"])
+def endpoint_to_fetch_report_name(type: Optional[str] = "Daily",
     Month: Optional[str] = None, 
     Daily: Optional[str] = None, 
     Year: Optional[str] = None
@@ -18220,6 +19057,7 @@ def endpoint_to_fetch_report_name(response: Response,
 
         fetchCoalTesting = RecieptCoalQualityAnalysis.objects(plant_analysis_date__gte=datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), plant_analysis_date__lte=datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), mode="Road")
         fetchCoalTestingTrain = RecieptCoalQualityAnalysis.objects(plant_analysis_date__gte=datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), plant_analysis_date__lte=datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), mode="Rail")
+
         
         # If no data is found from db, return empty result
         if not fetchCoalTesting and not fetchCoalTestingTrain:
@@ -18228,21 +19066,6 @@ def endpoint_to_fetch_report_name(response: Response,
             rrNo_values = {}
             calorific_value = 0
             third_party_calorific_value = 0
-
-            for single_coal_testing in fetchCoalTesting:
-                rrNo = single_coal_testing.sample_id
-                location = single_coal_testing.mine
-                calorific_value = single_coal_testing.plant_arb_gcv
-                third_party_calorific_value = single_coal_testing.thirdparty_arb_gcv
-
-                if rrNo in rrNo_values:
-                    rrNo_values[location]["gwel"] += int(calorific_value)
-                    rrNo_values[location]["third_party"] += int(third_party_calorific_value)
-                else:
-                    rrNo_values[location] = {
-                        "gwel": int(calorific_value),
-                        "third_party": int(third_party_calorific_value) if third_party_calorific_value else 0
-                    }
 
             for single_coal_testing_train in fetchCoalTestingTrain:
                 rrNo = single_coal_testing_train.sample_id
@@ -18258,7 +19081,28 @@ def endpoint_to_fetch_report_name(response: Response,
                         "gwel": int(calorific_value),
                         "third_party": float(third_party_calorific_value) if third_party_calorific_value else 0
                     }
-        
+# 
+            listData = []
+            for single_coal_testing in fetchCoalTesting:
+                rrNo = single_coal_testing.sample_id
+                # location = single_coal_testing.mine
+                location = single_coal_testing.type_consumer if single_coal_testing.type_consumer is not None else "None"
+                calorific_value = single_coal_testing.plant_arb_gcv
+                third_party_calorific_value = single_coal_testing.thirdparty_arb_gcv
+
+                listData.append(calorific_value)
+
+                if rrNo in rrNo_values:
+                    rrNo_values[location]["gwel"] += int(calorific_value)
+                    rrNo_values[location]["third_party"] += int(third_party_calorific_value)
+                else:
+                    rrNo_values[location] = {
+                        "gwel": int(calorific_value),
+                        "third_party": int(third_party_calorific_value) if third_party_calorific_value else 0
+                    }
+            console_logger.debug(listData)
+            console_logger.debug(rrNo_values)
+
             aopList = []
             fetchAopTarget = AopTarget.objects()
             if fetchAopTarget:
@@ -18269,6 +19113,8 @@ def endpoint_to_fetch_report_name(response: Response,
             target_dict = {item['source_name']: int(item['aop_target']) for item in aopList}
             
             aligned_target_data = [target_dict.get(label.strip(), 0) for label in rrNo_values.keys()]
+
+            console_logger.debug(rrNo_values)
 
             result = {
                 "data": {
@@ -18282,6 +19128,135 @@ def endpoint_to_fetch_report_name(response: Response,
             }
 
             return result
+        
+    except Exception as e:
+        console_logger.debug("----- Gate Vehicle Count Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+# @router.get("/coallabtestanalysisold", tags=["Coal Testing"])
+def endpoint_to_fetch_report_name_pdf(type: Optional[str] = "Daily",
+    Month: Optional[str] = None, 
+    Daily: Optional[str] = None, 
+    Year: Optional[str] = None
+):
+    try:
+        if type == "Daily":
+            specified_date = datetime.datetime.strptime(Daily, "%Y-%m-%d")
+            start_of_month = specified_date.replace(day=1)
+            start_date = datetime.datetime.strftime(start_of_month, '%Y-%m-%d')
+            end_date = datetime.datetime.strftime(specified_date, '%Y-%m-%d')
+        elif type == "Week":
+            specified_date = datetime.datetime.now().date()
+            start_of_week = specified_date - datetime.timedelta(days=7)
+            start_date = datetime.datetime.strftime(start_of_week, '%Y-%m-%d')
+            end_date = datetime.datetime.strftime(specified_date, '%Y-%m-%d')
+        elif type == "Month":
+            date=Month
+            datestructure = date.replace(" ", "").split("-")
+            final_month = f"{datestructure[0]}-{str(datestructure[1]).zfill(2)}"
+            start_month = f"{final_month}-01"
+            startd_date = datetime.datetime.strptime(start_month, "%Y-%m-%d")
+            endd_date = startd_date + datetime.timedelta(days=31)
+            start_date = datetime.datetime.strftime(startd_date, '%Y-%m-%d')
+            end_date = datetime.datetime.strftime(endd_date, '%Y-%m-%d')
+        elif type == "Year":
+            date = Year
+            endd_date =f'{date}-12-31'
+            startd_date = f'{date}-01-01'
+            format_data = "%Y-%m-%d"
+            end_date=datetime.datetime.strftime(datetime.datetime.strptime(endd_date,format_data), format_data)
+            start_date=datetime.datetime.strftime(datetime.datetime.strptime(startd_date,format_data), format_data)
+            
+        if "RecieptCoalQualityAnalysis" not in collectionList:
+            RCA = gmrDB.create_collection("RecieptCoalQualityAnalysis")
+        else:
+            RCA = gmrDB.get_collection("RecieptCoalQualityAnalysis")
+
+        listData = []
+        rr_no_values = {}
+        fetchRCAQuality = RecieptCoalQualityAnalysis.objects(plant_analysis_date__gte=datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), plant_analysis_date__lte=datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"))
+        for single_data in fetchRCAQuality:
+            filter = {
+            'mine':single_data.mine,
+            'plant_analysis_date': {
+                '$gte': datetime.datetime.now(datetime.timezone.utc).replace(day=1,month=11,hour=0,minute=0,second=0,microsecond=0),
+                # '$lte':end_day,
+            }, }
+
+            df = pl.DataFrame(list(RCA.find(filter=filter)))
+            
+            df = df.with_columns([
+                pl.lit(0.0).alias("cum_wt"),
+                pl.lit(0.0).alias("weighted_gcv"),
+                pl.lit(0.0).alias("cum_weighted_gcv"),
+                pl.lit(0.0).alias("gcv")
+            ])
+            
+            df = df.with_columns([
+                pl.lit(float(df["sample_qty"][0])).alias('cum_wt')
+            ])
+            
+            # initialize data to previous values    
+            cum_wt_list = [float(df['sample_qty'][0])]
+            weighted_gcv_list = [float(df['sample_qty'][0]) * float(df['plant_arb_gcv'][0])]
+            cum_weighted_gcv_list = [weighted_gcv_list[0]]
+            gcv_list = [cum_weighted_gcv_list[0]/cum_wt_list[0]]
+            
+            for i in range(1, len(df)):
+                
+                cum_wt_total = float(df['sample_qty'][i]) + cum_wt_list[i-1]
+                weighted_gcv_total = float(df['sample_qty'][i]) * float(df['plant_arb_gcv'][i])
+                cum_weighted_gcv_total = float(weighted_gcv_total) + cum_weighted_gcv_list[i-1]
+                gcv_total = cum_weighted_gcv_total/cum_wt_total
+                
+                cum_wt_list.append(cum_wt_total)
+                weighted_gcv_list.append(weighted_gcv_total)
+                cum_weighted_gcv_list.append(cum_weighted_gcv_total)
+                gcv_list.append(gcv_total)
+            
+            df = df.with_columns(
+                pl.Series('cum_wt', cum_wt_list),
+                pl.Series('weighted_gcv', weighted_gcv_list),
+                pl.Series('cum_weighted_gcv',cum_weighted_gcv_list),
+                pl.Series('gcv', gcv_list)
+            )
+            rr_no_values[single_data.mine] = gcv_list[-1]
+            # df.write_excel("gcv_calculation.xlsx")
+        aopList = []
+        fetchAopTarget = AopTarget.objects()
+        if fetchAopTarget:
+            for single_aop_target in fetchAopTarget:
+                aopList.append(single_aop_target.payload())
+
+
+        target_dict = {item['source_name']: int(item['aop_target']) for item in aopList}
+        
+        aligned_target_data = [target_dict.get(label.strip(), 0) for label in rr_no_values.keys()]
+
+        # console_logger.debug(rr_no_values)
+        # result = {
+        #         "data": {
+        #             "labels": list(rr_no_values.keys()),
+        #             "datasets": [
+        #                 {"label": "GWEL", "data": [data for data in list(rr_no_values.values())], "order": 1, "type": "bar"},
+        #                 {"label": "Target", "data": aligned_target_data, "order": 0, "type": "line"},
+        #             ],
+        #         }
+        #     }
+        
+        return rr_no_values, aopList
+
+    except Exception as e:
+        console_logger.debug("----- Gate Vehicle Count Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
         
     except Exception as e:
         console_logger.debug("----- Gate Vehicle Count Error -----",e)
@@ -19778,17 +20753,43 @@ def endpoint_to_insert_rail_data(response: Response, payload: RailwayData, id: O
             except DoesNotExist as e:
                 fetchSaprecordsRail = None
             if fetchSaprecordsRail:
-                fetchRailData.month = datetime.datetime.strptime(fetchSaprecordsRail.month, '%b %d, %Y').strftime('%Y-%m-%d')
+                if fetchSaprecordsRail.month:
+                    fetchRailData.month = datetime.datetime.strptime(fetchSaprecordsRail.month, '%b %d, %Y').strftime('%Y-%m-%d')
                 fetchRailData.rr_date = fetchSaprecordsRail.rr_date
                 fetchRailData.siding = fetchSaprecordsRail.siding
                 fetchRailData.mine = fetchSaprecordsRail.mine
                 fetchRailData.grade = fetchSaprecordsRail.grade
                 fetchRailData.rr_qty = fetchSaprecordsRail.rr_qty
                 fetchRailData.po_amount = fetchSaprecordsRail.po_amount
+            
+            fetchRailData.placement_date = final_data.get("placement_date")
+            fetchRailData.completion_date = final_data.get("completion_date")
+            fetchRailData.drawn_date = final_data.get("drawn_date")
+            fetchRailData.total_ul_wt = final_data.get("total_ul_wt")
+            fetchRailData.boxes_supplied = final_data.get("boxes_supplied")
+            fetchRailData.total_secl_gross_wt = final_data.get("total_secl_gross_wt")
+            fetchRailData.total_secl_tare_wt = final_data.get("total_secl_tare_wt")
+            fetchRailData.total_secl_net_wt = final_data.get("total_secl_net_wt")
+            fetchRailData.total_secl_ol_wt = final_data.get("total_secl_ol_wt")
+            fetchRailData.boxes_loaded = final_data.get("boxes_loaded")
+            fetchRailData.total_rly_gross_wt = final_data.get("total_rly_gross_wt")
+            fetchRailData.total_rly_tare_wt = final_data.get("total_rly_tare_wt")
+            fetchRailData.total_rly_net_wt = final_data.get("total_rly_net_wt")
+            fetchRailData.total_rly_ol_wt = final_data.get("total_rly_ol_wt")
+            fetchRailData.total_secl_chargable_wt = final_data.get("total_secl_chargable_wt")
+            fetchRailData.total_rly_chargable_wt = final_data.get("total_rly_chargable_wt")
+            fetchRailData.freight = final_data.get("freight")
+            fetchRailData.gst = final_data.get("gst")
+            fetchRailData.pola = final_data.get("pola")
+            fetchRailData.total_freight = final_data.get("total_freight")
+            fetchRailData.source_type = final_data.get("source_type")
+            # fetchRailData.month = final_data.get("month")
+
             for key, value in final_data.items():
                 if key != 'secl_rly_data' and hasattr(fetchRailData, key):
                     setattr(fetchRailData, key, value)
-            
+
+
             # if fetchRailData.placement_date:
             #     console_logger.debug(fetchRailData.placement_date)
             #     console_logger.debug(datetime.datetime.strptime(fetchSaprecordsRail.month, '%b %d, %Y').strftime('%Y-%m-%d'))
@@ -20179,7 +21180,8 @@ def endpoint_to_insert_rcr_data(response: Response, payload: RailwayData, id: Op
                 fetchSaprecordsRail = None
             
             if fetchSaprecordsRail:
-                fetchRailData.month = datetime.datetime.strptime(fetchSaprecordsRail.month, '%b %d, %Y').strftime('%Y-%m-%d')
+                if fetchSaprecordsRail.month:
+                    fetchRailData.month = datetime.datetime.strptime(fetchSaprecordsRail.month, '%b %d, %Y').strftime('%Y-%m-%d')
                 fetchRailData.rr_date = fetchSaprecordsRail.rr_date
                 fetchRailData.area = fetchSaprecordsRail.area
                 fetchRailData.mine = fetchSaprecordsRail.mine
@@ -20187,10 +21189,33 @@ def endpoint_to_insert_rcr_data(response: Response, payload: RailwayData, id: Op
                 fetchRailData.rr_qty = fetchSaprecordsRail.rr_qty
                 fetchRailData.po_amount = fetchSaprecordsRail.po_amount
             
+            fetchRailData.placement_date = final_data.get("placement_date")
+            fetchRailData.completion_date = final_data.get("completion_date")
+            fetchRailData.drawn_date = final_data.get("drawn_date")
+            fetchRailData.total_ul_wt = final_data.get("total_ul_wt")
+            fetchRailData.boxes_supplied = final_data.get("boxes_supplied")
+            fetchRailData.total_secl_gross_wt = final_data.get("total_secl_gross_wt")
+            fetchRailData.total_secl_tare_wt = final_data.get("total_secl_tare_wt")
+            fetchRailData.total_secl_net_wt = final_data.get("total_secl_net_wt")
+            fetchRailData.total_secl_ol_wt = final_data.get("total_secl_ol_wt")
+            fetchRailData.boxes_loaded = final_data.get("boxes_loaded")
+            fetchRailData.total_rly_gross_wt = final_data.get("total_rly_gross_wt")
+            fetchRailData.total_rly_tare_wt = final_data.get("total_rly_tare_wt")
+            fetchRailData.total_rly_net_wt = final_data.get("total_rly_net_wt")
+            fetchRailData.total_rly_ol_wt = final_data.get("total_rly_ol_wt")
+            fetchRailData.total_secl_chargable_wt = final_data.get("total_secl_chargable_wt")
+            fetchRailData.total_rly_chargable_wt = final_data.get("total_rly_chargable_wt")
+            fetchRailData.freight = final_data.get("freight")
+            fetchRailData.gst = final_data.get("gst")
+            fetchRailData.pola = final_data.get("pola")
+            fetchRailData.total_freight = final_data.get("total_freight")
+            fetchRailData.source_type = final_data.get("source_type")
+            # fetchRailData.month = final_data.get("month")
+            
             for key, value in final_data.items():
                 if key != 'secl_rly_data' and hasattr(fetchRailData, key):
                     setattr(fetchRailData, key, value)
-            
+
             # if fetchRailData.placement_date:
             #     console_logger.debug(fetchRailData.placement_date)
             #     console_logger.debug(datetime.datetime.strptime(fetchSaprecordsRail.month, '%b %d, %Y').strftime('%Y-%m-%d'))
@@ -22893,6 +23918,115 @@ def endpoint_to_update_road_sap_upload(response: Response, data: roadSapUpload):
 
 
 
+@router.post("/rcr/do_sales_order", tags=["Coal Testing"])
+async def endpoint_to_upload_rcr_do_sales_order(response: Response, pdf_upload: List[UploadFile] = File(...)):
+    try:
+        listData = []
+        for UploadedFile in pdf_upload:
+
+            f_name = UploadedFile.filename
+            contents = UploadedFile.file
+
+            # Check if the file is empty
+            if not contents:
+                return {"error": "Uploaded file is empty"}
+
+            # Verify file format (PDF)
+            if not f_name.endswith(('.pdf','.PDF')):
+                response.status_code = 400
+                return {"error": "Uploaded file is not a PDF"}
+            
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+            file_extension = f_name.split(".")[-1]
+            file_name = f'sap_upload_{datetime.datetime.now().strftime("%Y-%m-%d:%H:%M")}.{file_extension}'
+            full_path = os.path.join(os.getcwd(), target_directory, file_name)
+            with open(full_path, "wb") as file_object:
+                shutil.copyfileobj(contents, file_object)
+
+            fetchPdfData = extract_invoice_data(full_path)
+
+            # console_logger.debug(fetchPdfData)
+            testData = fetchPdfData.get("Table").get("Amount(INR)").to_dict()
+
+            console_logger.debug(testData.get(14))
+
+            fetchPdfData["po_amount"] = testData.get(14)
+
+            listData.append(fetchPdfData)
+
+        return listData
+    except Exception as e:
+        console_logger.debug("----- Road Sap Upload Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.post("/upload/rcr/do_sales_order", tags=["Coal Testing"])
+def endpoint_to_update_road_sap_upload(response: Response, data: roadSapUpload):
+    try:
+        multyData = data.dict()
+        for dataLoad in multyData["data"]:
+            try:
+                checkSaprecords = SapRecordsRcrRoad.objects.get(do_no=dataLoad.get("do_no"))
+                checkSaprecords.do_date = datetime.datetime.strptime(dataLoad.get("do_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+                checkSaprecords.start_date = datetime.datetime.strptime(dataLoad.get("start_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+                checkSaprecords.end_date = datetime.datetime.strptime(dataLoad.get("end_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+                checkSaprecords.slno = dataLoad.get("slno")
+                checkSaprecords.consumer_type = dataLoad.get("consumer_type")
+                checkSaprecords.grade = dataLoad.get("grade")
+                checkSaprecords.mine_name = dataLoad.get("mine_name")
+                checkSaprecords.do_qty = dataLoad.get("do_qty")
+                checkSaprecords.po_amount = dataLoad.get("po_amount")
+                checkSaprecords.save()
+            except DoesNotExist as e:
+                insertSapRecords = SapRecordsRcrRoad(
+                    do_no=dataLoad.get("do_no"),
+                    do_date=datetime.datetime.strptime(dataLoad.get("do_date"), '%b %d, %Y').strftime('%Y-%m-%d'),
+                    start_date=datetime.datetime.strptime(dataLoad.get("start_date"), '%b %d, %Y').strftime('%Y-%m-%d'), 
+                    end_date=datetime.datetime.strptime(dataLoad.get("end_date"), '%b %d, %Y').strftime('%Y-%m-%d'), 
+                    slno=dataLoad.get("slno"), 
+                    consumer_type=dataLoad.get("consumer_type"), 
+                    grade=dataLoad.get("grade"), 
+                    mine_name=dataLoad.get("mine_name"), 
+                    do_qty=dataLoad.get("do_qty"), 
+                    po_amount=dataLoad.get("po_amount")
+                )
+                insertSapRecords.save() 
+
+            try:
+                checkGmrData = RcrRoadData.objects(do_number=dataLoad.get("do_no"))
+                for singleCheckGmrData in checkGmrData:
+                    singleCheckGmrData.do_date = datetime.datetime.strptime(dataLoad.get("do_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+                    singleCheckGmrData.start_date = datetime.datetime.strptime(dataLoad.get("start_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+                    singleCheckGmrData.end_date = datetime.datetime.strptime(dataLoad.get("end_date"), '%b %d, %Y').strftime('%Y-%m-%d')
+                    singleCheckGmrData.slno = dataLoad.get("slno")
+                    singleCheckGmrData.type_consumer = dataLoad.get("consumer_type")
+                    singleCheckGmrData.grade = dataLoad.get("grade")
+                    singleCheckGmrData.mine = dataLoad.get("mine")
+                    singleCheckGmrData.po_qty = dataLoad.get("do_qty")
+                    singleCheckGmrData.po_amount = dataLoad.get("po_amount")
+                    singleCheckGmrData.save()
+            except DoesNotExist as e:
+                pass
+    except Exception as e:
+        console_logger.debug("----- Update Rcr Sap Upload Error -----",e)
+        response.status_code = 400
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+
 
 # @router.get("/fetch/rake/quota", tags=["Rail Map"])
 # def end_point_to_fetch_rake_quota_test(response: Response, 
@@ -23315,6 +24449,14 @@ def end_point_to_fetch_rake_quota_test_old(response: Response,
                     dictData["month"] = datetime.datetime.strptime(log.month, "%m-%Y").strftime("%b-%Y")
                     # dictData["valid_upto"] = log.valid_upto
                     dictData["rake_planned_for_the_month"] = int(log.rake_alloted)
+                    if log.cancelled_rakes:
+                        dictData["cancelled_rakes"] = int(log.cancelled_rakes)
+                    else:
+                        dictData["cancelled_rakes"] = 0
+                    if log.remarks:
+                        dictData["remarks"] = log.remarks
+                    else:
+                        dictData["remarks"] = ""
                     if log.source_type:
                         dictData["source_type"] = log.source_type
                     if log.expected_rakes:
@@ -23337,9 +24479,35 @@ def end_point_to_fetch_rake_quota_test_old(response: Response,
                         # Q(avery_placement_date__gte=start_date_time.strftime("%Y-%m-%d %H:%M:%S")) &
                         # Q(avery_placement_date__lte=end_date_time.strftime("%Y-%m-%d %H:%M:%S"))
                     ).count()
-
-                    balance_rakes_to_receive = int(log.rake_alloted) - int(dictData["total_rakes_received_for_month"])
+                    if log.cancelled_rakes:
+                        balance_rakes_to_receive = int(log.rake_alloted) - int(dictData["total_rakes_received_for_month"]) - int(log.cancelled_rakes)
+                    else:
+                        balance_rakes_to_receive = int(log.rake_alloted) - int(dictData["total_rakes_received_for_month"])
                     dictData["balance_rakes_to_receive"] = balance_rakes_to_receive
+
+                    today_date = datetime.date.today()
+
+                    # Get the start of the month
+                    start_date = today_date.replace(day=1)
+
+                    # Get the last day of the month
+                    last_day = calendar.monthrange(today_date.year, today_date.month)[1]
+                    end_date = today_date.replace(day=last_day)
+
+                    startd_date = f"{start_date} 00:00:00"
+                    endd_date = f"{end_date} 23:59:59"
+
+                    current_date = datetime.datetime.now()
+                    current_month_year = current_date.strftime('%B-%Y')  # Format: 'Month-Year' (e.g., 'November-2024')
+
+                    # Check if formatted_date matches the current month and year
+                    
+                    dictData["rakes_previous_month_quota_received"] = RailData.objects.filter(
+                        month__icontains=formatted_date,
+                        avery_placement_date__gte=startd_date,
+                        avery_placement_date__lte=endd_date,
+                        source_type__iexact=log.source_type
+                    ).count()
 
                     prev_date_obj = datetime.datetime.strptime(log.month, "%m-%Y")
 
@@ -23368,9 +24536,6 @@ def end_point_to_fetch_rake_quota_test_old(response: Response,
                                 source_type__iexact = log.source_type
                             ).count()
 
-                            # console_logger.debug(today_utc.strftime("%Y-%m-%d %H:%M:%S"))
-                            # console_logger.debug(end_of_day_utc.strftime("%Y-%m-%d %H:%M:%S"))
-
                             dictData["rakes_received_on_date"] = RailData.objects.filter(
                                 month__icontains=formatted_date,
                                 avery_placement_date__gte=today_utc.strftime("%Y-%m-%d %H:%M:%S"),
@@ -23384,6 +24549,7 @@ def end_point_to_fetch_rake_quota_test_old(response: Response,
                                 month__icontains=formatted_date,
                                 source_type__iexact = log.source_type
                             ).count()
+
                             dictData["no_of_rakes_in_transist"] = dictData["rakes_loaded_till_date"] - dictData["total_rakes_received_for_month"]
 
                     listData.append(dictData)
@@ -23402,11 +24568,22 @@ def end_point_to_fetch_rake_quota_test_old(response: Response,
                 # console_logger.debug(listData)
 
                 # Update rakes_previous_month_quota_received with balance_rakes_to_receive from previous month
-                for i in range(1, len(filtered_data)):
-                    filtered_data[i]['rakes_previous_month_quota_received'] = filtered_data[i - 1]['balance_rakes_to_receive']
+                # for i in range(1, len(filtered_data)):
+                #     # console_logger.debug(i)
+                #     # console_logger.debug(i-1)
+                #     console_logger.debug(filtered_data[i - 1]['balance_rakes_to_receive'])
+                #     console_logger.debug(filtered_data[i]['rakes_previous_month_quota_received'])
+                #     filtered_data[i]['rakes_previous_month_quota_received'] = filtered_data[i - 1]['balance_rakes_to_receive']
 
                 # console_logger.debug(listData)
                 filtered_data.reverse()
+
+                current_date = datetime.datetime.now()
+                current_month_year = current_date.strftime('%b-%Y')
+
+                for check_entry in filtered_data:
+                    if check_entry['month'] == current_month_year:
+                        check_entry['rakes_previous_month_quota_received'] = 0
 
                 dataList = {}
 
@@ -23541,7 +24718,7 @@ def end_point_to_fetch_rake_quota_test_old(response: Response,
                                 ).count()
                                 dictData["rakes_loaded_on_date"] = rakes_loaded_on_date
                                 dictData["no_of_rakes_in_transist"] = rakes_loaded_till_date - dictData["total_rakes_received_for_month"]
-
+                    
                         balance_rakes_to_receive = int(query.rake_alloted) - dictData["total_rakes_received_for_month"]
                         dictData["balance_rakes_to_receive"] = balance_rakes_to_receive
 
@@ -23549,8 +24726,23 @@ def end_point_to_fetch_rake_quota_test_old(response: Response,
                             month=(date_obj.replace(day=1) - datetime.timedelta(days=1)).strftime("%b-%Y").upper()
                         ).first()
 
-                        if prev_month_log:
-                            dictData["rakes_previous_month_quota_received"] = int(prev_month_log.rake_alloted)
+                        rakes_previous_month_quota_received = RailData.objects.filter(
+                            month__icontains=formatted_date,
+                            avery_placement_date__gte=startd_date,
+                            avery_placement_date__lte=endd_date,
+                            source_type__iexact=log.source_type
+                        ).count()
+                        dictData["rakes_previous_month_quota_received"] = rakes_previous_month_quota_received
+
+                        current_date = datetime.datetime.now()
+                        current_month_year = current_date.strftime('%b-%Y')
+
+                        for check_entry in dictData:
+                            if check_entry['month'] == current_month_year:
+                                check_entry['rakes_previous_month_quota_received'] = 0
+
+                        # if prev_month_log:
+                        #     dictData["rakes_previous_month_quota_received"] = int(prev_month_log.rake_alloted)
 
                         worksheet.write(row, 0, dictData["month"], cell_format)
                         worksheet.write(row, 1, dictData["source_type"], cell_format)
@@ -23694,6 +24886,14 @@ def end_point_to_fetch_rcr_rake_quota(response: Response,
                     dictData["month"] = datetime.datetime.strptime(log.month, "%m-%Y").strftime("%b-%Y")
                     # dictData["valid_upto"] = log.valid_upto
                     dictData["rake_planned_for_the_month"] = int(log.rake_alloted)
+                    if log.cancelled_rakes:
+                        dictData["cancelled_rakes"] = int(log.cancelled_rakes)
+                    else:
+                        dictData["cancelled_rakes"] = 0
+                    if log.remarks:
+                        dictData["remarks"] = log.remarks
+                    else:
+                        dictData["remarks"] = ""
                     if log.source_type:
                         dictData["source_type"] = log.source_type
                     if log.expected_rakes:
@@ -23717,8 +24917,35 @@ def end_point_to_fetch_rcr_rake_quota(response: Response,
                         # Q(avery_placement_date__lte=end_date_time.strftime("%Y-%m-%d %H:%M:%S"))
                     ).count()
 
-                    balance_rakes_to_receive = int(log.rake_alloted) - int(dictData["total_rakes_received_for_month"])
+                    if log.cancelled_rakes:
+                        balance_rakes_to_receive = int(log.rake_alloted) - int(dictData["total_rakes_received_for_month"]) - int(log.cancelled_rakes)
+                    else:
+                        balance_rakes_to_receive = int(log.rake_alloted) - int(dictData["total_rakes_received_for_month"])
                     dictData["balance_rakes_to_receive"] = balance_rakes_to_receive
+
+                    today_date = datetime.date.today()
+
+                    # Get the start of the month
+                    start_date = today_date.replace(day=1)
+
+                    # Get the last day of the month
+                    last_day = calendar.monthrange(today_date.year, today_date.month)[1]
+                    end_date = today_date.replace(day=last_day)
+
+                    startd_date = f"{start_date} 00:00:00"
+                    endd_date = f"{end_date} 23:59:59"
+
+                    current_date = datetime.datetime.now()
+                    current_month_year = current_date.strftime('%B-%Y')  # Format: 'Month-Year' (e.g., 'November-2024')
+
+                    # Check if formatted_date matches the current month and year
+                    
+                    dictData["rakes_previous_month_quota_received"] = RailData.objects.filter(
+                        month__icontains=formatted_date,
+                        avery_placement_date__gte=startd_date,
+                        avery_placement_date__lte=endd_date,
+                        source_type__iexact=log.source_type
+                    ).count()
 
                     prev_date_obj = datetime.datetime.strptime(log.month, "%m-%Y")
 
@@ -23777,10 +25004,17 @@ def end_point_to_fetch_rcr_rake_quota(response: Response,
 
 
                 # Update rakes_previous_month_quota_received with balance_rakes_to_receive from previous month
-                for i in range(1, len(filtered_data)):
-                    filtered_data[i]['rakes_previous_month_quota_received'] = filtered_data[i - 1]['balance_rakes_to_receive']
+                # for i in range(1, len(filtered_data)):
+                #     filtered_data[i]['rakes_previous_month_quota_received'] = filtered_data[i - 1]['balance_rakes_to_receive']
 
                 filtered_data.reverse()
+
+                current_date = datetime.datetime.now()
+                current_month_year = current_date.strftime('%b-%Y')
+
+                for check_entry in filtered_data:
+                    if check_entry['month'] == current_month_year:
+                        check_entry['rakes_previous_month_quota_received'] = 0
 
                 dataList = {}
 
@@ -24055,7 +25289,7 @@ def end_point_to_fetch_rake_quota_test(response: Response,
             offset = (page_no - 1) * page_len
             logs = (
                 rakeQuota.objects(data)
-                .order_by("year", "month")
+                .order_by("year", "-month")
                 .skip(offset)
                 .limit(page_len)
             )
@@ -24079,8 +25313,16 @@ def end_point_to_fetch_rake_quota_test(response: Response,
                     formatted_date = date_obj.strftime("%Y-%m")
                     rail_logs = RailData.objects.filter(placement_date__icontains=formatted_date)
                     dictData["month"] = datetime.datetime.strptime(log.month, "%m-%Y").strftime("%b-%Y")
-                    dictData["valid_upto"] = log.valid_upto
+                    # dictData["valid_upto"] = log.valid_upto
                     dictData["rake_planned_for_the_month"] = int(log.rake_alloted)
+                    if log.cancelled_rakes:
+                        dictData["cancelled_rakes"] = int(log.cancelled_rakes)
+                    else:
+                        dictData["cancelled_rakes"] = 0
+                    if log.remarks:
+                        dictData["remarks"] = log.remarks
+                    else:
+                        dictData["remarks"] = ""
                     if log.source_type:
                         dictData["source_type"] = log.source_type
                     if log.expected_rakes:
@@ -24095,7 +25337,6 @@ def end_point_to_fetch_rake_quota_test(response: Response,
                     # Get the last day of the current month
                     _, last_day = calendar.monthrange(currentDate.year, currentDate.month)
                     end_date_time = datetime.datetime(currentDate.year, currentDate.month, last_day, 23, 59, 59)
-
                     # Ensure 'avery_placement_date' is stored as a string, then cast it to a datetime object for comparison
                     dictData["total_rakes_received_for_month"] = RailData.objects.filter(
                         Q(month__icontains=formatted_date) & 
@@ -24104,9 +25345,35 @@ def end_point_to_fetch_rake_quota_test(response: Response,
                         # Q(avery_placement_date__gte=start_date_time.strftime("%Y-%m-%d %H:%M:%S")) &
                         # Q(avery_placement_date__lte=end_date_time.strftime("%Y-%m-%d %H:%M:%S"))
                     ).count()
-
-                    balance_rakes_to_receive = int(log.rake_alloted) - int(dictData["total_rakes_received_for_month"])
+                    if log.cancelled_rakes:
+                        balance_rakes_to_receive = int(log.rake_alloted) - int(dictData["total_rakes_received_for_month"]) - int(log.cancelled_rakes)
+                    else:
+                        balance_rakes_to_receive = int(log.rake_alloted) - int(dictData["total_rakes_received_for_month"])
                     dictData["balance_rakes_to_receive"] = balance_rakes_to_receive
+
+                    today_date = datetime.date.today()
+
+                    # Get the start of the month
+                    start_date = today_date.replace(day=1)
+
+                    # Get the last day of the month
+                    last_day = calendar.monthrange(today_date.year, today_date.month)[1]
+                    end_date = today_date.replace(day=last_day)
+
+                    startd_date = f"{start_date} 00:00:00"
+                    endd_date = f"{end_date} 23:59:59"
+
+                    current_date = datetime.datetime.now()
+                    current_month_year = current_date.strftime('%B-%Y')  # Format: 'Month-Year' (e.g., 'November-2024')
+
+                    # Check if formatted_date matches the current month and year
+                    
+                    dictData["rakes_previous_month_quota_received"] = RailData.objects.filter(
+                        month__icontains=formatted_date,
+                        avery_placement_date__gte=startd_date,
+                        avery_placement_date__lte=endd_date,
+                        source_type__iexact=log.source_type
+                    ).count()
 
                     prev_date_obj = datetime.datetime.strptime(log.month, "%m-%Y")
 
@@ -24132,29 +25399,26 @@ def end_point_to_fetch_rake_quota_test(response: Response,
 
                             dictData["rakes_loaded_till_date"] = RailData.objects.filter(
                                 month__icontains=formatted_date,
-                                source_type__iexact = log.source_type,
+                                source_type__iexact = log.source_type
                             ).count()
-
-                            # console_logger.debug(today_utc.strftime("%Y-%m-%d %H:%M:%S"))
-                            # console_logger.debug(end_of_day_utc.strftime("%Y-%m-%d %H:%M:%S"))
 
                             dictData["rakes_received_on_date"] = RailData.objects.filter(
                                 month__icontains=formatted_date,
                                 avery_placement_date__gte=today_utc.strftime("%Y-%m-%d %H:%M:%S"),
                                 avery_placement_date__lte=end_of_day_utc.strftime("%Y-%m-%d %H:%M:%S"),
-                                source_type__iexact = log.source_type,
+                                source_type__iexact = log.source_type
                             ).count()
 
                             dictData["rakes_loaded_on_date"] = RailData.objects.filter(
                                 drawn_date__gte=today_utc,
                                 drawn_date__lte=end_of_day_utc,
                                 month__icontains=formatted_date,
-                                source_type__iexact = log.source_type,
+                                source_type__iexact = log.source_type
                             ).count()
+
                             dictData["no_of_rakes_in_transist"] = dictData["rakes_loaded_till_date"] - dictData["total_rakes_received_for_month"]
 
                     listData.append(dictData)
-                # console_logger.debug(listData)
                 # for i, current_month_data in enumerate(listData):
                 #     for j in range(i + 1, len(listData)):
                 #         next_month_data = listData[j]
@@ -24167,14 +25431,25 @@ def end_point_to_fetch_rake_quota_test(response: Response,
                 # Filter out entries where balance_rakes_to_receive is 0 or less
                 filtered_data = [entry for entry in listData if entry['balance_rakes_to_receive'] > 0]
 
-                # Update rakes_previous_month_quota_received with balance_rakes_to_receive from previous month
-                for i in range(1, len(filtered_data)):
-                    filtered_data[i]['rakes_previous_month_quota_received'] = filtered_data[i - 1]['balance_rakes_to_receive']
+                # console_logger.debug(listData)
 
+                # Update rakes_previous_month_quota_received with balance_rakes_to_receive from previous month
+                # for i in range(1, len(filtered_data)):
+                #     # console_logger.debug(i)
+                #     # console_logger.debug(i-1)
+                #     console_logger.debug(filtered_data[i - 1]['balance_rakes_to_receive'])
+                #     console_logger.debug(filtered_data[i]['rakes_previous_month_quota_received'])
+                #     filtered_data[i]['rakes_previous_month_quota_received'] = filtered_data[i - 1]['balance_rakes_to_receive']
+
+                # console_logger.debug(listData)
                 filtered_data.reverse()
 
-                # # Filter out entries where balance_rakes_to_receive is 0 or less
-                # filtered_data = [entry for entry in listData if entry['balance_rakes_to_receive'] > 0]
+                current_date = datetime.datetime.now()
+                current_month_year = current_date.strftime('%b-%Y')
+
+                for check_entry in filtered_data:
+                    if check_entry['month'] == current_month_year:
+                        check_entry['rakes_previous_month_quota_received'] = 0
 
                 dataList = {}
 
@@ -24192,6 +25467,7 @@ def end_point_to_fetch_rake_quota_test(response: Response,
                     'sum_no_of_rakes_in_transist': 0,
                     'sum_expected_rakes_date': 0,
                     'sum_expected_rakes_value': 0,
+                    'sum_cancelled_rakes': 0,
                 }
 
                 # Loop through each record in data and accumulate totals
@@ -24206,6 +25482,7 @@ def end_point_to_fetch_rake_quota_test(response: Response,
                     totals['sum_no_of_rakes_in_transist'] += record['no_of_rakes_in_transist']
                     totals['sum_expected_rakes_date'] += record['expected_rakes_date']
                     totals['sum_expected_rakes_value'] += record['expected_rakes_value']
+                    totals['sum_cancelled_rakes'] += record['cancelled_rakes']
 
                 # Add the totals to dataList
                 dataList['rake_total'] = totals
@@ -24457,6 +25734,14 @@ def end_point_to_fetch_rcr_rake_quota_pdf(response: Response,
                     dictData["month"] = datetime.datetime.strptime(log.month, "%m-%Y").strftime("%b-%Y")
                     dictData["valid_upto"] = log.valid_upto
                     dictData["rake_planned_for_the_month"] = int(log.rake_alloted)
+                    if log.cancelled_rakes:
+                        dictData["cancelled_rakes"] = int(log.cancelled_rakes)
+                    else:
+                        dictData["cancelled_rakes"] = 0
+                    if log.remarks:
+                        dictData["remarks"] = log.remarks
+                    else:
+                        dictData["remarks"] = ""
                     if log.source_type:
                         dictData["source_type"] = log.source_type
                     if log.expected_rakes:
@@ -24481,8 +25766,35 @@ def end_point_to_fetch_rcr_rake_quota_pdf(response: Response,
                         # Q(avery_placement_date__lte=end_date_time.strftime("%Y-%m-%d %H:%M:%S"))
                     ).count()
 
-                    balance_rakes_to_receive = int(log.rake_alloted) - int(dictData["total_rakes_received_for_month"])
+                    if log.cancelled_rakes:
+                        balance_rakes_to_receive = int(log.rake_alloted) - int(dictData["total_rakes_received_for_month"]) - int(log.cancelled_rakes)
+                    else:
+                        balance_rakes_to_receive = int(log.rake_alloted) - int(dictData["total_rakes_received_for_month"])
                     dictData["balance_rakes_to_receive"] = balance_rakes_to_receive
+
+                    today_date = datetime.date.today()
+
+                    # Get the start of the month
+                    start_date = today_date.replace(day=1)
+
+                    # Get the last day of the month
+                    last_day = calendar.monthrange(today_date.year, today_date.month)[1]
+                    end_date = today_date.replace(day=last_day)
+
+                    startd_date = f"{start_date} 00:00:00"
+                    endd_date = f"{end_date} 23:59:59"
+
+                    current_date = datetime.datetime.now()
+                    current_month_year = current_date.strftime('%B-%Y')  # Format: 'Month-Year' (e.g., 'November-2024')
+
+                    # Check if formatted_date matches the current month and year
+                    
+                    dictData["rakes_previous_month_quota_received"] = RailData.objects.filter(
+                        month__icontains=formatted_date,
+                        avery_placement_date__gte=startd_date,
+                        avery_placement_date__lte=endd_date,
+                        source_type__iexact=log.source_type
+                    ).count()
 
                     prev_date_obj = datetime.datetime.strptime(log.month, "%m-%Y")
 
@@ -24544,10 +25856,17 @@ def end_point_to_fetch_rcr_rake_quota_pdf(response: Response,
                 filtered_data = [entry for entry in listData if entry['balance_rakes_to_receive'] > 0]
 
                 # Update rakes_previous_month_quota_received with balance_rakes_to_receive from previous month
-                for i in range(1, len(filtered_data)):
-                    filtered_data[i]['rakes_previous_month_quota_received'] = filtered_data[i - 1]['balance_rakes_to_receive']
+                # for i in range(1, len(filtered_data)):
+                #     filtered_data[i]['rakes_previous_month_quota_received'] = filtered_data[i - 1]['balance_rakes_to_receive']
 
                 filtered_data.reverse()
+
+                current_date = datetime.datetime.now()
+                current_month_year = current_date.strftime('%b-%Y')
+
+                for check_entry in filtered_data:
+                    if check_entry['month'] == current_month_year:
+                        check_entry['rakes_previous_month_quota_received'] = 0
 
                 # # Filter out entries where balance_rakes_to_receive is 0 or less
                 # filtered_data = [entry for entry in listData if entry['balance_rakes_to_receive'] > 0]
@@ -24568,6 +25887,7 @@ def end_point_to_fetch_rcr_rake_quota_pdf(response: Response,
                     'sum_no_of_rakes_in_transist': 0,
                     'sum_expected_rakes_date': 0,
                     'sum_expected_rakes_value': 0,
+                    'sum_cancelled_rakes': 0,
                 }
 
                 # Loop through each record in data and accumulate totals
@@ -24582,6 +25902,7 @@ def end_point_to_fetch_rcr_rake_quota_pdf(response: Response,
                     totals['sum_no_of_rakes_in_transist'] += record['no_of_rakes_in_transist']
                     totals['sum_expected_rakes_date'] += record['expected_rakes_date']
                     totals['sum_expected_rakes_value'] += record['expected_rakes_value']
+                    totals['sum_cancelled_rakes'] += record['cancelled_rakes']
 
                 # Add the totals to dataList
                 dataList['rake_total'] = totals
@@ -25341,6 +26662,7 @@ async def endpoint_to_upload_rail_data(response: Response, pdf_upload: List[Uplo
         return e
 
 
+
 @router.get("/fetch/saprcr", tags=["Rail Map"])
 def endpoint_to_fetch_saprcr_data(response: Response, currentPage: Optional[int] = None, perPage: Optional[int] = None, search_text: Optional[str] = None, start_timestamp: Optional[str] = None, end_timestamp: Optional[str] = None, type: Optional[str] = "display"):
     try:
@@ -25568,6 +26890,554 @@ def endpoint_to_fetch_saprcr_data(response: Response, currentPage: Optional[int]
                         }
     except Exception as e:
         console_logger.debug("----- Fetch RCR Report Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.get("/fetch/rcrroaddata", tags=["Rail Map"])
+def endpoint_to_fetch_rcr_road_data(response: Response, currentPage: Optional[int] = None, perPage: Optional[int] = None, search_text: Optional[str] = None, start_timestamp: Optional[str] = None, end_timestamp: Optional[str] = None, type: Optional[str] = "display"):
+    try:
+        result = {        
+                "labels": [],
+                "datasets": [],
+                "total" : 0,
+                "page_size": 15
+        }
+        if type and type == "display":
+            page_no = 1
+            page_len = result["page_size"]
+
+            if currentPage:
+                page_no = currentPage
+
+            if perPage:
+                page_len = perPage
+                result["page_size"] = perPage
+
+            data = Q()
+
+            # based on condition for timestamp playing with & and | 
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(created_at__gte = start_date)
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
+                data &= Q(created_at__lte = end_date)
+
+            if search_text:
+                if search_text.isdigit():
+                    data &= Q(do_number__icontains=search_text)
+                else:
+                    data &= (Q(mine__icontains=search_text))
+
+            # if month_date:
+            #     start_date = f'{month_date}-01'
+            #     console_logger.debug(start_date)
+            #     startd_date=datetime.datetime.strptime(f"{start_date}T00:00","%Y-%m-%dT%H:%M")
+            #     end_date = (datetime.datetime.strptime(start_date, "%Y-%m-%d") + relativedelta(day=31)).strftime("%Y-%m-%d")
+            #     # endd_date= f"{end_date}T23:59"
+            #     console_logger.debug(startd_date.strftime("%Y-%m-%dT%H:%M"))
+            #     console_logger.debug(f"{end_date}T23:59")
+            #     data &= Q(placement_date__gte = startd_date.strftime("%Y-%m-%dT%H:%M"))
+            #     data &= Q(placement_date__lte = f"{end_date}T23:59")
+
+            offset = (page_no - 1) * page_len
+            # listData = []
+            logs = (
+                RcrRoadData.objects(data)
+                .order_by("-created_at")
+                .skip(offset)
+                .limit(page_len)
+            )   
+            if any(logs):
+                for log in logs:
+                    result["labels"] = list(log.payload().keys())
+                    result["datasets"].append(log.payload())
+                result["total"]= len(RcrRoadData.objects(data))
+                return result
+            else:
+                return result
+        elif type and type == "download":
+            del type
+
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+            # Constructing the base for query
+            data = Q()
+
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(created_at__gte = start_date)
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
+                data &= Q(created_at__lte = end_date)
+            
+            if search_text:
+                if search_text.isdigit():
+                    data &= Q(rr_no__icontains=search_text)
+                else:
+                    data &= (Q(mine__icontains=search_text))
+
+            usecase_data = RcrData.objects(data).order_by("-created_at")
+            count = len(usecase_data)
+            path = None
+            if usecase_data:
+                try:
+                    path = os.path.join(
+                        "static_server",
+                        "gmr_ai",
+                        file,
+                        "RCR_road_data_Report_{}.xlsx".format(
+                            datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                        ),
+                    )
+                    filename = os.path.join(os.getcwd(), path)
+                    workbook = xlsxwriter.Workbook(filename)
+                    workbook.use_zip64()
+                    cell_format2 = workbook.add_format()
+                    cell_format2.set_bold()
+                    cell_format2.set_font_size(10)
+                    cell_format2.set_align("center")
+                    cell_format2.set_align("vjustify")
+
+                    worksheet = workbook.add_worksheet()
+                    worksheet.set_column("A:AZ", 20)
+                    worksheet.set_default_row(50)
+                    cell_format = workbook.add_format()
+                    cell_format.set_font_size(10)
+                    cell_format.set_align("center")
+                    cell_format.set_align("vcenter")
+
+                    headers = [
+                        "do_no",
+                        "rrs_wt_date",
+                        "grs_wt_time",
+                        "received_gross_weight",
+                        "tar_wt_date",
+                        "tar_wt_time",
+                        "received_tare_weight",
+                        "received_net_weight",
+                        "unloading_slip_number",
+                        "vehicle_no",
+                        "transporter_tp_number",
+                        "mine",
+                        "secl_delivery_challan_number",
+                        "dc_gross_wt",
+                        "dc_tare_wt",
+                        "dc_net_wt",
+                        "loading_date",
+                        "out_time",
+                        "lr_no",
+                        "lr_date",
+                        "sap_po",
+                        "line_item",
+                        "po_date",
+                        "do_date",
+                        "start_date",
+                        "end_date",
+                        "slno",
+                        "type_consumer",
+                        "grade",
+                        "po_qty",
+                        "po_amount",
+                        "created_at"
+                    ]
+                   
+                    for index, header in enumerate(headers):
+                        worksheet.write(0, index, header, cell_format2)
+
+                    for row, query in enumerate(usecase_data, start=1):
+                        result = query.payload()
+                        worksheet.write(row, 0, count, cell_format)     
+                        worksheet.write(row, 1, str(result["do_number"]))                      
+                        worksheet.write(row, 2, str(result["rrs_wt_date"]))                      
+                        worksheet.write(row, 3, str(result["grs_wt_time"]))                      
+                        worksheet.write(row, 4, str(result["received_gross_weight"]))                      
+                        worksheet.write(row, 5, str(result["tar_wt_date"]))                      
+                        worksheet.write(row, 6, str(result["tar_wt_time"]))                      
+                        worksheet.write(row, 7, str(result["received_tare_weight"]))                      
+                        worksheet.write(row, 8, str(result["received_net_weight"]))                      
+                        worksheet.write(row, 9, str(result["unloading_slip_number"]))                      
+                        worksheet.write(row, 10, str(result["vehicle_no"]))                      
+                        worksheet.write(row, 11, str(result["transporter_tp_number"]))                      
+                        worksheet.write(row, 12, str(result["mine"]))                   
+                        worksheet.write(row, 13, str(result["secl_delivery_challan_number"]))                   
+                        worksheet.write(row, 14, str(result["dc_gross_wt"]))                   
+                        worksheet.write(row, 15, str(result["dc_tare_wt"]))                   
+                        worksheet.write(row, 16, str(result["dc_net_wt"]))                   
+                        worksheet.write(row, 17, str(result["loading_date"]))                   
+                        worksheet.write(row, 18, str(result["out_time"]))                   
+                        worksheet.write(row, 19, str(result["lr_no"]))                   
+                        worksheet.write(row, 20, str(result["lr_date"]))                   
+                        worksheet.write(row, 21, str(result["sap_po"]))                   
+                        worksheet.write(row, 22, str(result["line_item"]))                   
+                        worksheet.write(row, 23, str(result["po_date"]))                   
+                        worksheet.write(row, 24, str(result["do_date"]))                   
+                        worksheet.write(row, 25, str(result["start_date"]))                   
+                        worksheet.write(row, 26, str(result["end_date"]))                   
+                        worksheet.write(row, 27, str(result["slno"]))                   
+                        worksheet.write(row, 28, str(result["type_consumer"]))                   
+                        worksheet.write(row, 29, str(result["grade"]))                   
+                        worksheet.write(row, 30, str(result["po_qty"]))                   
+                        worksheet.write(row, 31, str(result["po_amount"]))                   
+                        worksheet.write(row, 32, str(result["created_at"]))                   
+                        
+                        count-=1
+                        
+                    workbook.close()
+                    console_logger.debug("Successfully {} report generated".format(service_id))
+                    console_logger.debug("sent data {}".format(path))
+
+                    return {
+                            "Type": "gmr_rcr_road_data_download_event",
+                            "Datatype": "Report",
+                            "File_Path": path,
+                            }
+                except Exception as e:
+                    console_logger.debug(e)
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+                    console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            else:
+                console_logger.error("No data found")
+                return {
+                        "Type": "gmr_rcr_road_data_download_event",
+                        "Datatype": "Report",
+                        "File_Path": path,
+                        }
+    except Exception as e:
+        console_logger.debug("----- Fetch RCR Report Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+def is_nan(value):
+    return value == 'nan' or value != value
+
+
+# def convert_time_to_hms(time_str):
+#     if isinstance(time_str, time):
+#         # Convert time object to string with the required format
+#         time_str = time_str.strftime("%I:%M %p")
+
+#     # Now parse the time string
+#     time_obj = datetime.datetime.strptime(time_str, "%I:%M %p")
+#     # time_obj = datetime.datetime.strptime(time_str, "%I:%M %p")
+#     return time_obj.strftime("%H:%M:%S")
+
+
+# def convert_time_to_hms(time_str):
+#     if isinstance(time_str, time):
+#         # Convert time object to string with the required format
+#         time_str = time_str.strftime("%I:%M %p")
+    
+#     # Ensure there's a space between the time and "AM"/"PM"
+#     if time_str[-2:] in ["AM", "PM"]:
+#         time_str = time_str[:-2] + " " + time_str[-2:]
+
+#     if "." in time_str:
+#         time_str = time_str.replace(".", ":")
+
+#     # Parse the time string
+#     time_obj = datetime.datetime.strptime(time_str, "%I:%M %p")
+#     return time_obj.strftime("%H:%M:%S")
+
+
+def convert_time_to_hms(time_str):
+    # If time_str is already a datetime object, convert it to a string
+    if isinstance(time_str, datetime.datetime):
+        time_str = time_str.strftime("%I:%M %p")
+    elif isinstance(time_str, time):
+        # If it's a time object, convert to string in the required format
+        time_str = time_str.strftime("%I:%M %p")
+    
+    # Ensure time_str is in string format
+    if isinstance(time_str, str):
+        # Ensure there's a space between the time and "AM"/"PM"
+        if time_str[-2:] in ["AM", "PM"]:
+            time_str = time_str[:-2] + " " + time_str[-2:]
+
+        # Replace any dot with a colon for parsing
+        time_str = time_str.replace(".", ":")
+
+        # Parse the time string
+        time_obj = datetime.datetime.strptime(time_str, "%I:%M %p")
+        return time_obj.strftime("%H:%M:%S")
+
+    # If the input is not a recognized format, raise a TypeError
+    raise TypeError("Input must be a string, time, or datetime object")
+
+
+@router.post("/rcr_mode_excel", tags=["Rail Map"])                                   
+async def rcr_mode_excel(response: Response, file: UploadFile = File(...)):
+    
+    try:
+        if file is None:
+            return {"error": "No file Uploaded!"}
+        
+        contents = await file.read()
+        
+        if not contents:
+            return {"error": "Uploaded file is empty!"}
+
+        if file.filename.endswith(".xlsx"):
+            # file saving start
+            date = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{date}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+            file_extension = file.filename.split(".")[-1]
+            file_name = f'secl_annexure_{datetime.datetime.now().strftime("%Y-%m-%d:%H:%M")}.{file_extension}'
+            full_path = os.path.join(os.getcwd(), target_directory, file_name)
+            with open(full_path, "wb") as file_object:
+                file_object.write(contents)
+            excel_data = pd.read_excel(BytesIO(contents), sheet_name="Details", header=1)
+
+            # Drop rows where all values are NaN
+            excel_data = excel_data.dropna(how='all')
+
+            excel_data.columns = excel_data.columns.str.strip()
+
+            excel_data = excel_data.reset_index(drop=True)
+
+            if "Grs.Wt. Date" in excel_data.columns and "Grs.Wt. Time" in excel_data.columns:
+                excel_data["Grs.Wt. Date"] = pd.to_datetime(excel_data["Grs.Wt. Date"], errors='coerce').dt.date  # Only date part
+                excel_data["Grs.Wt. Time"] = pd.to_datetime(excel_data["Grs.Wt. Time"], format='%H:%M', errors='coerce').dt.time  # Only time part
+            else:
+                print("One or more required columns are missing")
+
+            dataa = excel_data.fillna(0)
+
+            json_data = dataa.to_dict(orient="records")
+
+            for single_data in json_data[1:-1]:  # Skip first and last item in json_data
+                # Check if all values are zero (including float zeros)
+                if all(value == 0 or pd.isna(value) for value in single_data.values()):
+                    continue  # Skip this iteration if all values are zero or NaN
+
+                single_data_value_named5 = single_data.get('Unnamed: 5')
+
+                if isinstance(single_data_value_named5, str):
+                    if re.match(r"^\d{2}-\d{2}-\d{4}$", single_data_value_named5):
+                        tare_dt_tm = datetime.datetime.strptime(
+                            f"{single_data_value_named5}T{convert_time_to_hms(single_data.get('Unnamed: 6'))}", "%d-%m-%YT%H:%M:%S"
+                        )
+                    elif re.match(r"^\d{2}/\d{2}/\d{4}$", single_data_value_named5):
+                        tare_dt_tm = datetime.datetime.strptime(
+                            f"{single_data_value_named5}T{convert_time_to_hms(single_data.get('Unnamed: 6'))}", "%d/%m/%YT%H:%M:%S"
+                        )
+                    elif re.match(r"^\d{4}-\d{2}-\d{2}$", single_data_value_named5):
+                        tare_dt_tm = datetime.datetime.strptime(
+                            f"{single_data_value_named5}T{convert_time_to_hms(single_data.get('Unnamed: 6'))}", "%Y-%m-%dT%H:%M:%S"
+                        )
+                elif isinstance(single_data_value_named5, datetime.datetime):
+                    tare_dt_tm = datetime.datetime.strptime(
+                        f"{single_data_value_named5.strftime('%Y-%m-%d')}T{convert_time_to_hms(single_data.get('Unnamed: 6'))}", "%Y-%m-%dT%H:%M:%S"
+                    )
+
+                # Grs.Wt. Date
+                single_data_value_named2 = single_data.get('Unnamed: 2')
+
+                if isinstance(single_data_value_named2, str):
+                    if re.match(r"^\d{2}-\d{2}-\d{4}$", single_data_value_named2):
+                        grs_wt_date = datetime.datetime.strptime(
+                            f"{single_data_value_named2}T{convert_time_to_hms(single_data.get('Unnamed: 3'))}", "%d-%m-%YT%H:%M:%S"
+                        )
+                    elif re.match(r"^\d{2}/\d{2}/\d{4}$", single_data_value_named2):
+                        grs_wt_date = datetime.datetime.strptime(
+                            f"{single_data_value_named2}T{convert_time_to_hms(single_data.get('Unnamed: 3'))}", "%d/%m/%YT%H:%M:%S"
+                        )
+                    elif re.match(r"^\d{4}-\d{2}-\d{2}$", single_data_value_named2):
+                        grs_wt_date = datetime.datetime.strptime(
+                            f"{single_data_value_named2}T{convert_time_to_hms(single_data.get('Unnamed: 3'))}", "%Y-%m-%dT%H:%M:%S"
+                        )
+                elif isinstance(single_data_value_named2, datetime.datetime):
+                    grs_wt_date = datetime.datetime.strptime(
+                        f"{single_data_value_named2.strftime('%Y-%m-%d')}T{convert_time_to_hms(single_data.get('Unnamed: 3'))}", "%Y-%m-%dT%H:%M:%S"
+                    )
+
+                
+                loading_date_var = single_data.get('Unnamed: 19')
+
+                if isinstance(loading_date_var, str):
+                    if re.match(r"^\d{2}-\d{2}-\d{4}$", loading_date_var):
+                        load_date = datetime.datetime.strptime(
+                            f"{loading_date_var}", "%d-%m-%Y"
+                        )
+                    elif re.match(r"^\d{2}/\d{2}/\d{4}$", loading_date_var):
+                        load_date = datetime.datetime.strptime(
+                            f"{loading_date_var}", "%d/%m/%Y"
+                        )
+                    elif re.match(r"^\d{4}-\d{2}-\d{2}$", loading_date_var):
+                        load_date = datetime.datetime.strptime(
+                            f"{loading_date_var}", "%Y-%m-%d"
+                        )
+                elif isinstance(loading_date_var, datetime.datetime):
+                    load_date = datetime.datetime.strptime(
+                        f"{loading_date_var.strftime('%Y-%m-%d')}", "%Y-%m-%d"
+                    )
+
+
+                lr_date_var = single_data.get('Unnamed: 22')
+
+                if isinstance(lr_date_var, str):
+                    if re.match(r"^\d{2}-\d{2}-\d{4}$", lr_date_var):
+                        lr_date = datetime.datetime.strptime(
+                            f"{lr_date_var}", "%d-%m-%Y"
+                        )
+                    elif re.match(r"^\d{2}/\d{2}/\d{4}$", lr_date_var):
+                        lr_date = datetime.datetime.strptime(
+                            f"{lr_date_var}", "%d/%m/%Y"
+                        )
+                    elif re.match(r"^\d{4}-\d{2}-\d{2}$", lr_date_var):
+                        lr_date = datetime.datetime.strptime(
+                            f"{lr_date_var}", "%Y-%m-%d"
+                        )
+                elif isinstance(lr_date_var, datetime.datetime):
+                    lr_date = datetime.datetime.strptime(
+                        f"{lr_date_var.strftime('%Y-%m-%d')}", "%Y-%m-%d"
+                    )
+
+
+                try:
+                    console_logger.debug("there")
+                    checkData = RcrRoadData.objects.get(
+                        secl_delivery_challan_number=single_data.get("Unnamed: 15"), tp_number=single_data.get("Unnamed: 12")
+                    )
+                    if checkData:
+                        checkData.update(
+                            # rrs_wt_date=single_data.get("Unnamed: 2"),
+                            rrs_wt_date=grs_wt_date,
+                            grs_wt_time=str(single_data.get("Unnamed: 3")) if single_data.get("Unnamed: 3") else None,
+                            received_gross_weight=single_data.get("Unnamed: 4"),
+                            # tar_wt_date=f'{single_data.get("Unnamed: 5").strftime("%Y-%m-%d")}T{single_data.get("Unnamed: 6")}',
+                            tar_wt_date = tare_dt_tm,
+                            # tar_wt_date = datetime.datetime.strptime(f"{single_data.get('Unnamed: 5').strftime('%Y-%m-%d')}T{single_data.get('Unnamed: 6')}","%Y-%m-%dT%H:%M:%S"),
+                            # tar_wt_time=str(single_data.get("Unnamed: 6")) if single_data.get("Unnamed: 6") else None,
+                            received_tare_weight=single_data.get("Unnamed: 7"),
+                            received_net_weight=single_data.get("Unnamed: 8"),
+                            unloading_slip_number=str(single_data.get("Unnamed: 9")) if single_data.get("Unnamed: 9") else None,
+                            vehicle_no=single_data.get("Unnamed: 10"),
+                            transporter=single_data.get("Unnamed: 11"),
+                            tp_number=single_data.get("Unnamed: 12"),
+                            do_number=str(single_data.get("Unnamed: 13")),
+                            mine=single_data.get("Unnamed: 14").strip() if single_data.get("Unnamed: 14") else None,
+                            dc_gross_wt=single_data.get("Unnamed: 16"),
+                            dc_tare_wt=single_data.get("Unnamed: 17"),
+                            dc_net_wt=single_data.get("Unnamed: 18"),
+                            loading_date=load_date,
+                            out_time=str(single_data.get("Unnamed: 20")) if single_data.get("Unnamed: 20") else None,
+                            lr_no=single_data.get("Unnamed: 21"),
+                            lr_date=lr_date
+                        )
+                except DoesNotExist as e:
+                    # Create new record if not found
+                    RcrRoadData(
+                        # rrs_wt_date=single_data.get("Unnamed: 2") if single_data.get("Unnamed: 2") else None,
+                        rrs_wt_date=grs_wt_date,
+                        grs_wt_time=str(single_data.get("Unnamed: 3")) if single_data.get("Unnamed: 3") else None,
+                        received_gross_weight=single_data.get("Unnamed: 4") if single_data.get("Unnamed: 4") else None,
+                        # tar_wt_date=single_data.get("Unnamed: 5") if single_data.get("Unnamed: 5") else None,
+                        tar_wt_date=tare_dt_tm,
+                        tar_wt_time=str(single_data.get("Unnamed: 6")) if single_data.get("Unnamed: 6") else None,
+                        received_tare_weight=single_data.get("Unnamed: 7") if single_data.get("Unnamed: 7") else None,
+                        received_net_weight=single_data.get("Unnamed: 8") if single_data.get("Unnamed: 8") else None,
+                        unloading_slip_number=str(single_data.get("Unnamed: 9")) if single_data.get("Unnamed: 9") else None,
+                        vehicle_no=single_data.get("Unnamed: 10") if single_data.get("Unnamed: 10") else None,
+                        transporter=single_data.get("Unnamed: 11") if single_data.get("Unnamed: 11") else None,
+                        tp_number=single_data.get("Unnamed: 12") if single_data.get("Unnamed: 12") else None,
+                        do_number=str(single_data.get("Unnamed: 13")) if single_data.get("Unnamed: 13") else None,
+                        mine=single_data.get("Unnamed: 14").strip() if single_data.get("Unnamed: 14") else None,
+                        secl_delivery_challan_number=single_data.get("Unnamed: 15") if single_data.get("Unnamed: 15") else None,
+                        dc_gross_wt=single_data.get("Unnamed: 16") if single_data.get("Unnamed: 16") else None,
+                        dc_tare_wt=single_data.get("Unnamed: 17") if single_data.get("Unnamed: 17") else None,
+                        dc_net_wt=single_data.get("Unnamed: 18") if single_data.get("Unnamed: 18") else None,
+                        loading_date=load_date,
+                        out_time=str(single_data.get("Unnamed: 20")) if single_data.get("Unnamed: 20") else None,
+                        lr_no=single_data.get("Unnamed: 21") if single_data.get("Unnamed: 21") else None,
+                        lr_date=lr_date
+                    ).save()
+            endpoint_to_update_gmrdata_using_saprecords()
+            return {"details":"success"}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Key Error")
+    except Exception as e:
+        console_logger.debug("----- Secl Annexure Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.get("/sync/saprecordsrcrroad", tags=["Coal Testing"])
+def endpoint_to_update_gmrdata_using_saprecords():
+    try:
+        try:
+            sapData = SapRecordsRcrRoad.objects()
+            for single_data_sap in sapData:
+                if single_data_sap:
+                    RcrRoadData.objects(
+                        do_number=single_data_sap.do_no,
+                    ).update(
+                        do_date=single_data_sap.do_date, 
+                        start_date=single_data_sap.start_date, 
+                        end_date=single_data_sap.end_date, 
+                        slno=single_data_sap.slno,
+                        type_consumer= single_data_sap.consumer_type,
+                        grade= single_data_sap.grade,
+                        mine= single_data_sap.mine_name,
+                        po_qty= single_data_sap.do_qty,
+                        po_amount= single_data_sap.po_amount)
+        except DoesNotExist as e:
+            raise HTTPException(status_code=404, detail="No data found")
+        return {"details": "success"}
+    except Exception as e:
+        console_logger.debug("----- Road SapRecordsRcr Upload Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.get("/sync/saprecordsrcrrail", tags=["Coal Testing"])
+def endpoint_to_update__rcrroad_Rcrrail(response: Response):
+    try:
+        try:
+            sapData = sapRecordsRCR.objects()
+            for single_data_sap in sapData:
+                if single_data_sap:
+                    RcrData.objects(
+                        rr_no=single_data_sap.rr_no,
+                    ).update(
+                        rr_date=single_data_sap.rr_date, 
+                        start_date=single_data_sap.start_date, 
+                        end_date=single_data_sap.end_date, 
+                        slno=single_data_sap.month,
+                        type_consumer= single_data_sap.consumer_type,
+                        grade= single_data_sap.grade,
+                        mine= single_data_sap.mine,
+                        po_qty= single_data_sap.rr_qty,
+                        po_amount= single_data_sap.po_amount)
+        except DoesNotExist as e:
+            raise HTTPException(status_code=404, detail="No data found")
+        return {"details": "success"}
+    except Exception as e:
+        console_logger.debug("----- Road SapRecordsRcr Upload Error -----",e)
+        response.status_code = 400
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
@@ -27073,7 +28943,7 @@ def endpoint_to_update_rakequota_data(response: Response, data:rakeQuotaUpdate):
         try:
             fetchrakeQuota = rakeQuota.objects(month=datetime.datetime.strptime(payload.get("month"), "%b-%Y").strftime("%m-%Y"))
             if fetchrakeQuota:
-                fetchrakeQuota.update(rake_alloted=payload.get("rakes_planned_for_month"), expected_rakes=payload.get("expected_rakes"), source_type=payload.get("source_type"))
+                fetchrakeQuota.update(rake_alloted=str(payload.get("rakes_planned_for_month")), expected_rakes=payload.get("expected_rakes"), source_type=payload.get("source_type"), cancelled_rakes=payload.get("cancelled_rakes"), remarks=payload.get("remarks"))
         except DoesNotExist as e:
             return {"detail": "No data found"}
         
@@ -27095,7 +28965,7 @@ def endpoint_to_update_rcr_rakequota_data(response: Response, data:rakeQuotaUpda
         try:
             fetchrakeQuota = rcrrakeQuota.objects(month=datetime.datetime.strptime(payload.get("month"), "%b-%Y").strftime("%m-%Y"))
             if fetchrakeQuota:
-                fetchrakeQuota.update(rake_alloted=str(payload.get("rakes_planned_for_month")), expected_rakes=payload.get("expected_rakes"), source_type=payload.get("source_type"))
+                fetchrakeQuota.update(rake_alloted=str(payload.get("rakes_planned_for_month")), expected_rakes=payload.get("expected_rakes"), source_type=payload.get("source_type"), cancelled_rakes=payload.get("cancelled_rakes"), remarks=payload.get("remarks"))
         except DoesNotExist as e:
             return {"detail": "No data found"}
         
@@ -27180,6 +29050,7 @@ def endpoint_test(rr_number: str):
         console_logger.debug(len([entry["gwel_net_wt"] for entry in fetchRailDatanew["avery_rly_data"] if entry["gwel_net_wt"]]))
         console_logger.debug(len([entry["gwel_net_wt"] for entry in fetchRailDatanew["avery_rly_data"] if not entry["gwel_net_wt"]]))
         console_logger.debug(round(sum([float(entry["gwel_gross_wt"]) for entry in fetchRailDatanew["avery_rly_data"] if entry["gwel_gross_wt"]]), 2))
+
         console_logger.debug(round(sum([float(entry["gwel_tare_wt"]) for entry in fetchRailDatanew["avery_rly_data"] if entry["gwel_tare_wt"]]), 2))
         console_logger.debug(round(sum([float(entry["gwel_net_wt"]) for entry in fetchRailDatanew["avery_rly_data"] if entry["gwel_net_wt"]]), 2))
     except Exception as e:
@@ -27189,6 +29060,101 @@ def endpoint_test(rr_number: str):
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
+
+
+# @router.get("/update/averydata", tags=["Rail Map"])
+# def endpoint_to_update_averydata(start_date: str, end_date: str):
+#     try:
+#         emailData = EmailDevelopmentCheck.objects()
+
+#         avery_id = emailData[0].avery_id
+#         avery_pass = emailData[0].avery_pass
+
+#         console_logger.debug(emailData[0].avery_id)
+#         console_logger.debug(emailData[0].avery_pass)
+#         console_logger.debug(emailData[0].wagontrippler1)
+#         console_logger.debug(emailData[0].wagontrippler2)
+#         console_logger.debug(emailData[0].port)
+
+#         proxies = {
+#             "http": None,
+#             "https": None
+#         }
+        
+#         # urls = {
+#         #     "WagonTrippler_1": f"http://172.21.92.15:8081/API/values/getdata?FromDate={start_date}&ToDate={end_date}",          #available data from 2024/08/13
+#         #     "WagonTrippler_2": f"http://172.21.92.24:8081/API/values/getdata?FromDate={start_date}&ToDate={end_date}"           #available data from 2024/08/23
+#         # }
+
+#         urls = {
+#             "WagonTrippler_1": f"http://{emailData[0].wagontrippler1}:{emailData[0].port}/API/values/getdata?FromDate={start_date}&ToDate={end_date}",          #available data from 2024/08/13
+#             "WagonTrippler_2": f"http://{emailData[0].wagontrippler2}:{emailData[0].port}/API/values/getdata?FromDate={start_date}&ToDate={end_date}"           #available data from 2024/08/23
+#         }
+
+#         listData = []
+#         for name, url in urls.items():
+#             fetchAveryData = make_request(name, url, avery_id, avery_pass, proxies)
+#             # console_logger.debug(fetchAveryData)
+#             if fetchAveryData:
+#                 for singleAveryData in fetchAveryData:
+#                     if singleAveryData.get("rakeId"):
+#                         if "A" in singleAveryData.get("rakeId"):
+#                             rr_number = singleAveryData.get("rakeId").split("A")[1]
+#                         elif "B" in singleAveryData.get("rakeId"):
+#                             rr_number = singleAveryData.get("rakeId").split("B")[1]
+#                         try:
+#                             fetchRailData = RailData.objects.get(rr_no=rr_number)
+#                             fetchRailData.GWEL_received_wagons = str(len([entry["gwel_net_wt"] for entry in fetchRailData["avery_rly_data"] if entry["gwel_net_wt"]]))
+#                             fetchRailData.GWEL_pending_wagons = str(len([entry["gwel_net_wt"] for entry in fetchRailData["avery_rly_data"] if not entry["gwel_net_wt"]]))
+#                             fetchRailData.Total_gwel_gross = str(round(sum([float(entry["gwel_gross_wt"]) for entry in fetchRailData["avery_rly_data"] if entry["gwel_gross_wt"]]), 2))
+#                             fetchRailData.Total_gwel_tare = str(round(sum([float(entry["gwel_tare_wt"]) for entry in fetchRailData["avery_rly_data"] if entry["gwel_tare_wt"]]), 2))
+#                             fetchRailData.Total_gwel_net = str(round(sum([float(entry["gwel_net_wt"]) for entry in fetchRailData["avery_rly_data"] if entry["gwel_net_wt"]]), 2))
+#                             if fetchRailData:
+#                                 start_date_tip = [f'{datetime.datetime.strptime(single_data.tip_enddate, "%m/%d/%Y %H:%M:%S").strftime("%Y-%m-%d")}T{single_data.tip_endtime}' for single_data in fetchRailData.avery_rly_data if single_data.tip_enddate is not None]
+#                                 end_date_tip = [f'{datetime.datetime.strptime(single_data.tip_enddate, "%m/%d/%Y %H:%M:%S").strftime("%Y-%m-%d")}T{single_data.tip_endtime}' for single_data in fetchRailData.avery_rly_data if single_data.tip_enddate is not None]
+#                                 if start_date_tip:
+#                                     fetchRailData.avery_placement_date = [f'{datetime.datetime.strptime(single_data.tip_startdate, "%m/%d/%Y %H:%M:%S").strftime("%Y-%m-%d")}T{single_data.tip_starttime}' for single_data in fetchRailData.avery_rly_data if single_data.tip_startdate is not None][0]
+#                                 if end_date_tip:
+#                                     fetchRailData.avery_completion_date = [f'{datetime.datetime.strptime(single_data.tip_enddate, "%m/%d/%Y %H:%M:%S").strftime("%Y-%m-%d")}T{single_data.tip_endtime}' for single_data in fetchRailData.avery_rly_data if single_data.tip_enddate is not None][-1]
+#                                 for single_rail_data in fetchRailData.avery_rly_data:
+#                                     if singleAveryData.get("wagonId")[-5:] == single_rail_data.wagon_no[-5:]:
+#                                         # Update fields
+#                                         single_rail_data.ser_no = singleAveryData.get("serNo")
+#                                         single_rail_data.rake_no = singleAveryData.get("rakeNo")
+#                                         single_rail_data.rake_id = singleAveryData.get("rakeId")
+#                                         single_rail_data.wagon_no_avery = singleAveryData.get("wagonNo")
+#                                         single_rail_data.wagon_id = singleAveryData.get("wagonId")
+#                                         single_rail_data.wagon_type_avery = singleAveryData.get("wagonType")
+#                                         single_rail_data.wagon_cc = singleAveryData.get("wagonCC")
+#                                         single_rail_data.mode = singleAveryData.get("mode")
+#                                         single_rail_data.tip_startdate = singleAveryData.get("tipStartDate")
+#                                         single_rail_data.tip_starttime = singleAveryData.get("tipStartTime")
+#                                         single_rail_data.tip_enddate = singleAveryData.get("tipEndDate")
+#                                         single_rail_data.tip_endtime = singleAveryData.get("tipEndTime")
+#                                         single_rail_data.tipple_time = singleAveryData.get("tippleTime")
+#                                         single_rail_data.status = singleAveryData.get("status")
+#                                         single_rail_data.wagon_gross_wt = str(singleAveryData.get("wagonGrossWt"))
+#                                         single_rail_data.wagon_tare_wt = str(singleAveryData.get("wagonTareWt"))
+#                                         single_rail_data.wagon_net_wt = str(singleAveryData.get("wagonNetWt"))
+#                                         single_rail_data.time_in_tipp = singleAveryData.get("timeIn_tipp")
+#                                         single_rail_data.po_number = singleAveryData.get("ponumber")
+#                                         single_rail_data.coal_grade = singleAveryData.get("coalgrade")
+                                        
+#                                         # Save the changes
+#                                         fetchRailData.save()
+#                             # return {"detail": "success"}
+#                         except DoesNotExist as e:
+#                             console_logger.debug("no data found")
+#         return {"detail": "success"}
+#     except Exception as e:
+#         console_logger.debug("----- Road Sap Upload Error -----",e)
+#         # response.status_code = 400
+#         exc_type, exc_obj, exc_tb = sys.exc_info()
+#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+#         return e
+
 
 
 @router.get("/update/averydata", tags=["Rail Map"])
@@ -27223,7 +29189,7 @@ def endpoint_to_update_averydata(start_date: str, end_date: str):
         listData = []
         for name, url in urls.items():
             fetchAveryData = make_request(name, url, avery_id, avery_pass, proxies)
-            # console_logger.debug(fetchAveryData)
+            console_logger.debug(fetchAveryData)
             if fetchAveryData:
                 for singleAveryData in fetchAveryData:
                     if singleAveryData.get("rakeId"):
@@ -27262,9 +29228,9 @@ def endpoint_to_update_averydata(start_date: str, end_date: str):
                                         single_rail_data.tip_endtime = singleAveryData.get("tipEndTime")
                                         single_rail_data.tipple_time = singleAveryData.get("tippleTime")
                                         single_rail_data.status = singleAveryData.get("status")
-                                        single_rail_data.wagon_gross_wt = str(singleAveryData.get("wagonGrossWt"))
-                                        single_rail_data.wagon_tare_wt = str(singleAveryData.get("wagonTareWt"))
-                                        single_rail_data.wagon_net_wt = str(singleAveryData.get("wagonNetWt"))
+                                        single_rail_data.gwel_gross_wt = str(singleAveryData.get("wagonGrossWt"))
+                                        single_rail_data.gwel_tare_wt = str(singleAveryData.get("wagonTareWt"))
+                                        single_rail_data.gwel_net_wt = str(singleAveryData.get("wagonNetWt"))
                                         single_rail_data.time_in_tipp = singleAveryData.get("timeIn_tipp")
                                         single_rail_data.po_number = singleAveryData.get("ponumber")
                                         single_rail_data.coal_grade = singleAveryData.get("coalgrade")
@@ -27274,6 +29240,52 @@ def endpoint_to_update_averydata(start_date: str, end_date: str):
                             # return {"detail": "success"}
                         except DoesNotExist as e:
                             console_logger.debug("no data found")
+
+                        try:
+                            fetchRailData = RcrData.objects.get(rr_no=rr_number)
+                            fetchRailData.GWEL_received_wagons = str(len([entry["gwel_net_wt"] for entry in fetchRailData["avery_rly_data"] if entry["gwel_net_wt"]]))
+                            fetchRailData.GWEL_pending_wagons = str(len([entry["gwel_net_wt"] for entry in fetchRailData["avery_rly_data"] if not entry["gwel_net_wt"]]))
+                            fetchRailData.Total_gwel_gross = str(round(sum([float(entry["gwel_gross_wt"]) for entry in fetchRailData["avery_rly_data"] if entry["gwel_gross_wt"]]), 2))
+                            fetchRailData.Total_gwel_tare = str(round(sum([float(entry["gwel_tare_wt"]) for entry in fetchRailData["avery_rly_data"] if entry["gwel_tare_wt"]]), 2))
+                            fetchRailData.Total_gwel_net = str(round(sum([float(entry["gwel_net_wt"]) for entry in fetchRailData["avery_rly_data"] if entry["gwel_net_wt"]]), 2))
+                            if fetchRailData:
+                                start_date_tip = [f'{datetime.datetime.strptime(single_data.tip_enddate, "%m/%d/%Y %H:%M:%S").strftime("%Y-%m-%d")}T{single_data.tip_endtime}' for single_data in fetchRailData.avery_rly_data if single_data.tip_enddate is not None]
+                                end_date_tip = [f'{datetime.datetime.strptime(single_data.tip_enddate, "%m/%d/%Y %H:%M:%S").strftime("%Y-%m-%d")}T{single_data.tip_endtime}' for single_data in fetchRailData.avery_rly_data if single_data.tip_enddate is not None]
+                                if start_date_tip:
+                                    fetchRailData.avery_placement_date = [f'{datetime.datetime.strptime(single_data.tip_startdate, "%m/%d/%Y %H:%M:%S").strftime("%Y-%m-%d")}T{single_data.tip_starttime}' for single_data in fetchRailData.avery_rly_data if single_data.tip_startdate is not None][0]
+                                if end_date_tip:
+                                    fetchRailData.avery_completion_date = [f'{datetime.datetime.strptime(single_data.tip_enddate, "%m/%d/%Y %H:%M:%S").strftime("%Y-%m-%d")}T{single_data.tip_endtime}' for single_data in fetchRailData.avery_rly_data if single_data.tip_enddate is not None][-1]
+                                for single_rail_data in fetchRailData.avery_rly_data:
+                                    if singleAveryData.get("wagonId")[-5:] == single_rail_data.wagon_no[-5:]:
+                                        # Update fields
+                                        single_rail_data.ser_no = singleAveryData.get("serNo")
+                                        single_rail_data.rake_no = singleAveryData.get("rakeNo")
+                                        single_rail_data.rake_id = singleAveryData.get("rakeId")
+                                        single_rail_data.wagon_no_avery = singleAveryData.get("wagonNo")
+                                        single_rail_data.wagon_id = singleAveryData.get("wagonId")
+                                        single_rail_data.wagon_type_avery = singleAveryData.get("wagonType")
+                                        single_rail_data.wagon_cc = singleAveryData.get("wagonCC")
+                                        single_rail_data.mode = singleAveryData.get("mode")
+                                        single_rail_data.tip_startdate = singleAveryData.get("tipStartDate")
+                                        single_rail_data.tip_starttime = singleAveryData.get("tipStartTime")
+                                        single_rail_data.tip_enddate = singleAveryData.get("tipEndDate")
+                                        single_rail_data.tip_endtime = singleAveryData.get("tipEndTime")
+                                        single_rail_data.tipple_time = singleAveryData.get("tippleTime")
+                                        single_rail_data.status = singleAveryData.get("status")
+                                        single_rail_data.gwel_gross_wt = str(singleAveryData.get("wagonGrossWt"))
+                                        single_rail_data.gwel_tare_wt = str(singleAveryData.get("wagonTareWt"))
+                                        single_rail_data.gwel_net_wt = str(singleAveryData.get("wagonNetWt"))
+                                        single_rail_data.time_in_tipp = singleAveryData.get("timeIn_tipp")
+                                        single_rail_data.po_number = singleAveryData.get("ponumber")
+                                        single_rail_data.coal_grade = singleAveryData.get("coalgrade")
+                                        
+                                        # Save the changes
+                                        fetchRailData.save()
+                            # return {"detail": "success"}
+                        except DoesNotExist as e:
+                            console_logger.debug("no data found")
+
+
         return {"detail": "success"}
     except Exception as e:
         console_logger.debug("----- Road Sap Upload Error -----",e)
@@ -27501,7 +29513,7 @@ def endpoint_to_update_averydata_saprecords(response:Response):
                             po_qty= single_saprecords.do_qty,
                             po_amount= single_saprecords.po_amount)
 
-                gmrDataHistfetch = Gmrdata.objects(
+                gmrDataHistfetch = gmrdataHistoric.objects(
                         arv_cum_do_number=single_saprecords.do_no,
                     )
                 if gmrDataHistfetch:
@@ -27580,18 +29592,19 @@ def endpoint_to_update_saprecprdsrail(response:Response):
                         #         current_month_str = date_obj.strftime("%Y-%m")
                         #         console_logger.debug(single_saprecords.rr_no)
                         #         console_logger.debug(current_month_str)
-
-                        if len(single_saprecords.month) == 7:
-                            current_month_str = single_saprecords.month
-                        elif len(single_saprecords.month) == 10:
-                            current_month_str = datetime.datetime.strptime(single_saprecords.month, "%Y-%m-%d").strftime("%Y-%m")
-                        elif len(single_saprecords.month) == 11:
-                            current_month_str = datetime.datetime.strptime(single_saprecords.month, "%b %d, %Y").strftime("%Y-%m")
+                        
+                        # month commented by sachin bhai on 11-11-2024 on 12:42pm 
+                        # if len(single_saprecords.month) == 7:
+                        #     current_month_str = single_saprecords.month
+                        # elif len(single_saprecords.month) == 10:
+                        #     current_month_str = datetime.datetime.strptime(single_saprecords.month, "%Y-%m-%d").strftime("%Y-%m")
+                        # elif len(single_saprecords.month) == 11:
+                        #     current_month_str = datetime.datetime.strptime(single_saprecords.month, "%b %d, %Y").strftime("%Y-%m")
 
                         railDatafetch.update(
                                 # month=datetime.datetime.strptime(single_saprecords.month, '%b %d, %Y').strftime('%Y-%m-%d'), 
                                 # month=datetime.datetime.strptime(single_saprecords.month, '%Y-%m-%d').strftime('%Y-%m-%d'),
-                                month=current_month_str,
+                                # month=current_month_str,
                                 rr_date=single_saprecords.rr_date, 
                                 siding=single_saprecords.siding, 
                                 mine=single_saprecords.mine,
@@ -28689,6 +30702,8 @@ def endpoint_to_fetch_coal_statement(response:Response, currentPage: Optional[in
                     }
                 }
             ]
+
+            console_logger.debug(pipeline)
 
 
             # gmHistoricPipeline = [
@@ -33414,9 +35429,10 @@ def extract_invoice_data_tax_invoice(pdf_path):
                     "sales_doc_no": row[2],
                     "dispatch_date_time": row[3],
                     "challan_number": row[4],
-                    "grade_size": row[5],
-                    "truck_number": row[6],
-                    "tare": row[7],
+                    # "grade_size": row[5],
+                    "grade_size": f"{row[5].split('/')[0]}{row[5].split('/')[1]} MM",
+                    "truck_number": row[6].split("MM ")[1],
+                    "tare_weight": row[7],
                     "gross_weight": row[8],
                     "net_weight": row[9]
                 } for row in data_rows
@@ -33489,13 +35505,15 @@ async def endpoint_to_extract_tax_invoice_data(response: Response, file: UploadF
                 for single_data in value.get("data"):
                     db_data = {}
                     try:
-                        fetchGmrData = Gmrdata.objects.get(arv_cum_do_number=single_data.get("sales_doc_no"), delivery_challan_number=single_data.get("challan_number"), vehicle_number=single_data.get("truck_number").split("MM ")[1])
+                        fetchGmrData = Gmrdata.objects.get(arv_cum_do_number=single_data.get("sales_doc_no"), delivery_challan_number=single_data.get("challan_number"), vehicle_number=single_data.get("truck_number"))
                         db_data["sales_doc_no"] = fetchGmrData.arv_cum_do_number
-                        db_data["dispatch_date_time"] = fetchGmrData.delivery_challan_date
+                        datesplit = fetchGmrData.delivery_challan_date.split("-")
+                        date_form = f"{datesplit[0]}-{datesplit[1].zfill(2)}-{datesplit[2]}"
+                        db_data["dispatch_date_time"] = date_form
                         db_data["challan_number"] = fetchGmrData.delivery_challan_number
                         db_data["grade_size"] = fetchGmrData.grade
                         db_data["truck_number"] = fetchGmrData.vehicle_number
-                        db_data["tare"] = fetchGmrData.tare_qty
+                        db_data["tare_weight"] = fetchGmrData.tare_qty
                         db_data["gross_weight"] = fetchGmrData.gross_qty
                         db_data["net_weight"] = fetchGmrData.net_qty
                         list_data.append(db_data)
@@ -33503,11 +35521,11 @@ async def endpoint_to_extract_tax_invoice_data(response: Response, file: UploadF
                         continue
         
         headerData = {
-            "invoice_data": fetchInvoiceData.get("tax_invoice").get("Invoice Date"),
+            "invoice_date": datetime.datetime.strptime(fetchInvoiceData.get("tax_invoice").get("Invoice Date"), "%b %d, %Y").date(),
             "invoice_no": fetchInvoiceData.get("tax_invoice").get("Invoice No"),
-            "sale_date": fetchInvoiceData.get("tax_invoice").get("Sale Date"),
+            "sale_date": datetime.datetime.strptime(fetchInvoiceData.get("tax_invoice").get("Sale Date"), "%b %d, %Y").date(),
             "grade": f'{fetchInvoiceData.get("tax_invoice").get("Grade")}{fetchInvoiceData.get("tax_invoice").get("Size")}',
-            "dispatch_date": fetchInvoiceData.get("tax_invoice").get("Dispatch Date"),
+            "dispatch_date": datetime.datetime.strptime(fetchInvoiceData.get("tax_invoice").get("Dispatch Date"), "%b %d, %Y").date(),
             "mine": fetchInvoiceData.get("tax_invoice").get("Plant Name"),
             "do_qty": fetchInvoiceData.get("tax_invoice").get("Quantity"),
         }
@@ -33550,6 +35568,74 @@ async def endpoint_to_fetch_gmrdata_dcdate(response: Response, dc_date: str):
         return {"error": str(e)}
 
 
+@router.post("/insertGrn", tags=["Grn Status"])
+def endpoint_to_insert_grn(response: Response, data: grnStatus):
+    try:
+        payloadData = data.dict()
+        grnData(
+            invoice_data=payloadData.get("invoice_date"),
+            invoice_no = payloadData.get("invoice_no"),
+            sale_date = payloadData.get("sale_date"),
+            grade= payloadData.get("grade"),
+            dispatch_date = payloadData.get("dispatch_date"),
+            mine = payloadData.get("mine"),
+            do_qty = payloadData.get("do_qty"),
+        ).save()
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug("----- Sap Excel Error -----", e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return {"error": str(e)}
+
+    
+@router.post("/creategrnfile", tags=["Grn Status"])
+def endpoint_to_create_grnfile(response: Response, data: GrnFileData):
+    try:
+        payloadData = data.dict()
+        truck_count = len(payloadData.get("table_data"))
+        fetchsapRecordsData = SapRecords.objects.get(do_no=payloadData.get("do_no"))
+        lot_no = []
+        accepted_qty = []
+        for single_data_fetch in payloadData.get("table_data"):
+            console_logger.debug(single_data_fetch)
+            fetchGmrData = Gmrdata.objects.get(delivery_challan_number=single_data_fetch.get("challan_number"))
+            lot_no.append(fetchGmrData.lot)
+            if fetchGmrData.actual_net_qty:
+                # accepted_qty.append(round(float(fetchGmrData.actual_net_qty), 2))
+                accepted_qty.append(round(float(fetchGmrData.actual_net_qty), 2))
+        console_logger.debug(lot_no)
+        console_logger.debug(accepted_qty)
+        console_logger.debug(round(sum(accepted_qty), 2))
+        getCountNetweight = sum(float(single_data.get("net_weight")) for single_data in payloadData.get("table_data"))
+        console_logger.debug(getCountNetweight)
+        file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+        target_directory = f"static_server/gmr_ai/{file}"
+        os.umask(0)
+        os.makedirs(target_directory, exist_ok=True, mode=0o777)
+        filename = f'{target_directory}/challan_invoice_no_{datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S")}.txt'
+        with open(filename, 'a') as f:
+            f.write(f"PO number|PO Item no|Invoice Date|GRN Posting Date|Challan/ Invoice No.|Mine Name|Header Text|Material code|Material Description|Valuation Type|quantity  as per Challan|Accepted Qty.|Plant code|storage location|Transporter name\n")
+            f.write(f"""{fetchsapRecordsData.sap_po}|{fetchsapRecordsData.line_item.strip()}|{payloadData.get('invoice_date')}|{payloadData.get('dc_date')}|{payloadData.get('invoice_no')}|{fetchsapRecordsData.mine_name}|DO{payloadData.get('do_no')}{fetchsapRecordsData.mine_name}{truck_count}TLOT-01|{fetchsapRecordsData.material_code if fetchsapRecordsData.material_code else ' '}|{fetchsapRecordsData.material_description if fetchsapRecordsData.material_description else ' '}|{fetchsapRecordsData.valuation_type if fetchsapRecordsData.valuation_type else ' '}|{getCountNetweight}|{round(sum(accepted_qty), 2)}|{fetchsapRecordsData.plant_code if fetchsapRecordsData.plant_code else ' '}|{fetchsapRecordsData.storage_location if fetchsapRecordsData.storage_location else ' '}|{fetchsapRecordsData.transport_name if fetchsapRecordsData.transport_name else ' '}\n""")
+        
+        for single_data_inside in payloadData.get("table_data"):
+            console_logger.debug(single_data_inside.get("sales_doc_no"))
+            console_logger.debug(single_data_inside.get("challan_number"))
+            Gmrdata.objects(arv_cum_do_number=single_data_inside.get("sales_doc_no"), delivery_challan_number=single_data_inside.get("challan_number")).update(grn_status=True, mine_invoice=payloadData.get("invoice_no"))
+
+        return filename
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug("----- Sap Excel Error -----", e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return {"error": str(e)}
+
+
 @router.post("/update/gmrdata/taxinvoice", tags=["Road Map"])
 def endpoint_to_update_gmrdata_taxinvoice(response: Response, data: taxInvoiceGmr):
     try:
@@ -33567,7 +35653,9 @@ def endpoint_to_update_gmrdata_taxinvoice(response: Response, data: taxInvoiceGm
                                                   vehicle_number=truck_no,
                                                   tare_qty=invoiceSerializer.get("tare"),
                                                   gross_qty=invoiceSerializer.get("gross"),
-                                                  net_qty=invoiceSerializer.get("net"))
+                                                  net_qty=invoiceSerializer.get("net"), 
+                                                  grn_status=True, 
+                                                  mine_invoice=invoiceSerializer.get("invoice_no"))
         return {"detail": "success"}
     except Exception as e:
         response.status_code = 400

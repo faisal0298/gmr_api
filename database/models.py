@@ -628,6 +628,7 @@ class Gmrdata(Document):
     GWEL_Gross_Time = DateTimeField(null=True)
     GWEL_Tare_Time = DateTimeField(null=True)
     grn_status  = BooleanField(default=False)
+    mine_invoice = StringField(null=True)   #added on 11-11-2024 on 06:29pm
     
 
     ID = IntField(min_value=1)
@@ -1038,7 +1039,7 @@ class SapRecords(Document):
     slno = StringField(null=True)
     source = StringField(null=True)
     mine_name = StringField(null=True)
-    sap_po = StringField(null=True)
+    sap_po = StringField(null=True)                      #po_number
     line_item = StringField(null=True)
     do_no = StringField(null=True)
     do_qty = StringField(null=True)
@@ -1048,6 +1049,16 @@ class SapRecords(Document):
     do_date = StringField(null=True)
     consumer_type = StringField(null=True)
     po_amount = StringField(null=True)
+    transport_code = StringField(null=True)
+    transport_name = StringField(null=True)
+    material_code = StringField(null=True)
+    material_description = StringField(null=True)
+    plant_code = StringField(null=True)
+    storage_location = StringField(null=True)
+    valuation_type = StringField(null=True)
+    po_open_quantity = StringField(null=True)
+    uom = StringField(null=True)
+
     created_at = DateTimeField(default=datetime.datetime.utcnow())
 
     meta = {"db_alias": "gmrDB-alias", "collection": "SapRecords"}
@@ -1081,32 +1092,82 @@ class SapRecords(Document):
             # "po_date": self.po_date,
         }
     
+    
 class RcrRoadData(Document):
-    rrs_wt_date = StringField(null=True)	
-    grs_wt_time = StringField(null=True)	
-    received_gross_weight = StringField(null=True)	
-    tar_wt_date = StringField(null=True)	
-    tar_wt_time	= StringField(null=True) 
-    received_tare_weight = StringField(null=True) 	
-    received_net_weight = StringField(null=True)	
-    unloading_slip_number = StringField(null=True)	
-    vehicle_no = StringField(null=True)	
-    transporter_tp_number = StringField(null=True)	
-    do_number = StringField(null=True)	
-    mine = StringField(null=True)	
-    secl_delivery_challan_number= StringField(null=True)	
-    dc_gross_wt = StringField(null=True)	
-    dc_tare_wt = StringField(null=True)	
-    dc_net_wt = StringField(null=True)	
-    loading_date = StringField(null=True)	
-    out_time = StringField(null=True)	
-    lr_no = StringField(null=True)	
-    lr_date = StringField(null=True)
+    rrs_wt_date = DateTimeField(null=True)  
+    grs_wt_time = StringField(null=True) 
+    received_gross_weight = FloatField(null=True) 
+    tar_wt_date = DateTimeField(null=True) 
+    tar_wt_time = StringField(null=True) 
+    received_tare_weight = FloatField(null=True)  
+    received_net_weight = FloatField(null=True) 
+    unloading_slip_number = StringField(null=True)
+    vehicle_no = StringField(null=True)
+    transporter = StringField(null=True)
+    tp_number = IntField(null=True)
+    do_number = StringField(null=True)
+    mine = StringField(null=True)
+    secl_delivery_challan_number = StringField(null=True)
+    dc_gross_wt = FloatField(null=True)  
+    dc_tare_wt = FloatField(null=True)  
+    dc_net_wt = FloatField(null=True) 
+    loading_date = DateTimeField(null=True) 
+    out_time = StringField(null=True)
+    lr_no = IntField(null=True)
+    lr_date = DateTimeField(null=True)  
     sap_po = StringField(null=True)
     line_item = StringField(null=True)
     po_date = StringField(null=True)
+    do_date = StringField(null=True)
+    start_date = StringField(null=True)
+    end_date = StringField(null=True)
+    slno = StringField(null=True)
+    type_consumer = StringField(null=True)
+    grade = StringField(null=True)
+    po_qty = StringField(null=True)
+    po_amount = StringField(null=True)
+    created_at = DateTimeField(default=datetime.datetime.utcnow)
 
     meta = {"db_alias": "gmrDB-alias", "collection": "RcrRoadData"}
+
+    def payload(self):
+        return {
+            "rrs_wt_date": self.rrs_wt_date,	
+            "grs_wt_time": self.grs_wt_time,
+            "received_gross_weight": self.received_gross_weight,
+            "tar_wt_date": self.tar_wt_date,
+            "tar_wt_time": self.tar_wt_time, 
+            "received_tare_weight" : self.received_tare_weight,
+            "received_net_weight": self.received_net_weight,	
+            "unloading_slip_number": self.unloading_slip_number,	
+            "vehicle_no": self.vehicle_no,	
+            "transporter": self.transporter,
+            "tp_number": self.tp_number,	
+            "do_number": self.do_number,	
+            "mine": self.mine,	
+            "secl_delivery_challan_number": self.secl_delivery_challan_number,	
+            "dc_gross_wt": self.dc_gross_wt,
+            "dc_tare_wt": self.dc_tare_wt,	
+            "dc_net_wt": self.dc_net_wt,	
+            "loading_date": self.loading_date,	
+            "out_time": self.out_time,	
+            "lr_no": self.lr_no,	
+            "lr_date": self.lr_date,
+            "sap_po": self.sap_po,
+            "line_item": self.line_item,
+            "po_date": self.po_date,
+            "do_date": self.do_date,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "slno": self.slno,
+            "type_consumer": self.type_consumer,
+            "grade": self.grade,
+            "po_qty": self.po_qty,
+            "po_amount": self.po_amount,
+            "created_at": datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+        }
 
 
 class SapRecordsRcrRoad(Document):
@@ -1425,6 +1486,9 @@ class RailData(Document):
             "grade": self.grade,
             "po_amount": self.po_amount,
             "rake_no": self.rake_no,
+            "Total_gwel_gross": self.Total_gwel_gross,
+            "Total_gwel_tare": self.Total_gwel_tare,
+            "Total_gwel_net": self.Total_gwel_net,
             "secl_rly_data": seclrail,
             "created_at": datetime.datetime.fromisoformat(
                     self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
@@ -1608,6 +1672,11 @@ class RcrData(Document):
     Total_gwel_gross = StringField(null=True)
     Total_gwel_tare = StringField(null=True)
     Total_gwel_net = StringField(null=True)
+    start_date = StringField(null=True)
+    end_date = StringField(null=True)
+    slno = StringField(null=True)
+    type_consumer = StringField(null=True)
+    po_qty = StringField(null=True)
 
     penalty_ol = StringField(null=True)                    # modified by faisal
     penal_ul = StringField(null=True)                      # modified by faisal
@@ -1834,6 +1903,10 @@ class RcrData(Document):
             "grade": self.grade,
             "po_amount": self.po_amount,
             "rake_no": self.rake_no,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "po_qty": self.po_qty,
+            "type_consumer": self.type_consumer,
             "created_at": datetime.datetime.fromisoformat(
                     self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
                     ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
@@ -2081,6 +2154,8 @@ class rakeQuota(Document):
     grade = StringField(default=None)
     expected_rakes = DictField(null=True)
     source_type = StringField(null=True)
+    cancelled_rakes = StringField(null=True)
+    remarks = StringField(null=True)
     created_at = DateTimeField(default=datetime.datetime.utcnow)
 
     meta = {"db_alias": "gmrDB-alias", "collection": "rakeQuota"}
@@ -2096,6 +2171,8 @@ class rakeQuota(Document):
             "due": self.due,
             "expected_rakes": self.expected_rakes,
             "source_type": self.source_type,
+            "cancelled_rakes": self.cancelled_rakes,
+            "remarks": self.remarks,
             "created_at": datetime.datetime.fromisoformat(
                     self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
                     ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
@@ -2114,6 +2191,8 @@ class rcrrakeQuota(Document):
     grade = StringField(default=None)
     expected_rakes = DictField(null=True)
     source_type = StringField(null=True)
+    cancelled_rakes = StringField(null=True)
+    remarks = StringField(null=True)
     created_at = DateTimeField(default=datetime.datetime.utcnow)
 
     meta = {"db_alias": "gmrDB-alias", "collection": "rcrrakeQuota"}
@@ -2489,6 +2568,7 @@ class RecieptCoalQualityAnalysis(Document):
     mine = StringField(null=True)
     mine_grade = StringField(null=True)
     mode = StringField(null=True)
+    type_consumer =  StringField(null=True)
     plant_lab_temp = FloatField(null=True)
     plant_lab_rh = FloatField(null=True)
     plant_arb_tm = FloatField(null=True)
@@ -2534,6 +2614,7 @@ class RecieptCoalQualityAnalysis(Document):
             "mine": self.mine,
             "mine_grade": self.mine_grade,
             "mode": self.mode,
+            "type_consumer": self.type_consumer,
             "GWEL_LAB_TEMP": self.plant_lab_temp,
             "GWEL_LAB_RH": self.plant_lab_rh,
             "GWEL_ARB_TM": self.plant_arb_tm,
@@ -2667,3 +2748,27 @@ class roadjourneyconsumertype(Document):
             "consumer_type": self.consumer_type,
             "created_at": self.created_at,
         }
+    
+
+class grnData(Document):
+    invoice_data = StringField(null=True)
+    invoice_no = StringField(null=True)
+    sale_date = StringField(null=True)
+    grade = StringField(null=True)
+    dispatch_date = StringField(null=True)
+    mine = StringField(null=True)
+    do_qty = StringField(null=True)
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "grnData"}
+
+    def payload(self):
+        return {
+            "invoice_data": self.invoice_data,
+            "invoice_no": self.invoice_no,
+            "sale_date": self.sale_date,
+            "grade": self.grade,
+            "dispatch_date": self.dispatch_date,
+            "mine": self.mine,
+            "do_qty": self.do_qty,
+        }
+

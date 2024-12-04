@@ -1,6 +1,7 @@
 from pydantic import BaseModel, validator, ValidationError, root_validator, EmailStr
 from typing import Optional, List,Dict,Union
 from enum import Enum
+import datetime
 
 
 
@@ -169,6 +170,7 @@ class RailwayData(BaseModel):
     freight: Optional[str] = None
     gst: Optional[str] = None
     pola: Optional[str] = None
+    sd: Optional[str] = None
     total_freight: Optional[str] = None
     source_type: Optional[str] = None
     secl_rly_data: List[dict]
@@ -362,4 +364,143 @@ class GrnFileData(BaseModel):
     dispatch_date: Optional[str]
     mine: Optional[str]
     do_qty: Optional[str]
-    table_data: List[grnPdf]
+    table_data: Optional[List[grnPdf]]
+
+
+class CategoryDataModel(BaseModel):
+    remark: Optional[str] = None
+    uom: Optional[float]
+    mou_coal: Optional[float]
+    linkage: Optional[float]
+    aiwib_washery: Optional[float]
+    open_mkt: Optional[float]
+    spot_eauction: Optional[float]
+    spl_for_eauction: Optional[float]
+    imported: Optional[float]
+    total: Optional[float]
+    shakti_b: Optional[float]
+    shakti_b3: Optional[float]
+    particular: Optional[str]
+
+class CoalDataModel(BaseModel):
+    osd_month: CategoryDataModel
+    vos_month: CategoryDataModel
+    qty_supplied: CategoryDataModel
+    adj_qty: CategoryDataModel
+    coal_supplied: CategoryDataModel
+    norm_transit_loss: CategoryDataModel
+    net_supplied: CategoryDataModel
+    amt_charged: CategoryDataModel
+    adj_amt: CategoryDataModel
+    unloading_charges: CategoryDataModel
+    total_amt_charged: CategoryDataModel
+    trans_charges: CategoryDataModel
+    adj_trans_charges: CategoryDataModel
+    demurrage: CategoryDataModel
+    diesel_cost: CategoryDataModel
+    total_trans_charges: CategoryDataModel
+    total_amt_incl_trans: CategoryDataModel
+    qty_at_station: CategoryDataModel
+    total_amt_for_coal: CategoryDataModel
+    landed_cost: CategoryDataModel
+    qty_consumed: CategoryDataModel
+    value_consumed: CategoryDataModel
+    wtd_avg_gcv_prev: CategoryDataModel
+    wtd_avg_gcv_recv: CategoryDataModel
+    wtd_avg_gcv_less_85: CategoryDataModel
+    closing_coal_stock: CategoryDataModel
+    closing_coal_stock_value: CategoryDataModel
+    month: Optional[datetime.datetime]
+
+
+class UserListName(BaseModel):
+    email: List[List[dict]]
+    approval_name: Optional[str]
+    bypass_level: Optional[bool] = False
+    disabled: Optional[bool] = False
+
+
+class grnUpdateTax(BaseModel):
+    do_no: Optional[str]
+    invoice_date: Optional[str]
+    invoice_no: Optional[str]
+    sale_date: Optional[str]
+    grade: Optional[str]
+    dispatch_date: Optional[str]
+    mine: Optional[str]
+    do_qty: Optional[str]
+    original_data: List[dict]
+    new_data: List[dict]
+    particulars: Optional[dict]
+    # approvals: Optional[dict]
+    changed_by: Optional[str]
+
+class roadConsumertype(BaseModel):
+    roadConsumertype: List[str]
+
+class TableSubjectData(BaseModel):
+    table_name: Optional[str]
+    table_subject: Optional[str]
+
+class TableExportData(BaseModel):
+    start_date: str
+    end_date: str
+    subject: str
+    to: List[str]
+    cc: List[str]
+    bcc: List[str]
+    message: str
+    table_name: str
+    filter_type: Optional[str]
+    filter_data: Optional[list]
+
+class grnupdateStatusData(BaseModel):
+    user_name: Optional[str]
+    status: Optional[str]
+    do_no: Optional[str]
+    comment: Optional[str]
+    level_name: Optional[str]
+    level_no: Optional[str]
+    invoice_no: Optional[str]
+    # edited_by: Optional[str]
+
+class cmplInput(BaseModel):
+    tno: Optional[int]
+    companycode: Optional[str]
+    financialyearcode: Optional[str]
+    locationcode: Optional[str]
+    lrno: Optional[str]
+    lrdate: Optional[str]
+    partycode: Optional[str]
+    source_location_tno : Optional[str]
+    consignor_code : Optional[str]
+    destination_location_tno : Optional[str]
+    consigneecode : Optional[str]
+    vehicle_no : Optional[str]
+    freightamount : Optional[int]
+    item_code : Optional[str]
+    nos : Optional[int]
+    quantity1 : Optional[int] 
+    quantity2 : Optional[int]
+    invoice_no : Optional[str]
+    invoice_date : Optional[str]
+    consignor_name : Optional[str]
+    consignor_address : Optional[str]
+    consignor_citycode : Optional[str]
+    consignor_statecode : Optional[str]
+    consignor_phoneno : Optional[str]
+    consignee_name : Optional[str]
+    consignee_address : Optional[str]
+    consignee_citycode : Optional[str]
+    consignee_statecode : Optional[str]
+    consignee_phoneno : Optional[str]
+    invoice_amount : Optional[int]
+    challon_no : Optional[str]
+    challan_date : Optional[str]
+    driver_name : Optional[str]
+    driver_licenseno : Optional[str]
+    eway_billno : Optional[str]
+    eway_billdate : Optional[str]
+    balance_qty : Optional[int]
+    do_qty : Optional[int]
+    delivery_order_tno : Optional[int]

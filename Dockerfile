@@ -22,6 +22,9 @@ RUN apt-get update && apt-get install -y default-jre
 # Set JAVA_HOME environment variable
 ENV JAVA_HOME=/usr/lib/jvm/default-java
 
+# Set LD_LIBRARY_PATH environment variable properly
+ENV LD_LIBRARY_PATH=/usr/lib:/lib:/usr/lib64:$JAVA_HOME/lib/server
+
 # Set LD_LIBRARY_PATH environment variable
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$JAVA_HOME/lib/server
 

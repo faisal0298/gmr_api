@@ -1059,6 +1059,20 @@ class SapRecords(Document):
     po_open_quantity = StringField(null=True)
     uom = StringField(null=True)
 
+    #particulars start 
+    basic_price = FloatField(null=True)
+    sizing_charges = FloatField(null=True)
+    stc_charges = FloatField(null=True)
+    evac_facility_charges = FloatField(null=True)
+    royality_charges = FloatField(null=True)
+    nmet_charges = FloatField(null=True)
+    dmf = FloatField(null=True)
+    cgst = FloatField(null=True)
+    sgst = FloatField(null=True)
+    gst_comp_cess = FloatField(null=True)
+    so_value_grand_total = FloatField(null=True)
+    #particulars end
+
     created_at = DateTimeField(default=datetime.datetime.utcnow())
 
     meta = {"db_alias": "gmrDB-alias", "collection": "SapRecords"}
@@ -1184,6 +1198,22 @@ class SapRecordsRcrRoad(Document):
     do_date = StringField(null=True)
     consumer_type = StringField(null=True)
     po_amount = StringField(null=True)
+    # particulars start
+    basic_charges = FloatField(null=True)
+    sizing_charges = FloatField(null=True)
+    stc_charges = FloatField(null=True)
+    evac_facility_charges = FloatField(null=True)
+    royality_charges = FloatField(null=True)
+    nmet_charges = FloatField(null=True)
+    dmf = FloatField(null=True)
+    adho_sanrachna_vikas = FloatField(null=True)
+    pariyavarn_upkar = FloatField(null=True)
+    terminal_tax = FloatField(null=True)
+    assessable_value = FloatField(null=True)
+    igst = FloatField(null=True)
+    gst_comp_cess = FloatField(null=True)
+    requisite_payment = FloatField(null=True)
+    # particulars end
     created_at = DateTimeField(default=datetime.datetime.utcnow())
 
     meta = {"db_alias": "gmrDB-alias", "collection": "SapRecordsRcrRoad"}
@@ -1419,6 +1449,7 @@ class RailData(Document):
     gst = StringField(null=True)
     pola = StringField(null=True)
     total_freight = StringField(null=True)
+    sd = StringField(null=True)
     source_type = StringField(null=True)
     month = StringField(null=True)
     rr_date = StringField(null=True)
@@ -1659,6 +1690,7 @@ class RcrData(Document):
     gst = StringField(null=True)
     pola = StringField(null=True)
     total_freight = StringField(null=True)
+    sd = StringField(null=True)
     source_type = StringField(null=True)
     month = StringField(null=True)
     rr_date = StringField(null=True)
@@ -2227,21 +2259,22 @@ class sapRecordsRCR(Document):
     line_item = StringField(null=True)
     rr_qty = StringField(null=True)
     po_amount = StringField(null=True)
+    
     secl_mode_transport = StringField(null=True)
     area = StringField(null=True)
-    secl_basic_price = StringField(null=True)
-    secl_sizing_charges = StringField(null=True)
-    secl_stc_charges = StringField(null=True)
-    secl_evac_facility_charges = StringField(null=True)
-    secl_royality_charges = StringField(null=True)
-    secl_nmet_charges = StringField(null=True)
-    secl_dmf = StringField(null=True)
-    secl_adho_sanrachna_vikas = StringField(null=True)
-    secl_pariyavaran_upkar = StringField(null=True)
-    secl_terminal_tax = StringField(null=True)
-    secl_assessable_tax = StringField(null=True)
-    secl_igst = StringField(null=True)
-    secl_gst_comp_cess = StringField(null=True)
+    secl_basic_price = FloatField(null=True)
+    secl_sizing_charges = FloatField(null=True)
+    secl_stc_charges = FloatField(null=True)
+    secl_evac_facility_charges = FloatField(null=True)
+    secl_royality_charges = FloatField(null=True)
+    secl_nmet_charges = FloatField(null=True)
+    secl_dmf = FloatField(null=True)
+    secl_adho_sanrachna_vikas = FloatField(null=True)
+    secl_pariyavaran_upkar = FloatField(null=True)
+    secl_terminal_tax = FloatField(null=True)
+    secl_assessable_tax = FloatField(null=True)
+    secl_igst = FloatField(null=True)
+    secl_gst_comp_cess = FloatField(null=True)
     sap_po = StringField(null=True)
     created_at = DateTimeField(default=datetime.datetime.utcnow)
     # id = IntField(min_value=1)
@@ -2281,6 +2314,27 @@ class sapRecordsRail(Document):
     sap_po = StringField(null=True)
     do_date = StringField(null=True) #sap po date
     line_item = StringField(null=True)
+
+    #particulars start
+
+    sizing_charges = FloatField(null=True)
+    evac_facility_charge = FloatField(null=True)
+    royality_charges = FloatField(null=True)
+    nmet_charges = FloatField(null=True)
+    dmf = FloatField(null=True)
+    adho_sanrachna_vikas= FloatField(null=True)
+    pariyavaran_upkar = FloatField(null=True)
+    assessable_value = FloatField(null=True)
+    igst = FloatField(null=True)
+    gst_comp_cess = FloatField(null=True)
+    gross_bill_value = FloatField(null=True)
+    less_underloading_charges = FloatField(null=True)
+    net_value = FloatField(null=True)
+    total_amount = FloatField(null=True)
+
+    #particulars end
+
+
     created_at = DateTimeField(default=datetime.datetime.utcnow)
 
     meta = {"db_alias": "gmrDB-alias", "collection": "sapRecordsRail"}
@@ -2586,18 +2640,18 @@ class RecieptCoalQualityAnalysis(Document):
     thirdparty_report_date = StringField(null=True)
     thirdparty_reference_no = StringField(null=True)
     thirdparty_sample_date = StringField(null=True)
-    thirdparty_arb_tm = StringField(null=True)
-    thirdparty_arb_vm = StringField(null=True)
-    thirdparty_arb_ash = StringField(null=True)
-    thirdparty_arb_fc = StringField(null=True)
-    thirdparty_arb_gcv = StringField(null=True)
-    thirdparty_adb_im = StringField(null=True)
-    thirdparty_adb_vm = StringField(null=True)
-    thirdparty_adb_ash = StringField(null=True)
-    thirdparty_adb_fc = StringField(null=True)
-    thirdparty_adb_gcv =  StringField(null=True)
+    thirdparty_arb_tm = FloatField(null=True)
+    thirdparty_arb_vm = FloatField(null=True)
+    thirdparty_arb_ash = FloatField(null=True)
+    thirdparty_arb_fc = FloatField(null=True)
+    thirdparty_arb_gcv = FloatField(null=True)
+    thirdparty_adb_im = FloatField(null=True)
+    thirdparty_adb_vm = FloatField(null=True)
+    thirdparty_adb_ash = FloatField(null=True)
+    thirdparty_adb_fc = FloatField(null=True)
+    thirdparty_adb_gcv =  FloatField(null=True)
     thirdparty_gcv_grade = StringField(null=True)
-    thirdparty_created_date = StringField(null=True)
+    thirdparty_created_date = DateTimeField(null=True)
 
     meta = {"db_alias": "gmrDB-alias", "collection": "RecieptCoalQualityAnalysis"}
 
@@ -2737,7 +2791,8 @@ class SapRecordsFinal(Document):
 
 
 class roadjourneyconsumertype(Document):
-    consumer_type = StringField(null=True)
+    # consumer_type = StringField(null=True)
+    consumer_type = ListField()
     created_at = DateTimeField(default=datetime.datetime.utcnow())
 
     meta = {"db_alias": "gmrDB-alias", "collection": "roadjourneyconsumertype"}
@@ -2772,3 +2827,355 @@ class grnData(Document):
             "do_qty": self.do_qty,
         }
 
+class CategoryData(EmbeddedDocument):
+    remark = StringField()
+    uom = FloatField()
+    mou_coal = FloatField()
+    linkage = FloatField()
+    aiwib_washery = FloatField()
+    open_mkt = FloatField()
+    spot_eauction = FloatField()
+    spl_for_eauction = FloatField()
+    imported = FloatField()
+    total = FloatField()
+    shakti_b = FloatField()
+    shakti_b3 = FloatField()
+    particular = StringField()
+
+class Form15Data(Document):
+    osd_month = EmbeddedDocumentField(CategoryData)                                # Opening stock of coal as on 1st Day of the Month
+    vos_month = EmbeddedDocumentField(CategoryData)                                # Value of opening stock as on 1st Day of the Month
+    qty_supplied = EmbeddedDocumentField(CategoryData)                             # Quantity of Coal/Lignite supplied by Coal/Lignite Company
+    adj_qty = EmbeddedDocumentField(CategoryData)                                  # Adjustment (+/-) in quantity supplied made by Coal/Lignite Company
+    coal_supplied = EmbeddedDocumentField(CategoryData)                            # Coal Supplied by Coal Lignite company (3+4)
+    norm_transit_loss = EmbeddedDocumentField(CategoryData)                        # Normative Transit & Handling Losses
+    net_supplied = EmbeddedDocumentField(CategoryData)                             # Net Coal/Lignite Supplied (5-6)
+    amt_charged = EmbeddedDocumentField(CategoryData)                              # Amount charged by the Coal/Lignite Company
+    adj_amt = EmbeddedDocumentField(CategoryData)                                  # Adjustments (+/-) in amount charged by Coal/Lignite Company
+    unloading_charges = EmbeddedDocumentField(CategoryData)                        # Unloading, Sampling Charges, AMM etc.
+    total_amt_charged = EmbeddedDocumentField(CategoryData)                        # Total amount Charged (8+9+10)
+    trans_charges = EmbeddedDocumentField(CategoryData)                            # Transportation charges by Rail/Ship/Road
+    adj_trans_charges = EmbeddedDocumentField(CategoryData)                        # Adjustment (+/-) in amount charged by railway transport
+    demurrage = EmbeddedDocumentField(CategoryData)                                # Demurrage Charge, if any
+    diesel_cost = EmbeddedDocumentField(CategoryData)                              # Cost of diesel in transporting coal
+    total_trans_charges = EmbeddedDocumentField(CategoryData)                      # Total transportation charges (12+13+14+15)
+    total_amt_incl_trans = EmbeddedDocumentField(CategoryData)                     # Total amount charged for Coal/lignite including transportation (11+16)
+    qty_at_station = EmbeddedDocumentField(CategoryData)                           # Quantity of coal at station for the month (1+7)
+    total_amt_for_coal = EmbeddedDocumentField(CategoryData)                       # Total amount charged for coal (2+17)
+    landed_cost = EmbeddedDocumentField(CategoryData)                              # Landed cost of coal (19/18)
+    qty_consumed = EmbeddedDocumentField(CategoryData)                             # Coal Quantity consumed
+    value_consumed = EmbeddedDocumentField(CategoryData)                           # Value of coal Consumed (20*21)
+    wtd_avg_gcv_prev = EmbeddedDocumentField(CategoryData)                         # Weighted average GCV with previous month's coal
+    wtd_avg_gcv_recv = EmbeddedDocumentField(CategoryData)                         # Wtd. Average as received GCV
+    wtd_avg_gcv_less_85 = EmbeddedDocumentField(CategoryData)                      # Weighted Average GCV of caol as received
+    closing_coal_stock = EmbeddedDocumentField(CategoryData)                       # Closing stock of coal as on last Day of the Month 
+    closing_coal_stock_value = EmbeddedDocumentField(CategoryData)                 # Value of Closing stock as on  last Day of the Month 
+    
+    month = DateField(null=True)
+    created_at = DateTimeField(default=datetime.datetime.now(datetime.timezone.utc))
+    
+    meta = {"db_alias": "gmrDB-alias", "collection": "form_15"}
+
+class UserDataPermission(EmbeddedDocument):
+    user = ListField(DictField())  # Correctly define the ListField
+
+    def payload(self):
+        return {
+            "user": self.user,
+        }
+
+class MultiApproval(Document):
+    approval_name = StringField(default=None)
+    levels = EmbeddedDocumentListField(UserDataPermission)  
+    bypass_level = BooleanField(default=False)
+    disabled = BooleanField(default=False)
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "MultiApproval"}
+
+    def payload(self):
+        listData = []
+        for single_level in self.levels:
+            listData.append(single_level.payload())
+
+
+        return {
+            "approval_name": self.approval_name,
+            "levels": listData,
+            "bypass_level": self.bypass_level,
+            "disabled": self.disabled,
+        }
+
+class ApprovalTableList(Document):
+    approval_list = ListField(StringField())
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "ApprovalTableList"}
+
+
+class Grn(Document):
+    do_no = StringField(null=True)
+    invoice_date= StringField(null=True)
+    invoice_no=StringField(null=True)
+    sale_date = StringField(null=True)
+    grade = StringField(null=True)
+    dispatch_date = StringField(null=True)
+    mine = StringField(null=True)    
+    do_qty = StringField(null=True)
+    # header_data = DictField()
+    original_data = ListField(DictField())
+    new_data = ListField(DictField())
+    # approvals = ListField(DictField())
+    approvals = DictField()
+    changed_by = StringField(null=True)
+    #particulars start
+    basic_price = FloatField(null=True)
+    sizing_charges = FloatField(null=True)
+    stc_charges = FloatField(null=True)
+    evac_facility_charge = FloatField(null=True)
+    royalty_charges = FloatField(null=True)
+    nmet_charges = FloatField(null=True)
+    imf = FloatField(null=True)
+    cgst = FloatField(null=True)
+    sgst = FloatField(null=True)
+    gst_comp_cess = FloatField(null=True)
+    gross_bill_value = FloatField(null=True)
+    net_value = FloatField(null=True)
+    total_amount = FloatField(null=True)
+    #particulars end
+    created_at = DateTimeField(default=datetime.datetime.utcnow())
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "Grn"}
+
+    def payload(self):
+        return {
+            "do_no": self.do_no,
+            "invoice_date": self.invoice_date,
+            "invoice_no": self.invoice_no,
+            "sale_date": self.sale_date,
+            "grade": self.grade,
+            "dispatch_date": self.dispatch_date,
+            "mine": self.mine,    
+            "do_qty": self.do_qty,
+            "original_data": self.original_data,
+            "new_data": self.new_data,
+            "approvals": self.approvals,
+            "changed_by": self.changed_by,
+            # "basic_price": self.basic_price,
+            # "sizing_charges": self.sizing_charges,
+            # "stc_charges": self.stc_charges,
+            # "evac_facility_charge": self.evac_facility_charge,
+            # "royalty_charges": self.royalty_charges,
+            # "nmet_charges": self.nmet_charges,
+            # "imf": self.imf,
+            # "cgst": self.cgst,
+            # "sgst": self.sgst,
+            # "gst_comp_cess": self.gst_comp_cess,
+            # "gross_bill_value": self.gross_bill_value,
+            # "net_value": self.net_value,
+            # "total_amount": self.total_amount,
+            "created_at": self.created_at,
+        }
+    
+    def frpayload(self):
+        return {
+            "do_no": self.do_no,
+            "invoice_date": self.invoice_date,
+            "invoice_no": self.invoice_no,
+            "sale_date": self.sale_date,
+            "grade": self.grade,
+            "dispatch_date": self.dispatch_date,
+            "mine": self.mine,    
+            "do_qty": self.do_qty,
+            "new_data": self.new_data,
+            "created_at": self.created_at,
+        }
+    
+
+class minesamplequalityanalysis(Document):
+    mine_thirdparty_sample_reference_no = StringField(null=True)
+    source = StringField(null=True)
+    sample_id = StringField(null=True) # unique
+    sample_collection_date = DateTimeField(null=True)
+    sample_preparation_date = DateTimeField(null=True)
+    sample_received_date = DateTimeField(null=True)
+    sample_analysis_date = DateTimeField()
+    rr_qty = FloatField(null=True)
+    rr_no = IntField(null=True)
+    rr_date = StringField(null=True)
+    declared_grade = StringField(null=True)
+    mine_thirdparty_grade = StringField(null=True)
+    plant_grade = StringField(null=True)
+    plant_certificate_id = StringField(null=True)
+    plant_sample_date = DateTimeField(null=True)
+    plant_preparation_date = DateTimeField(null=True)
+    plant_analysis_date = DateTimeField(null=True)
+    plant_lab_temp = FloatField(null=True)
+    plant_arb_tm = FloatField(null=True)
+    plant_arb_vm = FloatField(null=True)
+    plant_arb_ash = FloatField(null=True)
+    plant_arb_fc = FloatField(null=True)
+    plant_arb_gcv = FloatField(null=True)
+    plant_adb_im = FloatField(null=True)
+    plant_adb_vm = FloatField(null=True)
+    plant_adb_ash = FloatField(null=True)
+    plant_adb_fc = FloatField(null=True)
+    plant_adb_gcv = FloatField(null=True)
+    plant_ulr_id = StringField(null=True) #29
+    plant_gcv_grade = StringField(null=True)
+    mine_thirdparty_tm_arb = FloatField(null=True)
+    mine_thirdparty_humidity = FloatField(null=True)
+    mine_thirdparty_temperature = FloatField(null=True)
+    mine_thirdparty_adb_moisture = FloatField(null=True)
+    mine_thirdparty_adb_ash = FloatField(null=True)
+    mine_thirdparty_adb_gcv = FloatField(null=True)
+    mine_thirdparty_arb_moisture = FloatField(null=True)
+    mine_thirdparty_arb_ash = FloatField(null=True)
+    mine_thirdparty_arb_gcv = FloatField(null=True)
+    # mine_thirdparty_gcv_grade = StringField(null=True)
+    analysed_grade = StringField(null=True)
+    created_at = DateTimeField(default=datetime.datetime.utcnow())
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "minesamplequalityanalysis"}
+
+    def payload(self):
+        return {
+            "mine_thirdparty_sample_reference_no": self.mine_thirdparty_sample_reference_no,
+            "source": self.source,
+            "sample_id": self.sample_id,
+            "sample_collection_date": self.sample_collection_date,
+            "sample_preparation_date": self.sample_preparation_date,
+            "sample_received_date": self.sample_received_date,
+            "sample_analysis_date": self.sample_analysis_date,
+            "rr_qty": self.rr_qty,
+            "rr_no": self.rr_no,
+            "rr_date": self.rr_date,
+            "declared_grade": self.declared_grade,
+            "mine_thirdparty_grade": self.mine_thirdparty_grade,
+            "plant_grade": self.plant_grade,
+            "plant_certificate_id": self.plant_certificate_id,
+            "plant_sample_date": self.plant_sample_date,
+            "plant_preparation_date": self.plant_preparation_date,
+            "plant_analysis_date": self.plant_analysis_date,
+            "plant_lab_temp": self.plant_lab_temp,
+            "plant_arb_tm": self.plant_arb_tm,
+            "plant_arb_vm": self.plant_arb_vm,
+            "plant_arb_ash": self.plant_arb_ash,
+            "plant_arb_fc": self.plant_arb_fc,
+            "plant_arb_gcv": self.plant_arb_gcv,
+            "plant_adb_im": self.plant_adb_im,
+            "plant_adb_vm": self.plant_adb_vm,
+            "plant_adb_ash": self.plant_adb_ash,
+            "plant_adb_fc": self.plant_adb_fc,
+            "plant_adb_gcv": self.plant_adb_gcv,
+            "plant_ulr_id": self.plant_ulr_id,
+            "plant_gcv_grade": self.plant_gcv_grade,
+            "mine_thirdparty_tm_arb": self.mine_thirdparty_tm_arb,
+            "mine_thirdparty_humidity": self.mine_thirdparty_humidity,
+            "mine_thirdparty_temperature": self.mine_thirdparty_temperature,
+            "mine_thirdparty_adb_moisture": self.mine_thirdparty_adb_moisture,
+            "mine_thirdparty_adb_ash": self.mine_thirdparty_adb_ash,
+            "mine_thirdparty_adb_gcv": self.mine_thirdparty_adb_gcv,
+            "mine_thirdparty_arb_moisture": self.mine_thirdparty_arb_moisture,
+            "mine_thirdparty_arb_ash": self.mine_thirdparty_arb_ash,
+            "mine_thirdparty_arb_gcv": self.mine_thirdparty_arb_gcv,
+            # "mine_thirdparty_gcv_grade": self.mine_thirdparty_gcv_grade,
+            "analysed_grade": self.analysed_grade,
+            "created_at": self.created_at,
+        }
+    
+class tableSubject(Document):
+    table_name = StringField(null=True)
+    table_subject = StringField(null=True)
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "tableSubject"}
+
+    def payload(self):
+        return {
+            "table_name": self.table_name,
+            "table_subject": self.table_subject,
+        }
+
+class cmplData(Document):
+    tno = IntField(null=True)
+    companycode = StringField(null=True)
+    financialyearcode = StringField(null=True)
+    locationcode = StringField(null=True)
+    lrno = StringField(null=True)
+    lrdate = DateField()
+    partycode = StringField(null=True)
+    source_location_tno = StringField(null=True)
+    consignor_code = StringField(null=True)
+    destination_location_tno = StringField(null=True)
+    consigneecode = StringField(null=True)
+    vehicle_no = StringField(null=True)
+    freightamount = FloatField(null=True)
+    item_code = StringField(null=True)
+    nos = FloatField(null=True)
+    quantity1 = IntField(null=True) 
+    quantity2 = IntField(null=True)
+    invoice_no = StringField(null=True)
+    invoice_date = DateField()
+    consignor_name = StringField(null=True)
+    consignor_address = StringField(null=True)
+    consignor_citycode = StringField(null=True)
+    consignor_statecode =  StringField(null=True)
+    consignor_phoneno = StringField(null=True)
+    consignee_name = StringField(null=True)
+    consignee_address = StringField(null=True)
+    consignee_citycode = StringField(null=True)
+    consignee_statecode =  StringField(null=True)
+    consignee_phoneno = StringField(null=True)
+    invoice_amount = FloatField(null=True)
+    challon_no = StringField(null=True)
+    challan_date = DateField()
+    driver_name = StringField(null=True)
+    driver_licenseno = StringField(null=True)
+    eway_billno = StringField(null=True)
+    eway_billdate = DateField()
+    balance_qty = IntField(null=True)
+    do_qty = IntField(null=True)
+    delivery_order_tno = IntField(null=True)
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "cmplData"}
+
+    def payload(self):
+        return {
+            "tno": self.tno,
+            "companycode": self.companycode,
+            "financialyearcode": self.financialyearcode,
+            "locationcode": self.locationcode,
+            "lrno": self.lrno,
+            "lrdate": self.lrdate,
+            "partycode": self.partycode,
+            "source_location_tno": self.source_location_tno,
+            "consignor_code": self.consignor_code,
+            "destination_location_tno": self.destination_location_tno,
+            "consigneecode": self.consigneecode,
+            "vehicle_no": self.vehicle_no,
+            "freightamount": self.freightamount,
+            "item_code": self.item_code,
+            "nos": self.nos,
+            "quantity1": self.quantity1, 
+            "quantity2": self.quantity2,
+            "invoice_no": self.invoice_no,
+            "invoice_date": self.invoice_date,
+            "consignor_name": self.consignor_name,
+            "consignor_address": self.consignor_address,
+            "consignor_citycode": self.consignor_citycode,
+            "consignor_statecode": self.consignor_statecode,
+            "consignor_phoneno": self.consignor_phoneno,
+            "consignee_name": self.consignee_name,
+            "consignee_address": self.consignee_address,
+            "consignee_citycode": self.consignee_citycode,
+            "consignee_statecode": self.consignee_statecode,
+            "consignee_phoneno": self.consignee_phoneno,
+            "invoice_amount": self.invoice_amount,
+            "challon_no": self.challon_no,
+            "challan_date": self.challan_date,
+            "driver_name": self.driver_name,
+            "driver_licenseno": self.driver_licenseno,
+            "eway_billno": self.eway_billno,
+            "eway_billdate": self.eway_billdate,
+            "balance_qty": self.balance_qty,
+            "do_qty": self.do_qty,
+            "delivery_order_tno": self.delivery_order_tno
+        }

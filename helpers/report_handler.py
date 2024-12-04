@@ -513,7 +513,7 @@ def header_data_value(template_data, month_date):
 #         console_logger.debug(e)
 
 
-def logistic_report_table(data):
+def logistic_report_table(data, consumerList):
     try:
 
         grouped_data = defaultdict(list)
@@ -526,17 +526,21 @@ def logistic_report_table(data):
         final_total_cc_lr_qty = 0
         final_total_balance_qty = 0
 
-        ordered_source_types = [
-            "SECL-RCR Coal",
-            "WCL FSA Coal",
-            "WCL E Auction Coal",
-            "WCL Shakti B(iii) Round 5 Coal",
-            "WCL Shakti B(iii) Round 6 Coal",
-            "WCL Shakti B(iii) Coal",
-            "WCL Shakti B(viii) Coal",
-            "WCL Shakti Auction Coal",
-            "FSA Linkage Auction(Shakti)"
-        ]
+        # ordered_source_types = [
+        #     "SECL-RCR Coal",
+        #     "WCL FSA Coal",
+        #     "WCL E Auction Coal",
+        #     "WCL Shakti B(iii) Round 5 Coal",
+        #     "WCL Shakti B(iii) Round 6 Coal",
+        #     "WCL Shakti B(iii) Coal",
+        #     "WCL Shakti B(viii) Coal",
+        #     "WCL Shakti Auction Coal",
+        #     "FSA Linkage Auction(Shakti)"
+        # ]
+
+        ordered_source_types = consumerList[:9]
+
+        # console_logger.debug(ordered_source_types)
 
         # Create a dictionary to hold entries sorted by the specified order
         sorted_data = {key: grouped_data[key] for key in ordered_source_types if key in grouped_data}
@@ -735,8 +739,11 @@ def bar_graph_gcv_wise(rrNo_values, aopList, month_date):
     try:
         if rrNo_values:
             # Extract rrNo and their aggregated values
-            rrNo = list(rrNo_values.keys())
+            rrNo_old = list(rrNo_values.keys())
             values = list(rrNo_values.values())
+
+            rrNo = [x if x is not None else 'None' for x in rrNo_old]
+
             # indexes = [rrNo.index(item) for item in rrNo_values.keys()]
             indexes = list(range(len(rrNo)))
 
@@ -1027,19 +1034,34 @@ def rake_quota_data(fetchRakeQuota):
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Cancelled Rakes</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Remarks</th>"
         single_html += "</tr></thead><tbody style='border: 1px solid gray;'>"
-
+        sum_rakes_previous_month_quota_received = 0
+        sum_rake_planned_for_the_month = 0
+        sum_rakes_loaded_till_date = 0
+        sum_rakes_loaded_on_date = 0
+        sum_rakes_received_on_date = 0
+        sum_total_rakes_received_for_month = 0
+        sum_balance_rakes_to_receive = 0
+        sum_no_of_rakes_in_transist = 0
         for single_rake_quota in fetchRakeQuota['data']:
             single_html += "<tr style='height: 30px;'>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('month')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('source_type')}</span></td>"
+            sum_rakes_previous_month_quota_received += round(single_rake_quota.get('rakes_previous_month_quota_received') or 0, 2)
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_previous_month_quota_received')}</span></td>"
+            sum_rake_planned_for_the_month += round(single_rake_quota.get('rake_planned_for_the_month') or 0, 2)
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rake_planned_for_the_month')}</span></td>"
+            sum_rakes_loaded_till_date += round(single_rake_quota.get('rakes_loaded_till_date') or 0, 2)
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_loaded_till_date')}</span></td>"
+            sum_rakes_loaded_on_date += round(single_rake_quota.get('rakes_loaded_on_date') or 0, 2)
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_loaded_on_date')}</span></td>"
             # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('previous_month_rake')}</span></td>"
+            sum_rakes_received_on_date += round(single_rake_quota.get('rakes_received_on_date') or 0, 2)
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_received_on_date')}</span></td>"
+            sum_total_rakes_received_for_month += round(single_rake_quota.get('total_rakes_received_for_month') or 0, 2)
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('total_rakes_received_for_month')}</span></td>"
+            sum_balance_rakes_to_receive += round(single_rake_quota.get('balance_rakes_to_receive') or 0, 2)
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('balance_rakes_to_receive')}</span></td>"
+            sum_no_of_rakes_in_transist += round(single_rake_quota.get('no_of_rakes_in_transist') or 0, 2)
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('no_of_rakes_in_transist')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('cancelled_rakes')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('remarks')}</span></td>"
@@ -1047,14 +1069,22 @@ def rake_quota_data(fetchRakeQuota):
 
         single_html += "<tr style='background-color: #3a62ff; color: #ffffff;'>"
         single_html += "<td class='logic_table_td' style='text-align: center; font-size: 14px;' colspan='2'><strong>Total</strong></td>"
-        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rakes_previous_month_quota_received')}</strong></td>"
-        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rake_planned_for_the_month')}</strong></td>"
-        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rakes_loaded_till_date')}</strong></td>"
-        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rakes_loaded_on_date')}</strong></td>"
-        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rakes_received_on_date')}</strong></td>"
-        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_total_rakes_received_for_month')}</strong></td>"
-        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_balance_rakes_to_receive')}</strong></td>"
-        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_no_of_rakes_in_transist')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rakes_previous_month_quota_received')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rake_planned_for_the_month')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rakes_loaded_till_date')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rakes_loaded_on_date')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rakes_received_on_date')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_total_rakes_received_for_month')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_balance_rakes_to_receive')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_no_of_rakes_in_transist')}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{sum_rakes_previous_month_quota_received}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{sum_rake_planned_for_the_month}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{sum_rakes_loaded_till_date}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{sum_rakes_loaded_on_date}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{sum_rakes_received_on_date}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{sum_total_rakes_received_for_month}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{sum_balance_rakes_to_receive}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{sum_no_of_rakes_in_transist}</strong></td>"
         # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_cancelled_rakes')}</strong></td>"
         single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong></strong></td>"
         single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong></strong></td>"
@@ -1088,19 +1118,49 @@ def rcr_rake_quota_data(fetchRcrRakeQuota):
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Cancelled Rakes</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Remarks</th>"
         single_html += "</tr></thead><tbody style='border: 1px solid gray;'>"
-
+        sum_rakes_previous_month_quota_received = 0
+        sum_rake_planned_for_the_month = 0
+        sum_rakes_loaded_till_date = 0
+        sum_rakes_loaded_on_date = 0
+        sum_rakes_received_on_date = 0
+        sum_total_rakes_received_for_month = 0
+        sum_balance_rakes_to_receive = 0
+        sum_no_of_rakes_in_transist = 0
         for single_rake_quota in fetchRcrRakeQuota['data']:
+            # single_html += "<tr style='height: 30px;'>"
+            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('month')}</span></td>"
+            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('source_type')}</span></td>"
+            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_previous_month_quota_received')}</span></td>"
+            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rake_planned_for_the_month')}</span></td>"
+            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_loaded_till_date')}</span></td>"
+            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_loaded_on_date')}</span></td>"
+            # # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('previous_month_rake')}</span></td>"
+            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_received_on_date')}</span></td>"
+            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('total_rakes_received_for_month')}</span></td>"
+            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('balance_rakes_to_receive')}</span></td>"
+            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('no_of_rakes_in_transist')}</span></td>"
+            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('cancelled_rakes')}</span></td>"
+            # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('remarks')}</span></td>"
+            # single_html += "</tr>"
             single_html += "<tr style='height: 30px;'>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('month')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('source_type')}</span></td>"
+            sum_rakes_previous_month_quota_received += round(single_rake_quota.get('rakes_previous_month_quota_received') or 0, 2)
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_previous_month_quota_received')}</span></td>"
+            sum_rake_planned_for_the_month += round(single_rake_quota.get('rake_planned_for_the_month') or 0, 2)
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rake_planned_for_the_month')}</span></td>"
+            sum_rakes_loaded_till_date += round(single_rake_quota.get('rakes_loaded_till_date') or 0, 2)
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_loaded_till_date')}</span></td>"
+            sum_rakes_loaded_on_date += round(single_rake_quota.get('rakes_loaded_on_date') or 0, 2)
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_loaded_on_date')}</span></td>"
             # single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('previous_month_rake')}</span></td>"
+            sum_rakes_received_on_date += round(single_rake_quota.get('rakes_received_on_date') or 0, 2)
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('rakes_received_on_date')}</span></td>"
+            sum_total_rakes_received_for_month += round(single_rake_quota.get('total_rakes_received_for_month') or 0, 2)
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('total_rakes_received_for_month')}</span></td>"
+            sum_balance_rakes_to_receive += round(single_rake_quota.get('balance_rakes_to_receive') or 0, 2)
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('balance_rakes_to_receive')}</span></td>"
+            sum_no_of_rakes_in_transist += round(single_rake_quota.get('no_of_rakes_in_transist') or 0, 2)
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('no_of_rakes_in_transist')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('cancelled_rakes')}</span></td>"
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('remarks')}</span></td>"
@@ -1108,14 +1168,22 @@ def rcr_rake_quota_data(fetchRcrRakeQuota):
 
         single_html += "<tr style='background-color: #3a62ff; color: #ffffff;'>"
         single_html += "<td class='logic_table_td' style='text-align: center; font-size: 14px;' colspan='2'><strong>Total</strong></td>"
-        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_rakes_previous_month_quota_received')}</strong></td>"
-        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_rake_planned_for_the_month')}</strong></td>"
-        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_rakes_loaded_till_date')}</strong></td>"
-        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_rakes_loaded_on_date')}</strong></td>"
-        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_rakes_received_on_date')}</strong></td>"
-        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_total_rakes_received_for_month')}</strong></td>"
-        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_balance_rakes_to_receive')}</strong></td>"
-        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_no_of_rakes_in_transist')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_rakes_previous_month_quota_received')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_rake_planned_for_the_month')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_rakes_loaded_till_date')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_rakes_loaded_on_date')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_rakes_received_on_date')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_total_rakes_received_for_month')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_balance_rakes_to_receive')}</strong></td>"
+        # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_no_of_rakes_in_transist')}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{sum_rakes_previous_month_quota_received}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{sum_rake_planned_for_the_month}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{sum_rakes_loaded_till_date}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{sum_rakes_loaded_on_date}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{sum_rakes_received_on_date}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{sum_total_rakes_received_for_month}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{sum_balance_rakes_to_receive}</strong></td>"
+        single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{sum_no_of_rakes_in_transist}</strong></td>"
         single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong></strong></td>"
         # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_cancelled_rakes')}</strong></td>"
         single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong></strong></td>"
@@ -1138,9 +1206,9 @@ def seclGraphData(seclLinkagegraph):
         # highestData = max(data)
 
         # Cap the data at 100 for visualization (but keep original values for labels)
-        capped_data = [min(value, 100) for value in data]
+        # capped_data = [min(value, 100) for value in data]
 
-        
+        # console_logger.debug(capped_data)
 
         # console_logger.debug(labels)
 
@@ -1156,7 +1224,7 @@ def seclGraphData(seclLinkagegraph):
         plt.figure(figsize=(12, 8))
 
         # Create bar plot
-        bars = plt.bar(labels, capped_data, color='#3a62ff', edgecolor='black')
+        bars = plt.bar(labels, data, color='#3a62ff', edgecolor='black')
 
         # Add data labels on top of each bar
         for bar in bars:
@@ -1305,13 +1373,12 @@ def wclGraphData(wclLinkagegraph):
         console_logger.debug(e)
 
 
-def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_final, dayWiseVehicleInCount, dayWiseGrnReceive, dayWiseGwelReceive, dayWiseOutVehicelCount, total_monthly_final_net_qty, yearly_final_data, aopList, fetchRailData, yearly_rail_final_data, fetchRakeQuota, fetchRcrRakeQuota, seclLinkagegraph, wclLinkagegraph):
+def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_final, dayWiseVehicleInCount, dayWiseGrnReceive, dayWiseGwelReceive, dayWiseOutVehicelCount, total_monthly_final_net_qty, yearly_final_data, aopList, fetchRailData, yearly_rail_final_data, fetchRakeQuota, fetchRcrRakeQuota, seclLinkagegraph, wclLinkagegraph, consumerList):
 
     try:
         # supplierResult = supplier_collection.find({}, {"_id": 0})
         # consigneeResult = consignee_collection.find({}, {"_id": 0})
         # transportResult = transporter_collection.find({}, {"_id": 0})
-        console_logger.debug(rrNo_values.items())
         if rrNo_values:
             # Find the key-value pair with the highest value
             max_pair = max(rrNo_values.items(), key=lambda x: x[1])
@@ -1337,7 +1404,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
 
         header_data, encoded_logo_image, text_watermark_pdf = header_data_value(template_data, month_date)
         if data:
-            per_data = logistic_report_table(data)
+            per_data = logistic_report_table(data, consumerList)
         else:
             per_data = f"<b>No data found for {month_date}</b>"
             
@@ -1500,7 +1567,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
             <div class="footertable" style="width:100%; margin-top:20px;">
                 <div class="title" style="width: 100%; display: flex; flex-direction:row; gap: 10px; height:50px ; align-items:center">
                     <p style="color: #3a62ff; font-size: 16px; margin: 5px; font-weight: 600;">
-                        Rake Quota Report for {datetime.strptime(month_date,'%Y-%m-%d').strftime('%B %Y')}
+                        Rail Rake Quota Report for {datetime.strptime(month_date,'%Y-%m-%d').strftime('%B %Y')}
                     </p>
                 </div>
                 {fetchquotaData}

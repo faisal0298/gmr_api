@@ -13,6 +13,21 @@ import json
 
 import os, sys
 
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Form,
+    Query,
+    File,
+    Depends,
+    UploadFile,
+    Header,
+    Request,
+    Response,
+)
+
+from email.mime.image import MIMEImage
+
 # def send_email(sender_email, subject, password, smtp_host, smtp_port, receiver_email, body, file_path):
 #     # Create a MIMEMultipart object for the email
 
@@ -97,7 +112,8 @@ def send_email(sender_email, subject, password, smtp_host, smtp_port, receiver_e
         # Create a MIMEMultipart object for the email
         message = MIMEMultipart()
         message["Subject"] = subject
-        message["From"] = formataddr((str(Header('GMR', 'utf-8')), 'contact@easemyai.com'))  
+        # message["From"] = formataddr((str(Header('GMR', 'utf-8')), 'contact@easemyai.com'))  
+        message["From"] = 'contact@easemyai.com'  
         message["To"] = ', '.join(receiver_email)
         if cc_list:
             message["Cc"] = ', '.join(cc_list)
@@ -310,3 +326,40 @@ def send_test_email(payload):
         server.sendmail("contact@easemyai.com", payload.dict()["Smtp_user"], message.as_string())
     console_logger.debug("Email Sent!")
     return "success"
+
+
+def send_multiapproval_mail(subject, to_data, body, sender_email, password, smtp_host, smtp_port):
+    try:
+        # Create a MIMEMultipart object for the email
+        message = MIMEMultipart()
+        message["Subject"] = subject
+        message["From"] = 'contact@easemyai.com'
+        message["To"] = to_data
+
+        message.attach(MIMEText(body, "html"))
+        recipients = to_data
+        console_logger.debug(f"Recipients: {recipients}")
+
+        fp = open(f"{os.path.join(os.getcwd())}/static_server/receipt/report_logo.png", "rb")
+        msgImage = MIMEImage(fp.read())
+        fp.close()
+
+        msgImage.add_header('Content-ID', '<image1>')
+        message.attach(msgImage)
+
+        smtpserver = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        smtpserver.ehlo()
+        console_logger.debug(sender_email)
+        console_logger.debug(password)
+        smtpserver.login(sender_email, password)
+        smtpserver.sendmail(sender_email, recipients, message.as_string())
+        smtpserver.close()
+
+    except smtplib.SMTPException as e:
+        console_logger.error(f"SMTP error occurred: {e}")
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(f"Exception type: {exc_type}, Filename: {fname}, Line number: {exc_tb.tb_lineno}")
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")

@@ -218,7 +218,6 @@ class DataExecutions:
                     sample_list_data = []
                     for single_data in data["responseData"]:
                         try:
-                            console_logger.debug(single_data.get("sample_Desc"))
                             # if single_data.get("sample_Desc") in ["Bunker U#01", "Bunker U#02", "BUNKER U#01", "BUNKER U#02"]:
                             if "bunker" in single_data.get("sample_Desc").strip().lower():
                                 sample_date = single_data.get("sample_Date", "").strip()
@@ -226,7 +225,6 @@ class DataExecutions:
                                 # Check if the sample_Date is not empty and has valid length (> 0)
                                 if len(sample_date) > 0:
                                     # Further processing of sample_Date
-                                    
                                     if len(sample_date) == 19:  # If date contains time
                                         new_date = sample_date.split(' ')[0]
                                     else:

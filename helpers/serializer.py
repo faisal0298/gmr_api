@@ -366,10 +366,47 @@ class GrnFileData(BaseModel):
     do_qty: Optional[str]
     table_data: Optional[List[grnPdf]]
 
+class grnpdfRail(BaseModel):
+    indexing: Optional[str]
+    wagon_owner: Optional[str]
+    wagon_type: Optional[str]
+    wagon_no: Optional[str]
+    ser_no: Optional[str]
+    rake_no: Optional[str]
+    rake_id: Optional[str]
+    wagon_no_avery: Optional[str]
+    wagon_id: Optional[str]
+    wagon_cc: Optional[str]
+    mode: Optional[str]
+    tip_startdate: Optional[str]
+    tip_starttime: Optional[str]
+    tip_enddate: Optional[str]
+    tip_endtime: Optional[str]
+    tipple_time: Optional[str]
+    gwel_gross_wt: Optional[str]
+    gwel_tare_wt: Optional[str]
+    gwel_net_wt: Optional[str]
+    # time_in_tipp: Optional[str]
+    po_number: Optional[str]
+    coal_grade: Optional[str]
+
+class GrnFileDataRail(BaseModel):
+    do_no: Optional[str]
+    dc_date: Optional[str]
+    invoice_date: Optional[str]
+    invoice_no: Optional[str]
+    sale_date: Optional[str]
+    grade: Optional[str]
+    dispatch_date: Optional[str]
+    mine: Optional[str]
+    do_qty: Optional[str]
+    # table_data: Optional[List[grnpdfRail]]
+    table_data: Optional[List]
+
 
 class CategoryDataModel(BaseModel):
     remark: Optional[str] = None
-    uom: Optional[float]
+    uom: Optional[str]
     mou_coal: Optional[float]
     linkage: Optional[float]
     aiwib_washery: Optional[float]
@@ -413,6 +450,23 @@ class CoalDataModel(BaseModel):
     month: Optional[datetime.datetime]
 
 
+class CoalDataModelManual(BaseModel):
+    osd_month: CategoryDataModel #1
+    adj_qty: CategoryDataModel #4
+    norm_transit_loss: CategoryDataModel #6
+    amt_charged: CategoryDataModel #8
+    adj_amt: CategoryDataModel #9
+    unloading_charges: CategoryDataModel #10
+    trans_charges: CategoryDataModel #12
+    adj_trans_charges: CategoryDataModel #13
+    demurrage: CategoryDataModel #14
+    diesel_cost: CategoryDataModel #15
+    qty_consumed: CategoryDataModel #21
+    wtd_avg_gcv_prev: CategoryDataModel #23
+    wtd_avg_gcv_recv: CategoryDataModel #24
+    wtd_avg_gcv_less_85: CategoryDataModel #25
+    month: Optional[datetime.datetime] #28
+
 class UserListName(BaseModel):
     email: List[List[dict]]
     approval_name: Optional[str]
@@ -434,6 +488,7 @@ class grnUpdateTax(BaseModel):
     particulars: Optional[dict]
     # approvals: Optional[dict]
     changed_by: Optional[str]
+    type_consumer: Optional[str]
 
 class roadConsumertype(BaseModel):
     roadConsumertype: List[str]
@@ -462,6 +517,7 @@ class grnupdateStatusData(BaseModel):
     level_name: Optional[str]
     level_no: Optional[str]
     invoice_no: Optional[str]
+    mode: Optional[str] = "road"
     # edited_by: Optional[str]
 
 class cmplInput(BaseModel):
@@ -504,3 +560,39 @@ class cmplInput(BaseModel):
     balance_qty : Optional[int]
     do_qty : Optional[int]
     delivery_order_tno : Optional[int]
+
+
+class railGrnPost(BaseModel):
+    rr_no: Optional[str] #do_no
+    rr_qty: Optional[str] #do_qty
+    mine: Optional[str] #source
+    grade: Optional[str]
+    invoice_date: Optional[str]
+    invoice_no: Optional[str]
+    sale_date: Optional[str]
+    avery_placement_date: Optional[str] #dispatch_date as per road
+    new_data: Optional[List[dict]] #avery_data
+    # total_gwel_net: Optional[float] # for form15 value under grn 
+    sizing_charges: Optional[float]
+    evac_facility_charge: Optional[float]
+    royality_charges: Optional[float]
+    nmet_charges: Optional[float]
+    dmf: Optional[float]
+    adho_sanrachna_vikas: Optional[float]
+    pariyavaran_upkar: Optional[float]
+    assessable_value: Optional[float]
+    igst: Optional[float]
+    gst_comp_cess: Optional[float]
+    gross_bill_value: Optional[float]
+    less_underloading_charges: Optional[float]
+    net_value: Optional[float]
+    total_amount: Optional[float]
+    changed_by: Optional[str]
+    source_type: Optional[str]
+
+
+class aopStatic(BaseModel):
+    percentage: Optional[str]
+    gcv_crushing: Optional[str]
+    qty_saving: Optional[str]
+    month: Optional[str]

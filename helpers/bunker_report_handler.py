@@ -487,7 +487,7 @@ def bunker_single_generate_report(fetchBunkerSingleData):
                             <img style="position: absolute; z-index: 1; left: 10px; top: 6px; width: 50px; height: 50px;" src="data:image/png;base64,{logo_certificate}" border="0">
                             <img style="position: absolute; z-index: 1; right: 25px; top: 10px; width: 62px; height: 30px;" src="data:image/png;base64,{gmr_logo}" border="0">
                         </div>
-                    GWEL Laboartory</td>
+                    GWEL Laboratory</td>
                 </tr>
                 <tr class="row2" style="height:19px;">
                     <td class="column1 style75 s style77" colspan="16" style="border: 1px dotted black; text-align: center; vertical-align: middle; border-bottom: none #000000; font-weight: bold; color: #000000; font-family: 'Calibri';font-size: 14px; background-color: #FFFFFF; border-top: 2px solid #000000 !important; border-left: 1px solid #000000 !important; border-right: 2px solid #000000 !important;">GMR Warora Energy Limited</td>

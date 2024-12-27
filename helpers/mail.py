@@ -341,11 +341,15 @@ def send_multiapproval_mail(subject, to_data, body, sender_email, password, smtp
         console_logger.debug(f"Recipients: {recipients}")
 
         fp = open(f"{os.path.join(os.getcwd())}/static_server/receipt/report_logo.png", "rb")
+        fp1 = open(f"{os.path.join(os.getcwd())}/static_server/receipt/emai.png", "rb")
         msgImage = MIMEImage(fp.read())
+        msgImage1 = MIMEImage(fp1.read())
         fp.close()
 
         msgImage.add_header('Content-ID', '<image1>')
+        msgImage1.add_header('Content-ID', '<image2>')
         message.attach(msgImage)
+        message.attach(msgImage1)
 
         smtpserver = smtplib.SMTP_SSL('smtp.gmail.com', 465)
         smtpserver.ehlo()

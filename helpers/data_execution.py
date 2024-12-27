@@ -35,7 +35,18 @@ from bson.objectid import ObjectId
 load_dotenv() 
 
 
-
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Form,
+    Query,
+    File,
+    Depends,
+    UploadFile,
+    Header,
+    Request,
+    Response,
+)
 
 
 IST = pytz.timezone('Asia/Kolkata')
@@ -251,7 +262,6 @@ class DataExecutions:
                                 else:
                                     console_logger.debug("sample_Date is missing or empty, skipping DB operation.")
                         except DoesNotExist as e:
-                            console_logger.debug(single_data.get("sample_Desc"))
                             # Handle DoesNotExist and proceed similarly
                             # if single_data.get("sample_Desc") in ["Bunker U#01", "Bunker U#02", "BUNKER U#01", "BUNKER U#02"]:
                             if "bunker" in single_data.get("sample_Desc").strip().lower():
@@ -668,7 +678,7 @@ class DataExecutions:
                 )   
                 if any(logs):
                     for log in logs:
-                        # console_logger.debug(log)
+                        console_logger.debug(log)
                         # result["labels"] = list(log.payload().keys())
                         result["labels"] = [
                             "srno",
@@ -718,7 +728,7 @@ class DataExecutions:
                         if "lab_temp" in log:
                             updated_payload["test_temp"] = updated_payload.pop("lab_temp")
                         result["datasets"].append(updated_payload)
-                result["total"]= len(BunkerData.objects(data))
+                result["total"]= len(BunkerQualityAnalysis.objects(data))
                 return result
             elif type and type == "download":
                 del type
@@ -1768,223 +1778,355 @@ class DataExecutions:
             console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
             console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
             return e
-        
+
     # def download_road_coal_logistics(self, specified_date: str, mine: Optional[str] = "All"):
     #     try:
+    #         data = {}
+    #         result = {
+    #             "labels": [],
+    #             "datasets": [],
+    #             "weight_total": [],
+    #             "total": 0,
+    #             "page_size": 15,
+    #         }
+
+    #         if mine and mine != "All":
+    #             data["mine__icontains"] = mine.upper()
+
     #         if specified_date:
-    #             data = {}
-    #             # result = {
-    #             #     "labels": [],
-    #             #     "datasets": [],
-    #             #     "weight_total": [],
-    #             #     "total": 0,
-    #             #     "page_size": 15,
-    #             # }
+    #             to_ts = self.convert_to_utc_format(f'{specified_date} 23:59:59', "%Y-%m-%d %H:%M:%S")
 
-    #             if mine and mine != "All":
-    #                 data["mine__icontains"] = mine.upper()
+    #         logs = (
+    #             Gmrdata.objects(GWEL_Tare_Time__lte=to_ts, actual_tare_qty__ne=None, gate_approved=True, GWEL_Tare_Time__ne=None)
+    #             # Gmrdata.objects()
+    #             .order_by("-GWEL_Tare_Time")
+    #         )
 
-    #             # specified_change_date = datetime.datetime.strptime(specified_date, "%Y-%m-%d")
-    #             specified_change_date = self.convert_to_utc_format(specified_date, "%Y-%m-%d")
-
-    #             start_of_month = specified_change_date.replace(day=1)
-
-    #             start_date = datetime.datetime.strftime(start_of_month, '%Y-%m-%d')
-    #             end_date = datetime.datetime.strftime(specified_change_date, '%Y-%m-%d')
-
-    #             logs = (
-    #                 Gmrdata.objects()
-    #                 .order_by("mine", "arv_cum_do_number", "-created_at")
-    #             )
-    #             # coal_testing = CoalTesting.objects(receive_date__gte=start_date, receive_date__lte=end_date).order_by("-ID")
-    #             if any(logs):
-    #                 aggregated_data = defaultdict(
-    #                     lambda: defaultdict(
-    #                         lambda: {
-    #                             "DO_Qty": 0,
-    #                             "challan_lr_qty": 0,
-    #                             "mine_name": "",
-    #                             "balance_qty": 0,
-    #                             "percent_of_supply": 0,
-    #                             "actual_net_qty": 0,
-    #                             "Gross_Calorific_Value_(Adb)": 0,
-    #                             "count": 0,
-    #                             "coal_count": 0,
-    #                         }
-    #                     )
-    #                 )
-
-
-    #                 start_dates = {}
-    #                 grade = 0
-    #                 for log in logs:
-    #                     if log.vehicle_in_time!=None:
-    #                         month = log.vehicle_in_time.strftime("%Y-%m")
-    #                         date = log.vehicle_in_time.strftime("%Y-%m-%d")
-    #                         payload = log.payload()
-    #                         # result["labels"] = list(payload.keys())
-    #                         mine_name = payload.get("Mines_Name")
-    #                         do_no = payload.get("DO_No")
-    #                         if payload.get("Grade") is not None:
-    #                             if '-' in payload.get("Grade"):
-    #                                 grade = payload.get("Grade").split("-")[0]
-    #                             else:
-    #                                 grade = payload.get("Grade")
-                            
-    #                         # If start_date is None or the current vehicle_in_time is earlier than start_date, update start_date
-    #                         if do_no not in start_dates:
-    #                             start_dates[do_no] = date
-    #                         elif date < start_dates[do_no]:
-    #                             start_dates[do_no] = date
-    #                         if payload.get("DO_Qty"):
-    #                             aggregated_data[date][do_no]["DO_Qty"] = float(payload["DO_Qty"])
-    #                         # if payload.get("DO_Qty"):
-    #                         #     aggregated_data[date][do_no]["DO_Qty"] += float(
-    #                         #         payload["DO_Qty"]
-    #                         #     )
-    #                         if payload.get("Challan_Net_Wt(MT)"):
-    #                             aggregated_data[date][do_no]["challan_lr_qty"] += float(
-    #                                 payload.get("Challan_Net_Wt(MT)")
-    #                             )
-    #                         if payload.get("Mines_Name"):
-    #                             aggregated_data[date][do_no]["mine_name"] = payload[
-    #                                 "Mines_Name"
-    #                             ]
-    #                         aggregated_data[date][do_no]["count"] += 1 
-
-    #                 dataList = [
-    #                     {
-    #                         "date": date,
-    #                         "data": {
-    #                             do_no: {
-    #                                 "DO_Qty": data["DO_Qty"],
-    #                                 "challan_lr_qty": data["challan_lr_qty"],
-    #                                 "mine_name": data["mine_name"],
-    #                                 "grade": grade,
-    #                                 "date": date,
-    #                             }
-    #                             for do_no, data in aggregated_data[date].items()
-    #                         },
+    #         sap_records = SapRecords.objects.all()
+        
+    #         if any(logs):
+    #             aggregated_data = defaultdict(
+    #                 lambda: defaultdict(
+    #                     lambda: {
+    #                         "DO_Qty": 0,
+    #                         "challan_lr_qty": 0,
+    #                         "challan_lr_qty_full": 0,
+    #                         "mine_name": "",
+    #                         "balance_qty": 0,
+    #                         "percent_of_supply": 0,
+    #                         "actual_net_qty": 0,
+    #                         "Gross_Calorific_Value_(Adb)": 0,
+    #                         "count": 0,
+    #                         "coal_count": 0,
+    #                         "start_date": "",
+    #                         "end_date": "",
+    #                         "source_type": "",
     #                     }
-    #                     for date in aggregated_data
-    #                 ]
-    #                 final_data = []
-    #                 if specified_date:
-    #                     filtered_data = [
-    #                         entry for entry in dataList if entry["date"] == specified_date
-    #                     ]
-    #                     if filtered_data:
-    #                         data = filtered_data[0]["data"]
-    #                         for data_dom, values in data.items():
-    #                             dictData = {}
-    #                             dictData["DO_No"] = data_dom
-    #                             dictData["mine_name"] = values["mine_name"]
-    #                             dictData["DO_Qty"] = values["DO_Qty"]
-    #                             dictData["challan_lr_qty"] = values["challan_lr_qty"]
-    #                             dictData["date"] = values["date"]
-    #                             dictData["cumulative_challan_lr_qty"] = 0
-    #                             dictData["balance_qty"] = 0
-    #                             dictData["percent_supply"] = 0
-    #                             dictData["asking_rate"] = 0
-    #                             dictData['average_GCV_Grade'] = values["grade"] 
-    #                             if data_dom in start_dates:
-    #                                 dictData["start_date"] = start_dates[data_dom]
-    #                                 # a total of 45 days data is needed, so date + 44 days
-    #                                 dictData["end_date"] = datetime.datetime.strptime(start_dates[data_dom], "%Y-%m-%d") + timedelta(days=44)
-    #                                 # dictData["balance_days"] = dictData["end_date"] - datetime.date.today()
-    #                                 balance_days = dictData["end_date"].date() - datetime.date.today()
-    #                                 dictData["balance_days"] = balance_days.days
-    #                             else:
-    #                                 dictData["start_date"] = None
-    #                                 dictData["end_date"] = None
-    #                                 dictData["balance_days"] = None
+    #                 )
+    #             )
+
+
+    #             start_dates = {}
+    #             grade = 0
+    #             for log in logs:
+    #                 if log.GWEL_Tare_Time!=None:
+    #                     month = log.GWEL_Tare_Time.strftime("%Y-%m")
+    #                     date = log.GWEL_Tare_Time.strftime("%Y-%m-%d")
+    #                     payload = log.payload()
+    #                     result["labels"] = list(payload.keys())
+    #                     mine_name = payload.get("Mines_Name")
+    #                     do_no = payload.get("DO_No")
+    #                     if payload.get("Grade") is not None:
+    #                         if '-' in payload.get("Grade"):
+    #                             grade = payload.get("Grade").split("-")[0]
+    #                         else:
+    #                             grade = payload.get("Grade")
+    #                     # If start_date is None or the current vehicle_in_time is earlier than start_date, update start_date
+    #                     # if do_no not in start_dates:
+    #                     #     start_dates[do_no] = date
+    #                     # elif date < start_dates[do_no]:
+    #                     #     start_dates[do_no] = date
+    #                     if payload.get("slno"):
+    #                         aggregated_data[date][do_no]["slno"] = datetime.datetime.strptime(payload.get("slno"), '%Y%m').strftime('%B %Y')
+    #                     else:
+    #                         aggregated_data[date][do_no]["slno"] = "-"
+    #                     if payload.get("start_date"):
+    #                         aggregated_data[date][do_no]["start_date"] = payload.get("start_date")
+    #                     else:
+    #                         aggregated_data[date][do_no]["start_date"] = "0"
+    #                     if payload.get("end_date"):
+    #                         aggregated_data[date][do_no]["end_date"] = payload.get("end_date")
+    #                     else:
+    #                         aggregated_data[date][do_no]["end_date"] = "0"
+
+    #                     if payload.get("Type_of_consumer"):
+    #                         aggregated_data[date][do_no]["source_type"] = payload.get("Type_of_consumer")
+
+    #                     if payload.get("DO_Qty"):
+    #                         aggregated_data[date][do_no]["DO_Qty"] = float(
+    #                             payload["DO_Qty"]
+    #                         )
+    #                     else:
+    #                         aggregated_data[date][do_no]["DO_Qty"] = 0
+
+    #                     challan_net_wt = payload.get("Challan_Net_Wt(MT)")    
                     
-    #                             # append data
-    #                             final_data.append(dictData)
-    #                     # console_logger.debug(final_data)
+    #                     if challan_net_wt:
+    #                         aggregated_data[date][do_no]["challan_lr_qty"] += float(challan_net_wt)
 
-    #                     if final_data:
-    #                         # Find the index of the month data in dataList
-    #                         index_of_month = next((index for index, item in enumerate(dataList) if item['date'] == specified_date), None)
+    #                     if payload.get("Mines_Name"):
+    #                         aggregated_data[date][do_no]["mine_name"] = payload[
+    #                             "Mines_Name"
+    #                         ]
+    #                     else:
+    #                         aggregated_data[date][do_no]["mine_name"] = "-"
+    #                     aggregated_data[date][do_no]["count"] += 1 
+                
+    #             for record in sap_records:
+    #                 do_no = record.do_no
+    #                 if do_no not in aggregated_data[specified_date]:
+    #                     aggregated_data[specified_date][do_no]["DO_Qty"] = float(record.do_qty) if record.do_qty else 0
+    #                     aggregated_data[specified_date][do_no]["mine_name"] = record.mine_name if record.mine_name else "-"
+    #                     aggregated_data[specified_date][do_no]["start_date"] = record.start_date if record.start_date else "0"
+    #                     aggregated_data[specified_date][do_no]["end_date"] = record.end_date if record.end_date else "0"
+    #                     aggregated_data[specified_date][do_no]["source_type"] = record.consumer_type if record.consumer_type else "Unknown"
+    #                     try:
+    #                         aggregated_data[specified_date][do_no]["slno"] = datetime.datetime.strptime(record.slno, "%Y%m").strftime("%B %Y") if record.slno else "-"
+    #                     except ValueError as e:
+    #                         aggregated_data[specified_date][do_no]["slno"] = record.slno if record.slno else "-"
+    #                     aggregated_data[specified_date][do_no]["count"] = 1
 
-    #                         # If the month is not found, exit or handle the case
-    #                         if index_of_month is None:
-    #                             print("Month data not found.")
-    #                             exit()
+    #             dataList = [
+    #                 {
+    #                     "date": date,
+    #                     "data": {
+    #                         do_no: {
+    #                             "DO_Qty": data["DO_Qty"],
+    #                             "challan_lr_qty": data["challan_lr_qty"],
+    #                             "mine_name": data["mine_name"],
+    #                             "grade": grade,
+    #                             "date": date,
+    #                             "start_date": data["start_date"],
+    #                             "end_date": data["end_date"],
+    #                             "source_type": data["source_type"],
+    #                             "slno": data["slno"],
+    #                         }
+    #                         for do_no, data in aggregated_data[date].items()
+    #                     },
+    #                 }
+    #                 for date in aggregated_data
+    #             ]
+    #             final_data = []
+    #             for entry in dataList:
+    #                 date = entry["date"]
+    #                 for data_dom, values in entry['data'].items():
+    #                     dictData = {}
+    #                     dictData["DO_No"] = data_dom
+    #                     dictData["mine_name"] = values["mine_name"]
+    #                     dictData["DO_Qty"] = values["DO_Qty"]
+    #                     dictData["club_challan_lr_qty"] = values["challan_lr_qty"]
+    #                     dictData["date"] = values["date"]
+    #                     dictData["start_date"] = values["start_date"]
+    #                     dictData["end_date"] = values["end_date"]
+    #                     dictData["source_type"] = values["source_type"]
+    #                     dictData["slno"] = values["slno"]
+    #                     dictData["cumulative_challan_lr_qty"] = 0
+    #                     dictData["balance_qty"] = 0
+    #                     dictData["percent_supply"] = 0
+    #                     dictData["asking_rate"] = 0
+    #                     dictData['average_GCV_Grade'] = values["grade"]
+                        
+    #                     if dictData["start_date"] != "0" and dictData["end_date"] != "0":
+    #                         today_date = datetime.datetime.today().date()
+    #                         # balance_days = datetime.datetime.strptime(dictData["end_date"], "%Y-%m-%d").date() - datetime.datetime.strptime(dictData["start_date"], "%Y-%m-%d").date()
+    #                         tomorrow_date = datetime.datetime.strptime(dictData["end_date"], "%Y-%m-%d").date() + datetime.timedelta(days=1)
+    #                         # balance_days = datetime.datetime.strptime(dictData["end_date"], "%Y-%m-%d").date() - datetime.datetime.today().date()
+    #                         balance_days = tomorrow_date - datetime.datetime.today().date()
+    #                         dictData["balance_days"] = balance_days.days
+    #                     else:
+    #                         dictData["balance_days"] = 0
 
-    #                         # Iterate over final_data
-    #                         for entry in final_data:
-    #                             do_no = entry["DO_No"]
-    #                             cumulative_lr_qty = 0
-                                
-    #                             # Iterate over dataList from the first month to the current month
-    #                             for i in range(index_of_month + 1):
-    #                                 month_data = dataList[i]
-    #                                 data = month_data["data"].get(do_no)
-                                    
-    #                                 # If data is found for the DO_No in the current month, update cumulative_lr_qty
-    #                                 if data:
-    #                                     cumulative_lr_qty += data['challan_lr_qty']
-                                
-    #                             # Update cumulative_challan_lr_qty in final_data
-    #                             entry['cumulative_challan_lr_qty'] = cumulative_lr_qty
-    #                             if data["DO_Qty"] != 0 and entry["cumulative_challan_lr_qty"] != 0:
-    #                                 entry["percent_supply"] = (entry["cumulative_challan_lr_qty"] / data["DO_Qty"]) * 100
-    #                             else:
-    #                                 entry["percent_supply"] = 0
+    #                     # if data_dom in start_dates:
+    #                     #     dictData["start_date"] = start_dates[data_dom]
+    #                     #     dictData["end_date"] = datetime.datetime.strptime(start_dates[data_dom], "%Y-%m-%d") + timedelta(days=44)
+    #                     #     balance_days = dictData["end_date"].date() - datetime.datetime.today().date()
+    #                     #     dictData["balance_days"] = balance_days.days
+    #                     # else:
+    #                     #     dictData["start_date"] = None
+    #                     #     dictData["end_date"] = None
+    #                     #     dictData["balance_days"] = None
+                        
+    #                     final_data.append(dictData)
 
-    #                             if entry["cumulative_challan_lr_qty"] != 0 and data["DO_Qty"] != 0:
-    #                                 entry["balance_qty"] = (data["DO_Qty"] - entry["cumulative_challan_lr_qty"])
-    #                             else:
-    #                                 entry["balance_qty"] = 0
-                                
-    #                             if entry["balance_qty"] and entry["balance_qty"] != 0:
-    #                                 if entry["balance_days"]:
-    #                                     entry["asking_rate"] = entry["balance_qty"] / entry["balance_days"]
+    #             if final_data:
+    #                 startdate = f'{specified_date} 00:00:00'
+    #                 enddate = f'{specified_date} 23:59:59'
+    #                 # to_ts = datetime.datetime.strptime(enddate,"%Y-%m-%d %H:%M:%S")
+    #                 from_ts = self.convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
+    #                 to_ts = self.convert_to_utc_format(enddate, "%Y-%m-%d %H:%M:%S")
                     
+    #                 pipeline = [
+    #                     {
+    #                         "$match": {
+    #                             "GWEL_Tare_Time": {"$gte": from_ts, "$lte": to_ts},
+    #                                 "net_qty": {"$ne": None}
+    #                             }
+    #                     },
+    #                     {
+    #                     '$group': {
+    #                         '_id': {
+    #                             'date': {
+    #                                 '$dateToString': {
+    #                                     'format': '%Y-%m-%d', 
+    #                                     'date': '$GWEL_Tare_Time'
+    #                                 }
+    #                             }, 
+    #                             'do_no': '$arv_cum_do_number'
+    #                         }, 
+    #                         'total_net_qty': {
+    #                             '$sum': {
+    #                                 '$toDouble': '$net_qty'
+    #                             }
+    #                         }
+    #                     }
+    #                 }]
 
-    #                 console_logger.debug(final_data)
+    #                 # filtered_data = [
+    #                 #     entry for entry in dataList if entry["date"] == specified_date
+    #                 # ]
+                    
+    #                 filtered_data_new = Gmrdata.objects.aggregate(pipeline)
+    #                 aggregated_totals = defaultdict(float)
+    #                 for single_data_entry in filtered_data_new:
+    #                     do_no = single_data_entry['_id']['do_no']
+    #                     total_net_qty = single_data_entry['total_net_qty']
+    #                     aggregated_totals[do_no] += total_net_qty
+                        
+    #                 data_by_do = {}
+    #                 finaldataMain = [single_data_list for single_data_list in final_data if single_data_list.get("balance_days") >= 0]
+    #                 for entry in finaldataMain:
+    #                     do_no = entry['DO_No']
+                        
+    #                     if do_no not in data_by_do:
+    #                         data_by_do[do_no] = entry
+    #                         data_by_do[do_no]['cumulative_challan_lr_qty'] = round(entry['club_challan_lr_qty'], 2)
+    #                     else:
+    #                         data_by_do[do_no]['cumulative_challan_lr_qty'] += round(entry['club_challan_lr_qty'], 2)
+
+    #                     if do_no in aggregated_totals:
+    #                         data_by_do[do_no]['challan_lr_qty'] = round(aggregated_totals[do_no], 2)
+    #                     else:
+    #                         data_by_do[do_no]['challan_lr_qty'] = 0
+
+    #                     if data_by_do[do_no]['DO_Qty'] != 0 and data_by_do[do_no]['cumulative_challan_lr_qty'] != 0:
+    #                         data_by_do[do_no]['percent_supply'] = round((data_by_do[do_no]['cumulative_challan_lr_qty'] / data_by_do[do_no]['DO_Qty']) * 100, 2)
+    #                     else:
+    #                         data_by_do[do_no]['percent_supply'] = 0
+
+    #                     # if data_by_do[do_no]['cumulative_challan_lr_qty'] != 0 and data_by_do[do_no]['DO_Qty'] != 0:
+    #                     data_by_do[do_no]['balance_qty'] = round(data_by_do[do_no]['DO_Qty'] - data_by_do[do_no]['cumulative_challan_lr_qty'], 2)
+    #                     # else:
+    #                     #     data_by_do[do_no]['balance_qty'] = 0
+                        
+    #                     if data_by_do[do_no]['balance_days'] and data_by_do[do_no]['balance_qty'] != 0:
+    #                         data_by_do[do_no]['asking_rate'] = round(data_by_do[do_no]['balance_qty'] / data_by_do[do_no]['balance_days'], 2)
+
+    #                 # final_data = list(data_by_do.values())
+    #                 sort_final_data = list(data_by_do.values())
+    #                 # Sort the data by 'balance_days', placing entries with 'balance_days' of 0 at the end
+    #                 final_data = sorted(sort_final_data, key=lambda x: (x['balance_days'] == 0, x['balance_days']))
     #                 if final_data:
+                        
+    #                     grouped_data = defaultdict(list)
+    #                     for single_data in final_data:
+    #                         source_type = single_data.get("source_type").strip()
+    #                         grouped_data[source_type].append(single_data)
+
+    #                     final_total_do_qty = 0
+    #                     final_total_challan_lr_qty = 0
+    #                     final_total_cc_lr_qty = 0
+    #                     final_total_balance_qty = 0
+
     #                     per_data = ""
     #                     per_data += "<table border='1'>"
-    #                     per_data += "<thead>"
-    #                     per_data += "<tr>"
-    #                     per_data += "<th>Mine Name</th>"
-    #                     per_data += "<th>DO No</th>"
-    #                     per_data += "<th>Grade</th>"
-    #                     per_data += "<th>DO Qty</th>"
-    #                     per_data += "<th>Challan LR Qty</th>"
-    #                     per_data += "<th>C.C. LR Qty</th>"
-    #                     per_data += "<th>Balance Qty</th>"
-    #                     per_data += "<th>% of Supply</th>"
-    #                     per_data += "<th>Balance Days</th>"
-    #                     per_data += "<th>Asking Rate</th>"
-    #                     per_data += "<th>Do Start date</th>"
-    #                     per_data += "<th>Do End date</th>"
-    #                     per_data += "</tr>"
-    #                     per_data += "</thead>"
-    #                     per_data += "<tbody>"
-    #                     for single_final_data in final_data:
-    #                         console_logger.debug(single_final_data)
+    #                     for source_type, entries in grouped_data.items():
+    #                         # per_data += f"<span style='font-size: 10px; font-weight: 600'>{source_type}</span>"
+    #                         per_data += f"<tr><td colspan='13' style='text-align: center'><b>{source_type}</b></span></td></tr>"
+    #                         # per_data += "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
+    #                         per_data += (
+    #                             "<thead>"
+    #                         )
     #                         per_data += "<tr>"
-    #                         per_data += f"<td>{single_final_data.get('mine_name')}</td>"
-    #                         per_data += f"<td>{single_final_data.get('DO_No')}</td>"
-    #                         per_data += f"<td>{single_final_data.get('average_GCV_Grade')}</td>"
-    #                         per_data += f"<td>{single_final_data.get('DO_Qty')}</td>"
-    #                         per_data += f"<td>{round(single_final_data.get('challan_lr_qty'), 2)}</td>"
-    #                         per_data += f"<td>{round(single_final_data.get('cumulative_challan_lr_qty'), 2)}</td>"
-    #                         per_data += f"<td>{round(single_final_data.get('balance_qty'), 2)}</td>"
-    #                         per_data += f"<td>{round(single_final_data.get('percent_supply'), 2)}</td>"
-    #                         per_data += f"<td>{single_final_data.get('balance_days')}</td>"
-    #                         # per_data += f"<td>{single_final_data.get('date')}</td>"
-    #                         per_data += f"<td>{round(single_final_data.get('asking_rate'), 2)}</td>"
-    #                         per_data += f"<td>{single_final_data.get('start_date')}</td>"
-    #                         per_data += f"<td>{single_final_data.get('end_date')}</td>"
-    #                         per_data += "</tr>"
-    #                     per_data += "</tbody>"
-    #                     per_data += "</table>"
+    #                         per_data += "<th>Month</th>"
+    #                         per_data += "<th>Mine Name</th>"
+    #                         per_data += "<th>DO No</th>"
+    #                         per_data += "<th>Grade</th>"
+    #                         per_data += "<th>DO Qty</th>"
+    #                         per_data += "<th>Challan LR / Qty</th>"
+    #                         per_data += "<th>C.C. LR / Qty</th>"
+    #                         per_data += "<th>Balance Qty</th>"
+    #                         per_data += "<th>% of Supply</th>"
+    #                         per_data += "<th>Balance Days</th>"
+    #                         per_data += "<th>Asking Rate</th>"
+    #                         per_data += "<th>Do Start date</th>"
+    #                         per_data += "<th>Do End date</th></tr></thead><tbody>"
+    #                         total_do_qty = 0
+    #                         total_challan_lr_qty = 0
+    #                         total_cc_lr_qty = 0
+    #                         total_balance_qty = 0
 
-    #                     console_logger.debug(per_data)
+    #                         for entry in entries:
+    #                             per_data += f"<tr>"
+    #                             per_data += f"<td> {entry.get('slno')}</span></td>"
+    #                             per_data += f"<td> {entry.get('mine_name')}</span></td>"
+    #                             per_data += f"<td> {entry.get('DO_No')}</span></td>"
+    #                             per_data += f"<td> {entry.get('average_GCV_Grade')}</span></td>"
+    #                             per_data += f"<td> {round(entry.get('DO_Qty'), 2)}</span></td>"
+    #                             total_do_qty += round(entry.get('DO_Qty'), 2)
+    #                             per_data += f"<td> {round(entry.get('challan_lr_qty'), 2)}</span></td>"
+    #                             total_challan_lr_qty += round(entry.get('challan_lr_qty'), 2)
+    #                             per_data += f"<td> {round(entry.get('cumulative_challan_lr_qty'), 2)}</span></td>"
+    #                             total_cc_lr_qty += round(entry.get('cumulative_challan_lr_qty'), 2)
+    #                             per_data += f"<td> {round(entry.get('balance_qty'), 2)}</span></td>"
+    #                             total_balance_qty += round(entry.get('balance_qty'), 2)
+    #                             per_data += f"<td> {round(entry.get('percent_supply'), 2)}%</span></td>"
+    #                             per_data += f"<td> {entry.get('balance_days')}</span></td>"
+    #                             per_data += f"<td> {round(entry.get('asking_rate'))}</span></td>"
+    #                             if entry.get("start_date") != "0":
+    #                                 per_data += f"<td> {datetime.datetime.strptime(entry.get('start_date'),'%Y-%m-%d').strftime('%d %B %y')}</span></td>"
+    #                             else:
+    #                                 per_data += f"<td>0</span></td>"
+    #                             if entry.get("end_date") != "0":
+    #                                 per_data += f"<td> {datetime.datetime.strptime(entry.get('end_date'),'%Y-%m-%d').strftime('%d %B %y')}</span></td>"
+    #                             else:    
+    #                                 per_data += f"<td>0</span></td>"
+    #                             per_data += "</tr>"
+    #                         per_data += "<tr>"
+    #                         per_data += "<td colspan='4'><strong>Total</strong></td>"
+    #                         per_data += f"<td><strong>{round(total_do_qty, 2)}</strong></td>"
+    #                         per_data += f"<td><strong>{round(total_challan_lr_qty, 2)}</strong></td>"
+    #                         per_data += f"<td><strong>{round(total_cc_lr_qty, 2)}</strong></td>"
+    #                         per_data += f"<td><strong>{round(total_balance_qty, 2)}</strong></td>"
+    #                         if total_cc_lr_qty != 0 and total_do_qty != 0:
+    #                             per_data += f"<td><strong>{round(total_cc_lr_qty/total_do_qty, 2)}%</strong></td>"
+    #                         else:
+    #                             per_data += f"<td><strong>0%</strong></td>"
+    #                         per_data += f"<td colspan='4'><strong></strong></td>"
+    #                         per_data += "</tr>"
+    #                         final_total_do_qty += total_do_qty
+    #                         final_total_challan_lr_qty += total_challan_lr_qty
+    #                         final_total_cc_lr_qty += total_cc_lr_qty
+    #                         final_total_balance_qty += total_balance_qty
+    #                     per_data += "<tr>"
+    #                     per_data += "<td colspan='4'><strong>Grand Total</strong></td>"
+    #                     per_data += f"<td><strong>{round(final_total_do_qty, 2)}</strong></td>"
+    #                     per_data += f"<td><strong>{round(final_total_challan_lr_qty, 2)}</strong></td>"
+    #                     per_data += f"<td><strong>{round(final_total_cc_lr_qty, 2)}</strong></td>"
+    #                     per_data += f"<td><strong>{round(final_total_balance_qty, 2)}</strong></td>"
+    #                     per_data += f"<td><strong>{round(final_total_cc_lr_qty/final_total_do_qty, 2)}%</strong></td>"
+    #                     per_data += f"<td colspan='4'><strong></strong></td>"
+    #                     per_data += "</tr>"
+    #                     per_data += "</tbody></table>"
     #                     return per_data
     #                 else:
     #                     return 404
@@ -1997,359 +2139,1014 @@ class DataExecutions:
     #         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
     #         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
     #         return e
-        
 
-    def download_road_coal_logistics(self, specified_date: str, mine: Optional[str] = "All"):
+    def download_road_coal_logistics(self, specified_date: str):
         try:
-            data = {}
-            result = {
-                "labels": [],
-                "datasets": [],
-                "weight_total": [],
-                "total": 0,
-                "page_size": 15,
-            }
-
-            if mine and mine != "All":
-                data["mine__icontains"] = mine.upper()
-
             if specified_date:
+                from_ts = self.convert_to_utc_format(f'{specified_date} 00:00:00', "%Y-%m-%d %H:%M:%S")
                 to_ts = self.convert_to_utc_format(f'{specified_date} 23:59:59', "%Y-%m-%d %H:%M:%S")
-
-            logs = (
-                Gmrdata.objects(GWEL_Tare_Time__lte=to_ts, actual_tare_qty__ne=None, gate_approved=True, GWEL_Tare_Time__ne=None)
-                # Gmrdata.objects()
-                .order_by("-GWEL_Tare_Time")
-            )
-
-            sap_records = SapRecords.objects.all()
-        
-            if any(logs):
-                aggregated_data = defaultdict(
-                    lambda: defaultdict(
-                        lambda: {
-                            "DO_Qty": 0,
-                            "challan_lr_qty": 0,
-                            "challan_lr_qty_full": 0,
-                            "mine_name": "",
-                            "balance_qty": 0,
-                            "percent_of_supply": 0,
-                            "actual_net_qty": 0,
-                            "Gross_Calorific_Value_(Adb)": 0,
-                            "count": 0,
-                            "coal_count": 0,
-                            "start_date": "",
-                            "end_date": "",
-                            "source_type": "",
+            created_at_date = datetime.datetime(2024, 9, 23, 19, 50, 51, 572000)
+            basePipeline = [
+                {
+                    '$match': {
+                        'created_at': {
+                            '$gt': created_at_date,
                         }
-                    )
-                )
-
-
-                start_dates = {}
-                grade = 0
-                for log in logs:
-                    if log.GWEL_Tare_Time!=None:
-                        month = log.GWEL_Tare_Time.strftime("%Y-%m")
-                        date = log.GWEL_Tare_Time.strftime("%Y-%m-%d")
-                        payload = log.payload()
-                        result["labels"] = list(payload.keys())
-                        mine_name = payload.get("Mines_Name")
-                        do_no = payload.get("DO_No")
-                        if payload.get("Grade") is not None:
-                            if '-' in payload.get("Grade"):
-                                grade = payload.get("Grade").split("-")[0]
-                            else:
-                                grade = payload.get("Grade")
-                        # If start_date is None or the current vehicle_in_time is earlier than start_date, update start_date
-                        # if do_no not in start_dates:
-                        #     start_dates[do_no] = date
-                        # elif date < start_dates[do_no]:
-                        #     start_dates[do_no] = date
-                        if payload.get("slno"):
-                            aggregated_data[date][do_no]["slno"] = datetime.datetime.strptime(payload.get("slno"), '%Y%m').strftime('%B %Y')
-                        else:
-                            aggregated_data[date][do_no]["slno"] = "-"
-                        if payload.get("start_date"):
-                            aggregated_data[date][do_no]["start_date"] = payload.get("start_date")
-                        else:
-                            aggregated_data[date][do_no]["start_date"] = "0"
-                        if payload.get("end_date"):
-                            aggregated_data[date][do_no]["end_date"] = payload.get("end_date")
-                        else:
-                            aggregated_data[date][do_no]["end_date"] = "0"
-
-                        if payload.get("Type_of_consumer"):
-                            aggregated_data[date][do_no]["source_type"] = payload.get("Type_of_consumer")
-
-                        if payload.get("DO_Qty"):
-                            aggregated_data[date][do_no]["DO_Qty"] = float(
-                                payload["DO_Qty"]
-                            )
-                        else:
-                            aggregated_data[date][do_no]["DO_Qty"] = 0
-
-                        challan_net_wt = payload.get("Challan_Net_Wt(MT)")    
-                    
-                        if challan_net_wt:
-                            aggregated_data[date][do_no]["challan_lr_qty"] += float(challan_net_wt)
-
-                        if payload.get("Mines_Name"):
-                            aggregated_data[date][do_no]["mine_name"] = payload[
-                                "Mines_Name"
-                            ]
-                        else:
-                            aggregated_data[date][do_no]["mine_name"] = "-"
-                        aggregated_data[date][do_no]["count"] += 1 
-                
-                for record in sap_records:
-                    do_no = record.do_no
-                    if do_no not in aggregated_data[specified_date]:
-                        aggregated_data[specified_date][do_no]["DO_Qty"] = float(record.do_qty) if record.do_qty else 0
-                        aggregated_data[specified_date][do_no]["mine_name"] = record.mine_name if record.mine_name else "-"
-                        aggregated_data[specified_date][do_no]["start_date"] = record.start_date if record.start_date else "0"
-                        aggregated_data[specified_date][do_no]["end_date"] = record.end_date if record.end_date else "0"
-                        aggregated_data[specified_date][do_no]["source_type"] = record.consumer_type if record.consumer_type else "Unknown"
-                        try:
-                            aggregated_data[specified_date][do_no]["slno"] = datetime.datetime.strptime(record.slno, "%Y%m").strftime("%B %Y") if record.slno else "-"
-                        except ValueError as e:
-                            aggregated_data[specified_date][do_no]["slno"] = record.slno if record.slno else "-"
-                        aggregated_data[specified_date][do_no]["count"] = 1
-
-                dataList = [
-                    {
-                        "date": date,
-                        "data": {
-                            do_no: {
-                                "DO_Qty": data["DO_Qty"],
-                                "challan_lr_qty": data["challan_lr_qty"],
-                                "mine_name": data["mine_name"],
-                                "grade": grade,
-                                "date": date,
-                                "start_date": data["start_date"],
-                                "end_date": data["end_date"],
-                                "source_type": data["source_type"],
-                                "slno": data["slno"],
-                            }
-                            for do_no, data in aggregated_data[date].items()
-                        },
                     }
-                    for date in aggregated_data
-                ]
-                final_data = []
-                for entry in dataList:
-                    date = entry["date"]
-                    for data_dom, values in entry['data'].items():
-                        dictData = {}
-                        dictData["DO_No"] = data_dom
-                        dictData["mine_name"] = values["mine_name"]
-                        dictData["DO_Qty"] = values["DO_Qty"]
-                        dictData["club_challan_lr_qty"] = values["challan_lr_qty"]
-                        dictData["date"] = values["date"]
-                        dictData["start_date"] = values["start_date"]
-                        dictData["end_date"] = values["end_date"]
-                        dictData["source_type"] = values["source_type"]
-                        dictData["slno"] = values["slno"]
-                        dictData["cumulative_challan_lr_qty"] = 0
-                        dictData["balance_qty"] = 0
-                        dictData["percent_supply"] = 0
-                        dictData["asking_rate"] = 0
-                        dictData['average_GCV_Grade'] = values["grade"]
-                        
-                        if dictData["start_date"] != "0" and dictData["end_date"] != "0":
-                            today_date = datetime.datetime.today().date()
-                            # balance_days = datetime.datetime.strptime(dictData["end_date"], "%Y-%m-%d").date() - datetime.datetime.strptime(dictData["start_date"], "%Y-%m-%d").date()
-                            tomorrow_date = datetime.datetime.strptime(dictData["end_date"], "%Y-%m-%d").date() + datetime.timedelta(days=1)
-                            # balance_days = datetime.datetime.strptime(dictData["end_date"], "%Y-%m-%d").date() - datetime.datetime.today().date()
-                            balance_days = tomorrow_date - datetime.datetime.today().date()
-                            dictData["balance_days"] = balance_days.days
-                        else:
-                            dictData["balance_days"] = 0
-
-                        # if data_dom in start_dates:
-                        #     dictData["start_date"] = start_dates[data_dom]
-                        #     dictData["end_date"] = datetime.datetime.strptime(start_dates[data_dom], "%Y-%m-%d") + timedelta(days=44)
-                        #     balance_days = dictData["end_date"].date() - datetime.datetime.today().date()
-                        #     dictData["balance_days"] = balance_days.days
-                        # else:
-                        #     dictData["start_date"] = None
-                        #     dictData["end_date"] = None
-                        #     dictData["balance_days"] = None
-                        
-                        final_data.append(dictData)
-
-                if final_data:
-                    startdate = f'{specified_date} 00:00:00'
-                    enddate = f'{specified_date} 23:59:59'
-                    # to_ts = datetime.datetime.strptime(enddate,"%Y-%m-%d %H:%M:%S")
-                    from_ts = self.convert_to_utc_format(startdate, "%Y-%m-%d %H:%M:%S")
-                    to_ts = self.convert_to_utc_format(enddate, "%Y-%m-%d %H:%M:%S")
-                    
-                    pipeline = [
-                        {
-                            "$match": {
-                                "GWEL_Tare_Time": {"$gte": from_ts, "$lte": to_ts},
-                                    "net_qty": {"$ne": None}
-                                }
+                },
+                {
+                    '$match': {
+                        'GWEL_Tare_Time': {
+                            '$ne': None, 
+                            # '$gte': from_ts, 
+                            '$lte': to_ts,
+                        }
+                    }
+                }, {
+                    '$group': {
+                        '_id': '$arv_cum_do_number', 
+                        'challan_lr_qty': {
+                            '$sum': {
+                                '$toDouble': '$net_qty'
+                            }
+                        }, 
+                        'Grade': {
+                            '$first': '$grade'
+                        }, 
+                        'slno': {
+                            '$first': '$slno'
+                        }, 
+                        'start_date': {
+                            '$first': '$start_date'
+                        }, 
+                        'end_date': {
+                            '$first': '$end_date'
+                        }, 
+                        'type_consumer': {
+                            '$first': '$type_consumer'
+                        }, 
+                        'do_qty': {
+                            '$first': '$po_qty'
+                        }, 
+                        'mine_name': {
+                            '$first': '$mine'
+                        }, 
+                        'grn_status': {
+                            '$first': '$grn_status'
                         },
-                        {
-                        '$group': {
-                            '_id': {
-                                'date': {
-                                    '$dateToString': {
-                                        'format': '%Y-%m-%d', 
-                                        'date': '$GWEL_Tare_Time'
+                        'date': {
+                            '$last': '$GWEL_Tare_Time'
+                        }
+                    }
+                }, {
+                    '$lookup': {
+                        'from': 'gmrdata', 
+                        'localField': '_id', 
+                        'foreignField': 'arv_cum_do_number', 
+                        'as': 'cumulative_data'
+                    }
+                }, 
+                {
+                    '$addFields': {
+                        'cumulative_challan_lr_qty': {
+                            '$sum': {
+                                '$map': {
+                                    'input': '$cumulative_data', 
+                                    'as': 'item', 
+                                    'in': {
+                                        '$convert': {
+                                            'input': '$$item.net_qty', 
+                                            'to': 'double', 
+                                            'onError': 0, 
+                                            'onNull': 0
+                                        }
                                     }
-                                }, 
-                                'do_no': '$arv_cum_do_number'
-                            }, 
-                            'total_net_qty': {
-                                '$sum': {
-                                    '$toDouble': '$net_qty'
                                 }
                             }
                         }
-                    }]
+                    }
+                }
+            ]
 
-                    # filtered_data = [
-                    #     entry for entry in dataList if entry["date"] == specified_date
-                    # ]
-                    
-                    filtered_data_new = Gmrdata.objects.aggregate(pipeline)
-                    aggregated_totals = defaultdict(float)
-                    for single_data_entry in filtered_data_new:
-                        do_no = single_data_entry['_id']['do_no']
-                        total_net_qty = single_data_entry['total_net_qty']
-                        aggregated_totals[do_no] += total_net_qty
-                        
-                    data_by_do = {}
-                    finaldataMain = [single_data_list for single_data_list in final_data if single_data_list.get("balance_days") >= 0]
-                    for entry in finaldataMain:
-                        do_no = entry['DO_No']
-                        
-                        if do_no not in data_by_do:
-                            data_by_do[do_no] = entry
-                            data_by_do[do_no]['cumulative_challan_lr_qty'] = round(entry['club_challan_lr_qty'], 2)
-                        else:
-                            data_by_do[do_no]['cumulative_challan_lr_qty'] += round(entry['club_challan_lr_qty'], 2)
+            challanlrqtybasePipeline = [
+                {
+                    '$match': {
+                        'created_at': {
+                            '$gt': created_at_date,
+                        }
+                    }
+                },
+                {
+                    '$match': {
+                        'GWEL_Tare_Time': {
+                            '$ne': None, 
+                            '$gte': from_ts, 
+                            '$lte': to_ts,
+                        }
+                    }
+                }, {
+                    '$group': {
+                        '_id': '$arv_cum_do_number', 
+                        'challan_lr_qty': {
+                            '$sum': {
+                                '$toDouble': '$net_qty'
+                            }
+                        }, 
+                        'Grade': {
+                            '$first': '$grade'
+                        }, 
+                        'slno': {
+                            '$first': '$slno'
+                        }, 
+                        'start_date': {
+                            '$first': '$start_date'
+                        }, 
+                        'end_date': {
+                            '$first': '$end_date'
+                        }, 
+                        'type_consumer': {
+                            '$first': '$type_consumer'
+                        }, 
+                        'do_qty': {
+                            '$first': '$po_qty'
+                        }, 
+                        'mine_name': {
+                            '$first': '$mine'
+                        }, 
+                        'grn_status': {
+                            '$first': '$grn_status'
+                        },
+                        'date': {
+                            '$last': '$GWEL_Tare_Time'
+                        }
+                    }
+                }, {
+                    '$lookup': {
+                        'from': 'gmrdata', 
+                        'localField': '_id', 
+                        'foreignField': 'arv_cum_do_number', 
+                        'as': 'cumulative_data'
+                    }
+                }, 
+                {
+                    '$addFields': {
+                        'cumulative_challan_lr_qty': {
+                            '$sum': {
+                                '$map': {
+                                    'input': '$cumulative_data', 
+                                    'as': 'item', 
+                                    'in': {
+                                        '$convert': {
+                                            'input': '$$item.net_qty', 
+                                            'to': 'double', 
+                                            'onError': 0, 
+                                            'onNull': 0
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+            basePipelineHistoric = [
+                {
+                    '$match': {
+                        'GWEL_Tare_Time': {
+                            '$ne': None, 
+                            # '$gte': from_ts, 
+                            '$lte': to_ts,
+                        }
+                    }
+                }, {
+                    '$group': {
+                        '_id': '$arv_cum_do_number', 
+                        'challan_lr_qty': {
+                            '$sum': {
+                                '$toDouble': '$net_qty'
+                            }
+                        }, 
+                        'Grade': {
+                            '$first': '$grade'
+                        }, 
+                        'slno': {
+                            '$first': '$slno'
+                        }, 
+                        'start_date': {
+                            '$first': '$start_date'
+                        }, 
+                        'end_date': {
+                            '$first': '$end_date'
+                        }, 
+                        'type_consumer': {
+                            '$first': '$type_consumer'
+                        }, 
+                        'do_qty': {
+                            '$first': '$po_qty'
+                        }, 
+                        'mine_name': {
+                            '$first': '$mine'
+                        }, 
+                        'grn_status': {
+                            '$first': '$grn_status'
+                        },
+                        'date': {
+                            '$last': '$GWEL_Tare_Time'
+                        }
+                    }
+                }, {
+                    '$lookup': {
+                        'from': 'gmrdata', 
+                        'localField': '_id', 
+                        'foreignField': 'arv_cum_do_number', 
+                        'as': 'cumulative_data'
+                    }
+                }, 
+                {
+                    '$addFields': {
+                        'cumulative_challan_lr_qty': {
+                            '$sum': {
+                                '$map': {
+                                    'input': '$cumulative_data', 
+                                    'as': 'item', 
+                                    'in': {
+                                        '$convert': {
+                                            'input': '$$item.net_qty', 
+                                            'to': 'double', 
+                                            'onError': 0, 
+                                            'onNull': 0
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
 
-                        if do_no in aggregated_totals:
-                            data_by_do[do_no]['challan_lr_qty'] = round(aggregated_totals[do_no], 2)
-                        else:
-                            data_by_do[do_no]['challan_lr_qty'] = 0
+            basepipelineHistoricChallanLrQty = [
+                {
+                    '$match': {
+                        'GWEL_Tare_Time': {
+                            '$ne': None, 
+                            '$gte': from_ts, 
+                            '$lte': to_ts,
+                        }
+                    }
+                }, {
+                    '$group': {
+                        '_id': '$arv_cum_do_number', 
+                        'challan_lr_qty': {
+                            '$sum': {
+                                '$toDouble': '$net_qty'
+                            }
+                        }, 
+                        'Grade': {
+                            '$first': '$grade'
+                        }, 
+                        'slno': {
+                            '$first': '$slno'
+                        }, 
+                        'start_date': {
+                            '$first': '$start_date'
+                        }, 
+                        'end_date': {
+                            '$first': '$end_date'
+                        }, 
+                        'type_consumer': {
+                            '$first': '$type_consumer'
+                        }, 
+                        'do_qty': {
+                            '$first': '$po_qty'
+                        }, 
+                        'mine_name': {
+                            '$first': '$mine'
+                        }, 
+                        'grn_status': {
+                            '$first': '$grn_status'
+                        },
+                        'date': {
+                            '$last': '$GWEL_Tare_Time'
+                        }
+                    }
+                }, {
+                    '$lookup': {
+                        'from': 'gmrdata', 
+                        'localField': '_id', 
+                        'foreignField': 'arv_cum_do_number', 
+                        'as': 'cumulative_data'
+                    }
+                }, 
+                {
+                    '$addFields': {
+                        'cumulative_challan_lr_qty': {
+                            '$sum': {
+                                '$map': {
+                                    'input': '$cumulative_data', 
+                                    'as': 'item', 
+                                    'in': {
+                                        '$convert': {
+                                            'input': '$$item.net_qty', 
+                                            'to': 'double', 
+                                            'onError': 0, 
+                                            'onNull': 0
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
 
-                        if data_by_do[do_no]['DO_Qty'] != 0 and data_by_do[do_no]['cumulative_challan_lr_qty'] != 0:
-                            data_by_do[do_no]['percent_supply'] = round((data_by_do[do_no]['cumulative_challan_lr_qty'] / data_by_do[do_no]['DO_Qty']) * 100, 2)
-                        else:
-                            data_by_do[do_no]['percent_supply'] = 0
+            # roadrcr start
+            basePipelineRcrRoad = [
+                {
+                    '$match': {
+                        'tar_wt_date': {
+                            '$ne': None, 
+                            # '$gte': from_ts, 
+                            '$lte': to_ts,
+                        }
+                    }
+                }, {
+                    '$group': {
+                        '_id': '$do_number', 
+                        'challan_lr_qty': {
+                            '$sum': {
+                                '$toDouble': '$dc_net_wt'
+                            }
+                        }, 
+                        'Grade': {
+                            '$first': '$grade'
+                        }, 
+                        'slno': {
+                            '$first': '$slno'
+                        }, 
+                        'start_date': {
+                            '$first': '$start_date'
+                        }, 
+                        'end_date': {
+                            '$first': '$end_date'
+                        }, 
+                        'type_consumer': {
+                            '$first': '$type_consumer'
+                        }, 
+                        'do_qty': {
+                            '$first': '$po_qty'
+                        }, 
+                        'mine_name': {
+                            '$first': '$mine'
+                        }, 
+                        'date': {
+                            '$last': '$tar_wt_date'
+                        }
+                    }
+                }, {
+                    '$lookup': {
+                        'from': 'RcrRoadData', 
+                        'localField': '_id', 
+                        'foreignField': 'do_number', 
+                        'as': 'cumulative_data'
+                    }
+                }, 
+                # {
+                #     '$addFields': {
+                #         'cumulative_challan_lr_qty': {
+                #             '$sum': {
+                #                 '$map': {
+                #                     'input': '$cumulative_data', 
+                #                     'as': 'item', 
+                #                     'in': {
+                #                         '$toDouble': '$$item.dc_net_wt'
+                #                     }
+                #                 }
+                #             }
+                #         }
+                #     }
+                # }
+                {
+                    '$addFields': {
+                        'cumulative_challan_lr_qty': {
+                            '$sum': {
+                                '$map': {
+                                    'input': '$cumulative_data', 
+                                    'as': 'item', 
+                                    'in': {
+                                        '$convert': {
+                                            'input': '$$item.net_qty', 
+                                            'to': 'double', 
+                                            'onError': 0, 
+                                            'onNull': 0
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
 
-                        # if data_by_do[do_no]['cumulative_challan_lr_qty'] != 0 and data_by_do[do_no]['DO_Qty'] != 0:
-                        data_by_do[do_no]['balance_qty'] = round(data_by_do[do_no]['DO_Qty'] - data_by_do[do_no]['cumulative_challan_lr_qty'], 2)
-                        # else:
-                        #     data_by_do[do_no]['balance_qty'] = 0
-                        
-                        if data_by_do[do_no]['balance_days'] and data_by_do[do_no]['balance_qty'] != 0:
-                            data_by_do[do_no]['asking_rate'] = round(data_by_do[do_no]['balance_qty'] / data_by_do[do_no]['balance_days'], 2)
 
-                    # final_data = list(data_by_do.values())
-                    sort_final_data = list(data_by_do.values())
-                    # Sort the data by 'balance_days', placing entries with 'balance_days' of 0 at the end
-                    final_data = sorted(sort_final_data, key=lambda x: (x['balance_days'] == 0, x['balance_days']))
-                    if final_data:
-                        
-                        grouped_data = defaultdict(list)
-                        for single_data in final_data:
-                            source_type = single_data.get("source_type").strip()
-                            grouped_data[source_type].append(single_data)
+            basepipelineRcrRoadChallanLrQty = [
+                {
+                    '$match': {
+                        'tar_wt_date': {
+                            '$ne': None, 
+                            '$gte': from_ts, 
+                            '$lte': to_ts,
+                        }
+                    }
+                }, {
+                    '$group': {
+                        '_id': '$do_number', 
+                        'challan_lr_qty': {
+                            '$sum': {
+                                '$toDouble': '$dc_net_wt'
+                            }
+                        }, 
+                        'Grade': {
+                            '$first': '$grade'
+                        }, 
+                        'slno': {
+                            '$first': '$slno'
+                        }, 
+                        'start_date': {
+                            '$first': '$start_date'
+                        }, 
+                        'end_date': {
+                            '$first': '$end_date'
+                        }, 
+                        'type_consumer': {
+                            '$first': '$type_consumer'
+                        }, 
+                        'do_qty': {
+                            '$first': '$po_qty'
+                        }, 
+                        'mine_name': {
+                            '$first': '$mine'
+                        }, 
+                        # 'grn_status': {
+                        #     '$first': '$grn_status'
+                        # },
+                        'date': {
+                            '$last': '$tar_wt_date'
+                        }
+                    }
+                }, {
+                    '$lookup': {
+                        'from': 'RcrRoadData', 
+                        'localField': '_id', 
+                        'foreignField': 'do_number', 
+                        'as': 'cumulative_data'
+                    }
+                }, 
+                {
+                    '$addFields': {
+                        'cumulative_challan_lr_qty': {
+                            '$sum': {
+                                '$map': {
+                                    'input': '$cumulative_data', 
+                                    'as': 'item', 
+                                    'in': {
+                                        '$convert': {
+                                            'input': '$$item.net_qty', 
+                                            'to': 'double', 
+                                            'onError': 0, 
+                                            'onNull': 0
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+            # roadrcr end 
 
-                        final_total_do_qty = 0
-                        final_total_challan_lr_qty = 0
-                        final_total_cc_lr_qty = 0
-                        final_total_balance_qty = 0
+            saprecordsPipeline = [
+                {
+                    '$match': {
+                        '$expr': {
+                            '$and': [
+                                {
+                                    '$lte': [
+                                        { '$dateFromString': { 'dateString': '$start_date' } }, 
+                                        datetime.datetime.strptime(specified_date, "%Y-%m-%d")
+                                    ]
+                                }, 
+                                {
+                                    '$gte': [
+                                        { '$dateFromString': { 'dateString': '$end_date' } }, 
+                                        datetime.datetime.strptime(specified_date, "%Y-%m-%d")
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                }, 
+                {
+                    '$group': {
+                        '_id': '$do_no',  # Grouping by do_no
+                        'mine_name': { '$first': '$mine_name' },  # Getting the first mine_name in the group
+                        'do_qty': { '$sum': { '$toDouble': '$do_qty' } },  # Summing up the do_qty as double
+                        'start_date': { '$first': '$start_date' },  # Getting the first start_date
+                        'end_date': { '$first': '$end_date' },  # Getting the first end_date
+                        'source_type': { '$first': '$consumer_type' },  # Getting the first source_type
+                        'slno': { '$first': '$slno' },  # Getting the first slno
+                        'Grade': {'$first': '$grade'}
+                    }
+                }, 
+                {
+                    '$project': {
+                        '_id': 1, 
+                        'mine_name': 1, 
+                        'do_qty': 1, 
+                        'start_date': 1, 
+                        'end_date': 1, 
+                        'source_type': 1, 
+                        'slno': 1,
+                        'Grade': 1,
+                    }
+                }
+            ]
 
-                        per_data = ""
-                        per_data += "<table border='1'>"
-                        for source_type, entries in grouped_data.items():
-                            # per_data += f"<span style='font-size: 10px; font-weight: 600'>{source_type}</span>"
-                            per_data += f"<tr><td colspan='13' style='text-align: center'><b>{source_type}</b></span></td></tr>"
-                            # per_data += "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
-                            per_data += (
-                                "<thead>"
-                            )
-                            per_data += "<tr>"
-                            per_data += "<th>Month</th>"
-                            per_data += "<th>Mine Name</th>"
-                            per_data += "<th>DO No</th>"
-                            per_data += "<th>Grade</th>"
-                            per_data += "<th>DO Qty</th>"
-                            per_data += "<th>Challan LR / Qty</th>"
-                            per_data += "<th>C.C. LR / Qty</th>"
-                            per_data += "<th>Balance Qty</th>"
-                            per_data += "<th>% of Supply</th>"
-                            per_data += "<th>Balance Days</th>"
-                            per_data += "<th>Asking Rate</th>"
-                            per_data += "<th>Do Start date</th>"
-                            per_data += "<th>Do End date</th></tr></thead><tbody>"
-                            total_do_qty = 0
-                            total_challan_lr_qty = 0
-                            total_cc_lr_qty = 0
-                            total_balance_qty = 0
 
-                            for entry in entries:
-                                per_data += f"<tr>"
-                                per_data += f"<td> {entry.get('slno')}</span></td>"
-                                per_data += f"<td> {entry.get('mine_name')}</span></td>"
-                                per_data += f"<td> {entry.get('DO_No')}</span></td>"
-                                per_data += f"<td> {entry.get('average_GCV_Grade')}</span></td>"
-                                per_data += f"<td> {round(entry.get('DO_Qty'), 2)}</span></td>"
-                                total_do_qty += round(entry.get('DO_Qty'), 2)
-                                per_data += f"<td> {round(entry.get('challan_lr_qty'), 2)}</span></td>"
-                                total_challan_lr_qty += round(entry.get('challan_lr_qty'), 2)
-                                per_data += f"<td> {round(entry.get('cumulative_challan_lr_qty'), 2)}</span></td>"
-                                total_cc_lr_qty += round(entry.get('cumulative_challan_lr_qty'), 2)
-                                per_data += f"<td> {round(entry.get('balance_qty'), 2)}</span></td>"
-                                total_balance_qty += round(entry.get('balance_qty'), 2)
-                                per_data += f"<td> {round(entry.get('percent_supply'), 2)}%</span></td>"
-                                per_data += f"<td> {entry.get('balance_days')}</span></td>"
-                                per_data += f"<td> {round(entry.get('asking_rate'))}</span></td>"
-                                if entry.get("start_date") != "0":
-                                    per_data += f"<td> {datetime.datetime.strptime(entry.get('start_date'),'%Y-%m-%d').strftime('%d %B %y')}</span></td>"
-                                else:
-                                    per_data += f"<td>0</span></td>"
-                                if entry.get("end_date") != "0":
-                                    per_data += f"<td> {datetime.datetime.strptime(entry.get('end_date'),'%Y-%m-%d').strftime('%d %B %y')}</span></td>"
-                                else:    
-                                    per_data += f"<td>0</span></td>"
-                                per_data += "</tr>"
-                            per_data += "<tr>"
-                            per_data += "<td colspan='4'><strong>Total</strong></td>"
-                            per_data += f"<td><strong>{round(total_do_qty, 2)}</strong></td>"
-                            per_data += f"<td><strong>{round(total_challan_lr_qty, 2)}</strong></td>"
-                            per_data += f"<td><strong>{round(total_cc_lr_qty, 2)}</strong></td>"
-                            per_data += f"<td><strong>{round(total_balance_qty, 2)}</strong></td>"
-                            if total_cc_lr_qty != 0 and total_do_qty != 0:
-                                per_data += f"<td><strong>{round(total_cc_lr_qty/total_do_qty, 2)}%</strong></td>"
-                            else:
-                                per_data += f"<td><strong>0%</strong></td>"
-                            per_data += f"<td colspan='4'><strong></strong></td>"
-                            per_data += "</tr>"
-                            final_total_do_qty += total_do_qty
-                            final_total_challan_lr_qty += total_challan_lr_qty
-                            final_total_cc_lr_qty += total_cc_lr_qty
-                            final_total_balance_qty += total_balance_qty
-                        per_data += "<tr>"
-                        per_data += "<td colspan='4'><strong>Grand Total</strong></td>"
-                        per_data += f"<td><strong>{round(final_total_do_qty, 2)}</strong></td>"
-                        per_data += f"<td><strong>{round(final_total_challan_lr_qty, 2)}</strong></td>"
-                        per_data += f"<td><strong>{round(final_total_cc_lr_qty, 2)}</strong></td>"
-                        per_data += f"<td><strong>{round(final_total_balance_qty, 2)}</strong></td>"
-                        per_data += f"<td><strong>{round(final_total_cc_lr_qty/final_total_do_qty, 2)}%</strong></td>"
-                        per_data += f"<td colspan='4'><strong></strong></td>"
-                        per_data += "</tr>"
-                        per_data += "</tbody></table>"
-                        return per_data
+            saprecordsRcrRoadPipeline = [
+                {
+                    '$match': {
+                        '$expr': {
+                            '$and': [
+                                {
+                                    '$lte': [
+                                        { '$dateFromString': { 'dateString': '$start_date' } }, 
+                                        datetime.datetime.strptime(specified_date, "%Y-%m-%d")
+                                    ]
+                                }, 
+                                {
+                                    '$gte': [
+                                        { '$dateFromString': { 'dateString': '$end_date' } }, 
+                                        datetime.datetime.strptime(specified_date, "%Y-%m-%d")
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                }, 
+                {
+                    '$group': {
+                        '_id': '$do_no',  # Grouping by do_no
+                        'mine_name': { '$first': '$mine_name' },  # Getting the first mine_name in the group
+                        'do_qty': { '$sum': { '$toDouble': '$do_qty' } },  # Summing up the do_qty as double
+                        'start_date': { '$first': '$start_date' },  # Getting the first start_date
+                        'end_date': { '$first': '$end_date' },  # Getting the first end_date
+                        'source_type': { '$first': '$consumer_type' },  # Getting the first source_type
+                        'slno': { '$first': '$slno' },  # Getting the first slno
+                        'Grade': {'$first': '$grade'}
+                    }
+                }, 
+                {
+                    '$project': {
+                        '_id': 1, 
+                        'mine_name': 1, 
+                        'do_qty': 1, 
+                        'start_date': 1, 
+                        'end_date': 1, 
+                        'source_type': 1, 
+                        'slno': 1,
+                        'Grade': 1,
+                    }
+                }
+            ]
+
+
+            fetchGmrData = Gmrdata.objects.aggregate(basePipeline)
+            fetchGmrDatachallanltqty = Gmrdata.objects.aggregate(challanlrqtybasePipeline)
+            fetchGmrHistoricData = gmrdataHistoric.objects.aggregate(basePipelineHistoric)
+            fetchGmrHistoricDataChallanLrQty = gmrdataHistoric.objects.aggregate(basepipelineHistoricChallanLrQty)
+            
+            fetchRcrRoadData = RcrRoadData.objects.aggregate(basePipelineRcrRoad)
+            fetchRcrRoadchallanlrqty = RcrRoadData.objects.aggregate(basepipelineRcrRoadChallanLrQty)
+            
+            fetchSapRecordsData = SapRecords.objects.aggregate(saprecordsPipeline)
+
+            fetchSapRecordsRcrData = SapRecordsRcrRoad.objects.aggregate(saprecordsRcrRoadPipeline)
+            listData= []
+            for singleData in fetchGmrData:
+                dictData = {}
+                dictData["DO_No"] = singleData.get("_id")
+                dictData["mine_name"] = singleData.get("mine_name")
+                if singleData.get("do_qty"):
+                    dictData["DO_Qty"] = int(singleData.get("do_qty"))
+                else:
+                    dictData["DO_Qty"] = 0
+                dictData["cumulative_challan_lr_qty"] = round(singleData.get("cumulative_challan_lr_qty"), 2)
+                dictData["grn_status"] = singleData.get("grn_status")
+                dictData["date"] = singleData.get("date").strftime("%Y-%m-%d")
+                dictData["start_date"] = singleData.get("start_date")
+                dictData["end_date"] = singleData.get("end_date")
+                dictData["source_type"] = singleData.get("type_consumer")
+                dictData["slno"] = datetime.datetime.strptime(singleData.get("slno"), "%Y%m").strftime("%B %Y") if singleData.get("slno") else "-"
+                if singleData.get("Grade") is not None:
+                    if '-' in singleData.get("Grade"):
+                        dictData["average_GCV_Grade"] = singleData.get("Grade").split("-")[0]
+                    elif " " in singleData.get("Grade"):
+                        dictData["average_GCV_Grade"] = singleData.get("Grade").split(" ")[0]
                     else:
-                        return 404
+                        dictData["average_GCV_Grade"] = singleData.get("Grade")
+                if singleData.get("start_date") is not None and singleData.get("end_date") is not None:
+                    tomorrow_date = datetime.datetime.strptime(singleData.get("end_date"), "%Y-%m-%d").date() + datetime.timedelta(days=1)
+                    balance_days = tomorrow_date - datetime.datetime.strptime(specified_date, "%Y-%m-%d").date()
+                    dictData["balance_days"] = balance_days.days
+                else:
+                    dictData["balance_days"] = 0
+                if singleData.get("do_qty") is not None:
+                    single_do_qty = singleData.get("do_qty")
+                else:
+                    single_do_qty = 0
+                if single_do_qty != 0:
+                    dictData['percent_supply'] = round((singleData.get('cumulative_challan_lr_qty') / int(single_do_qty)) * 100, 2)
+                else:
+                    dictData['percent_supply'] = 0
+                    
+                dictData["balance_qty"] = round(int(single_do_qty) - singleData.get("cumulative_challan_lr_qty"), 2)
+                    
+                if dictData['balance_days'] and dictData['balance_qty'] != 0:
+                    dictData['asking_rate'] = round(dictData['balance_qty'] / dictData['balance_days'], 2)
+                else:
+                    dictData["asking_rate"] = 0
+                listData.append(dictData)
+            
+            for singleDataHistoric in fetchGmrHistoricData:
+                dictDataHIstoric = {}
+                dictDataHIstoric["DO_No"] = singleDataHistoric.get("_id")
+                dictDataHIstoric["mine_name"] = singleDataHistoric.get("mine_name")
+                if singleDataHistoric.get("do_qty"):
+                    dictDataHIstoric["DO_Qty"] = int(float(singleDataHistoric.get("do_qty")))
+                else:
+                    dictDataHIstoric["DO_Qty"] = 0
+                dictDataHIstoric["cumulative_challan_lr_qty"] = round(singleDataHistoric.get("cumulative_challan_lr_qty"), 2)
+                dictDataHIstoric["grn_status"] = singleDataHistoric.get("grn_status")
+                dictDataHIstoric["date"] = singleDataHistoric.get("date").strftime("%Y-%m-%d")
+                dictDataHIstoric["start_date"] = singleDataHistoric.get("start_date")
+                dictDataHIstoric["end_date"] = singleDataHistoric.get("end_date")
+                dictDataHIstoric["source_type"] = singleDataHistoric.get("type_consumer")
+                dictDataHIstoric["slno"] = datetime.datetime.strptime(singleDataHistoric.get("slno"), "%Y%m").strftime("%B %Y") if singleDataHistoric.get("slno") else "-"
+                if singleDataHistoric.get("Grade") is not None:
+                    if '-' in singleDataHistoric.get("Grade"):
+                        dictDataHIstoric["average_GCV_Grade"] = singleDataHistoric.get("Grade").split("-")[0]
+                    elif " " in singleDataHistoric.get("Grade"):
+                        dictDataHIstoric["average_GCV_Grade"] = singleDataHistoric.get("Grade").split(" ")[0]
+                    else:
+                        dictDataHIstoric["average_GCV_Grade"] = singleDataHistoric.get("Grade")
+                if singleDataHistoric.get("start_date") is not None and singleDataHistoric.get("end_date") is not None:
+                    tomorrow_date = datetime.datetime.strptime(singleDataHistoric.get("end_date"), "%Y-%m-%d").date() + datetime.timedelta(days=1)
+                    balance_days = tomorrow_date - datetime.datetime.strptime(specified_date, "%Y-%m-%d").date()
+                    dictDataHIstoric["balance_days"] = balance_days.days
+                else:
+                    dictDataHIstoric["balance_days"] = 0
+                
+                if singleDataHistoric.get("do_qty") is not None:
+                    historic_do_qty = singleDataHistoric.get("do_qty")
+                else:
+                    historic_do_qty = 0
+                if historic_do_qty != 0:
+                    dictDataHIstoric['percent_supply'] = round((singleDataHistoric.get('cumulative_challan_lr_qty') / int(float(historic_do_qty))) * 100, 2)
+                else:
+                    dictDataHIstoric['percent_supply'] = 0
+                
+                    
+                dictDataHIstoric["balance_qty"] = round(int(float(historic_do_qty)) - singleDataHistoric.get("cumulative_challan_lr_qty"), 2)
+                    
+                if dictDataHIstoric['balance_days'] and dictDataHIstoric['balance_qty'] != 0:
+                    dictDataHIstoric['asking_rate'] = round(dictDataHIstoric['balance_qty'] / dictDataHIstoric['balance_days'], 2)
+                else:
+                    dictDataHIstoric["asking_rate"] = 0
+                
+                do_no_exists = any(item['DO_No'] == dictDataHIstoric["DO_No"] for item in listData)
+
+                if not do_no_exists:
+                    console_logger.debug("DO_No does not exist in final_data.")
+                    listData.append(dictDataHIstoric)
+
+
+            for singleDataRcrData in fetchRcrRoadData:
+                dictDataRcr = {}
+                dictDataRcr["DO_No"] = singleDataRcrData.get("_id")
+                dictDataRcr["mine_name"] = singleDataRcrData.get("mine_name")
+                if singleDataRcrData.get("do_qty"):
+                    dictDataRcr["DO_Qty"] = int(singleDataRcrData.get("do_qty"))
+                else:
+                    dictDataRcr["DO_Qty"] = 0
+                dictDataRcr["cumulative_challan_lr_qty"] = round(singleDataRcrData.get("cumulative_challan_lr_qty"), 2)
+                dictDataRcr["grn_status"] = singleDataRcrData.get("grn_status")
+                dictDataRcr["date"] = singleDataRcrData.get("date").strftime("%Y-%m-%d")
+                dictDataRcr["start_date"] = singleDataRcrData.get("start_date")
+                dictDataRcr["end_date"] = singleDataRcrData.get("end_date")
+                dictDataRcr["source_type"] = singleDataRcrData.get("type_consumer")
+                dictDataRcr["slno"] = datetime.datetime.strptime(singleDataRcrData.get("slno"), "%Y%m").strftime("%B %Y") if singleDataRcrData.get("slno") else "-"
+                if singleDataRcrData.get("Grade") is not None:
+                    if '-' in singleDataRcrData.get("Grade"):
+                        dictDataRcr["average_GCV_Grade"] = singleDataRcrData.get("Grade").split("-")[0]
+                    elif " " in singleDataRcrData.get("Grade"):
+                        dictDataRcr["average_GCV_Grade"] = singleDataRcrData.get("Grade").split(" ")[0]
+                    else:
+                        dictDataRcr["average_GCV_Grade"] = singleDataRcrData.get("Grade")
+                if singleDataRcrData.get("start_date") is not None and singleDataRcrData.get("end_date") is not None:
+                    tomorrow_date = datetime.datetime.strptime(singleDataRcrData.get("end_date"), "%Y-%m-%d").date() + datetime.timedelta(days=1)
+                    balance_days = tomorrow_date - datetime.datetime.strptime(specified_date, "%Y-%m-%d").date()
+                    dictDataRcr["balance_days"] = balance_days.days
+                else:
+                    dictDataRcr["balance_days"] = 0
+                if singleDataRcrData.get("do_qty") is not None:
+                    single_do_qty = singleDataRcrData.get("do_qty")
+                else:
+                    single_do_qty = 0
+                if single_do_qty != 0:
+                    dictDataRcr['percent_supply'] = round((singleDataRcrData.get('cumulative_challan_lr_qty') / int(single_do_qty)) * 100, 2)
+                else:
+                    dictDataRcr['percent_supply'] = 0
+                    
+                dictDataRcr["balance_qty"] = round(int(single_do_qty) - singleDataRcrData.get("cumulative_challan_lr_qty"), 2)
+                    
+                if dictDataRcr['balance_days'] and dictDataRcr['balance_qty'] != 0:
+                    dictDataRcr['asking_rate'] = round(dictDataRcr['balance_qty'] / dictDataRcr['balance_days'], 2)
+                else:
+                    dictDataRcr["asking_rate"] = 0
+                listData.append(dictDataRcr)
+            
+
+            for saprecordsSingle in fetchSapRecordsData:
+                sapdict = {}
+                sapdict["DO_No"] = saprecordsSingle.get("_id")
+                sapdict["mine_name"] = saprecordsSingle.get("mine_name")
+                sapdict["DO_Qty"] = int(saprecordsSingle.get("do_qty"))
+                sapdict["start_date"] = saprecordsSingle.get("start_date")
+                sapdict["end_date"] = saprecordsSingle.get("end_date")
+                sapdict["source_type"] = saprecordsSingle.get("source_type")
+                sapdict["challan_lr_qty"] = 0
+                sapdict["cumulative_challan_lr_qty"] = 0
+                sapdict["slno"] = datetime.datetime.strptime(saprecordsSingle.get("slno"), "%Y%m").strftime("%B %Y") if saprecordsSingle.get("slno") else "-"
+                if saprecordsSingle.get("Grade") is not None:
+                    if '-' in saprecordsSingle.get("Grade"):
+                        sapdict["average_GCV_Grade"] = saprecordsSingle.get("Grade").split("-")[0]
+                    elif " " in saprecordsSingle.get("Grade"):
+                        sapdict["average_GCV_Grade"] = saprecordsSingle.get("Grade").split(" ")[0]
+                    else:
+                        sapdict["average_GCV_Grade"] = saprecordsSingle.get("Grade")
+                if saprecordsSingle.get("start_date") is not None and saprecordsSingle.get("end_date") is not None:
+                    tomorrow_date = datetime.datetime.strptime(saprecordsSingle.get("end_date"), "%Y-%m-%d").date() + datetime.timedelta(days=1)
+                    balance_days = tomorrow_date - datetime.datetime.strptime(specified_date, "%Y-%m-%d").date()
+                    sapdict["balance_days"] = balance_days.days
+                else:
+                    sapdict["balance_days"] = 0
+                if saprecordsSingle.get("do_qty") is not None:
+                    do_qty_val = saprecordsSingle.get("do_qty")
+                else:
+                    do_qty_val = 0
+                if do_qty_val != 0:
+                    sapdict['percent_supply'] = round((sapdict["cumulative_challan_lr_qty"] / int(do_qty_val)) * 100, 2)
+                else:
+                    sapdict['percent_supply'] = 0
+                sapdict["balance_qty"] = round(int(do_qty_val) - sapdict["cumulative_challan_lr_qty"], 2)
+                if sapdict['balance_days'] and sapdict['balance_qty'] != 0:
+                    sapdict['asking_rate'] = round(sapdict['balance_qty'] / sapdict['balance_days'], 2)
+                else:
+                    sapdict["asking_rate"] = 0
+
+                sap_do_no_exists = any(item['DO_No'] == sapdict.get("DO_No") for item in listData)
+                
+                if not sap_do_no_exists:
+                    console_logger.debug("DO_No does not exist in final_data for sap_records")
+                    listData.append(sapdict)
+            
+
+            for saprecordsRcrSingle in fetchSapRecordsRcrData:
+                sapdictRcr = {}
+                sapdictRcr["DO_No"] = saprecordsRcrSingle.get("_id")
+                sapdictRcr["mine_name"] = saprecordsRcrSingle.get("mine_name")
+                sapdictRcr["DO_Qty"] = int(saprecordsRcrSingle.get("do_qty"))
+                sapdictRcr["start_date"] = saprecordsRcrSingle.get("start_date")
+                sapdictRcr["end_date"] = saprecordsRcrSingle.get("end_date")
+                sapdictRcr["source_type"] = saprecordsRcrSingle.get("source_type")
+                sapdictRcr["challan_lr_qty"] = 0
+                sapdictRcr["cumulative_challan_lr_qty"] = 0
+                sapdictRcr["slno"] = datetime.datetime.strptime(saprecordsRcrSingle.get("slno"), "%Y%m").strftime("%B %Y") if saprecordsRcrSingle.get("slno") else "-"
+                if saprecordsRcrSingle.get("Grade") is not None:
+                    if '-' in saprecordsRcrSingle.get("Grade"):
+                        sapdictRcr["average_GCV_Grade"] = saprecordsRcrSingle.get("Grade").split("-")[0]
+                    elif " " in saprecordsRcrSingle.get("Grade"):
+                        sapdictRcr["average_GCV_Grade"] = saprecordsRcrSingle.get("Grade").split(" ")[0]
+                    else:
+                        sapdictRcr["average_GCV_Grade"] = saprecordsRcrSingle.get("Grade")
+                if saprecordsRcrSingle.get("start_date") is not None and saprecordsRcrSingle.get("end_date") is not None:
+                    tomorrow_date = datetime.datetime.strptime(saprecordsRcrSingle.get("end_date"), "%Y-%m-%d").date() + datetime.timedelta(days=1)
+                    balance_days = tomorrow_date - datetime.datetime.strptime(specified_date, "%Y-%m-%d").date()
+                    sapdictRcr["balance_days"] = balance_days.days
+                else:
+                    sapdictRcr["balance_days"] = 0
+                if saprecordsRcrSingle.get("do_qty") is not None:
+                    do_qty_val = saprecordsRcrSingle.get("do_qty")
+                else:
+                    do_qty_val = 0
+                if do_qty_val != 0:
+                    sapdictRcr['percent_supply'] = round((sapdictRcr["cumulative_challan_lr_qty"] / int(do_qty_val)) * 100, 2)
+                else:
+                    sapdictRcr['percent_supply'] = 0
+                sapdictRcr["balance_qty"] = round(int(do_qty_val) - sapdictRcr["cumulative_challan_lr_qty"], 2)
+                if sapdictRcr['balance_days'] and sapdictRcr['balance_qty'] != 0:
+                    sapdictRcr['asking_rate'] = round(sapdictRcr['balance_qty'] / sapdictRcr['balance_days'], 2)
+                else:
+                    sapdictRcr["asking_rate"] = 0
+
+                sap_do_no_exists = any(item['DO_No'] == sapdictRcr.get("DO_No") for item in listData)
+                
+                if not sap_do_no_exists:
+                    console_logger.debug("DO_No does not exist in final_data for sap_records")
+                    listData.append(sapdictRcr)
+
+
+            for singlelrqtyData in fetchGmrDatachallanltqty:
+                dictDatalrQty = {}
+                dictDatalrQty["DO_No"] = singlelrqtyData.get("_id")
+                dictDatalrQty["mine_name"] = singlelrqtyData.get("mine_name")
+                if singlelrqtyData.get("do_qty"):
+                    dictDatalrQty["DO_Qty"] = int(float(singlelrqtyData.get("do_qty")))
+                else:
+                    dictDatalrQty["DO_Qty"] = 0
+                dictDatalrQty["challan_lr_qty"] = round(singlelrqtyData.get("challan_lr_qty"), 2)
+                
+                # Check if there is an item with the same DO_No in listData
+                do_no_exists_data = next((item for item in listData if item["DO_No"] == dictDatalrQty["DO_No"]), None)
+                
+                # If it exists, update the "challan_lr_qty" in listData
+                if do_no_exists_data:
+                    do_no_exists_data["challan_lr_qty"] = dictDatalrQty["challan_lr_qty"]
+
+            for singlehistoriclrqty in fetchGmrHistoricDataChallanLrQty:
+                dictDatahistoriclrQty = {}
+                dictDatahistoriclrQty["DO_No"] = singlehistoriclrqty.get("_id")
+                dictDatahistoriclrQty["mine_name"] = singlehistoriclrqty.get("mine_name")
+                if singlehistoriclrqty.get("do_qty"):
+                    dictDatahistoriclrQty["DO_Qty"] = int(float(singlehistoriclrqty.get("do_qty")))
+                else:
+                    dictDatahistoriclrQty["DO_Qty"] = 0
+                dictDatahistoriclrQty["challan_lr_qty"] = round(singlehistoriclrqty.get("challan_lr_qty"), 2)
+                
+                # Check if there is an item with the same DO_No in listData
+                do_no_exists_historic = next((item for item in listData if item["DO_No"] == dictDatahistoriclrQty["DO_No"]), None)
+                
+                # If it exists, update the "challan_lr_qty" in listData
+                if do_no_exists_historic:
+                    do_no_exists_historic["challan_lr_qty"] = dictDatahistoriclrQty["challan_lr_qty"]
+
+
+            
+            for singlercrroadlrqty in fetchRcrRoadchallanlrqty:
+                dictDataRcrRoadlrQty = {}
+                dictDataRcrRoadlrQty["DO_No"] = singlercrroadlrqty.get("_id")
+                dictDataRcrRoadlrQty["mine_name"] = singlercrroadlrqty.get("mine_name")
+                if singlercrroadlrqty.get("do_qty"):
+                    dictDataRcrRoadlrQty["DO_Qty"] = int(float(singlercrroadlrqty.get("do_qty")))
+                else:
+                    dictDataRcrRoadlrQty["DO_Qty"] = 0
+                dictDataRcrRoadlrQty["challan_lr_qty"] = round(singlercrroadlrqty.get("challan_lr_qty"), 2)
+                
+                # Check if there is an item with the same DO_No in listData
+                do_no_exists_rcr_road = next((item for item in listData if item["DO_No"] == dictDataRcrRoadlrQty["DO_No"]), None)
+                
+                # If it exists, update the "challan_lr_qty" in listData
+                if do_no_exists_rcr_road:
+                    do_no_exists_historic["challan_lr_qty"] = dictDataRcrRoadlrQty["challan_lr_qty"]
+
+            final_data_check = [
+                d for d in listData
+                if d['end_date'] is not None and 
+                (datetime.datetime.strptime(d['end_date'], '%Y-%m-%d') + datetime.timedelta(days=2)) > datetime.datetime.strptime(specified_date, "%Y-%m-%d")
+            ]
+
+            # console_logger.debug(final_data_check)
+
+            filtered_data = []
+            for single_data_percent in final_data_check:
+                percent_supply = single_data_percent.get('percent_supply')
+
+                # Check for percent_supply greater than or equal to 100.0
+                if percent_supply >= 100.0:
+                    # Query Gmrdata with the DO_No
+                    fetchGmrData = Gmrdata.objects(arv_cum_do_number=single_data_percent.get("DO_No")).first()
+                    
+                    # Check if data exists and GWEL_Tare_Time is not None
+                    if fetchGmrData is not None and fetchGmrData.GWEL_Tare_Time:
+                        # Compare GWEL_Tare_Time + 2 days with today's date
+                        if (fetchGmrData.GWEL_Tare_Time + datetime.timedelta(days=2)) < datetime.datetime.now():
+                            # console_logger.debug("Data removed due to GWEL_Tare_Time being older than today's date.")
+                            continue  # Skip entry
+                    
+                # If not removed, append to filtered_data
+                filtered_data.append(single_data_percent)
+                
+            # Sort the data by 'balance_days', placing entries with 'balance_days' of 0 at the end
+            final_data_check = sorted(filtered_data, key=lambda x: (x['balance_days'] == 0, x['balance_days']))
+
+            final_data = final_data_check
+            if final_data:
+                grouped_data = defaultdict(list)
+                for single_data in final_data:
+                    source_type = single_data.get("source_type").strip()
+                    grouped_data[source_type].append(single_data)
+
+                final_total_do_qty = 0
+                final_total_challan_lr_qty = 0
+                final_total_cc_lr_qty = 0
+                final_total_balance_qty = 0
+
+                per_data = ""
+                per_data += "<table border='1'>"
+                for source_type, entries in grouped_data.items():
+                    # per_data += f"<span style='font-size: 10px; font-weight: 600'>{source_type}</span>"
+                    per_data += f"<tr><td colspan='13' style='text-align: center'><b>{source_type}</b></span></td></tr>"
+                    # per_data += "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
+                    per_data += (
+                        "<thead>"
+                    )
+                    per_data += "<tr>"
+                    per_data += "<th>Month</th>"
+                    per_data += "<th>Mine Name</th>"
+                    per_data += "<th>DO No</th>"
+                    per_data += "<th>Grade</th>"
+                    per_data += "<th>DO Qty</th>"
+                    per_data += "<th>Challan LR / Qty</th>"
+                    per_data += "<th>C.C. LR / Qty</th>"
+                    per_data += "<th>Balance Qty</th>"
+                    per_data += "<th>% of Supply</th>"
+                    per_data += "<th>Balance Days</th>"
+                    per_data += "<th>Asking Rate</th>"
+                    per_data += "<th>Do Start date</th>"
+                    per_data += "<th>Do End date</th></tr></thead><tbody>"
+                    total_do_qty = 0
+                    total_challan_lr_qty = 0
+                    total_cc_lr_qty = 0
+                    total_balance_qty = 0
+
+                    for entry in entries:
+                        per_data += f"<tr>"
+                        per_data += f"<td> {entry.get('slno')}</span></td>"
+                        per_data += f"<td> {entry.get('mine_name')}</span></td>"
+                        per_data += f"<td> {entry.get('DO_No')}</span></td>"
+                        per_data += f"<td> {entry.get('average_GCV_Grade')}</span></td>"
+                        per_data += f"<td> {round(entry.get('DO_Qty'), 2)}</span></td>"
+                        total_do_qty += round(entry.get('DO_Qty'), 2)
+                        if entry.get("challan_lr_qty"):
+                            per_data += f"<td>{round(entry.get('challan_lr_qty'), 2)}</span></td>"
+                            total_challan_lr_qty += round(entry.get('challan_lr_qty'), 2)
+                        else:
+                            per_data += f"<td>0</span></td>"
+                        per_data += f"<td> {round(entry.get('cumulative_challan_lr_qty'), 2)}</span></td>"
+                        total_cc_lr_qty += round(entry.get('cumulative_challan_lr_qty'), 2)
+                        per_data += f"<td> {round(entry.get('balance_qty'), 2)}</span></td>"
+                        total_balance_qty += round(entry.get('balance_qty'), 2)
+                        per_data += f"<td> {round(entry.get('percent_supply'), 2)}%</span></td>"
+                        per_data += f"<td> {entry.get('balance_days')}</span></td>"
+                        per_data += f"<td> {round(entry.get('asking_rate'))}</span></td>"
+                        if entry.get("start_date") != "0":
+                            per_data += f"<td> {datetime.datetime.strptime(entry.get('start_date'),'%Y-%m-%d').strftime('%d %B %y')}</span></td>"
+                        else:
+                            per_data += f"<td>0</span></td>"
+                        if entry.get("end_date") != "0":
+                            per_data += f"<td> {datetime.datetime.strptime(entry.get('end_date'),'%Y-%m-%d').strftime('%d %B %y')}</span></td>"
+                        else:    
+                            per_data += f"<td>0</span></td>"
+                        per_data += "</tr>"
+                    per_data += "<tr>"
+                    per_data += "<td colspan='4'><strong>Total</strong></td>"
+                    per_data += f"<td><strong>{round(total_do_qty, 2)}</strong></td>"
+                    per_data += f"<td><strong>{round(total_challan_lr_qty, 2)}</strong></td>"
+                    per_data += f"<td><strong>{round(total_cc_lr_qty, 2)}</strong></td>"
+                    per_data += f"<td><strong>{round(total_balance_qty, 2)}</strong></td>"
+                    if total_cc_lr_qty != 0 and total_do_qty != 0:
+                        per_data += f"<td><strong>{round(total_cc_lr_qty/total_do_qty, 2)}%</strong></td>"
+                    else:
+                        per_data += f"<td><strong>0%</strong></td>"
+                    per_data += f"<td colspan='4'><strong></strong></td>"
+                    per_data += "</tr>"
+                    final_total_do_qty += total_do_qty
+                    final_total_challan_lr_qty += total_challan_lr_qty
+                    final_total_cc_lr_qty += total_cc_lr_qty
+                    final_total_balance_qty += total_balance_qty
+                per_data += "<tr>"
+                per_data += "<td colspan='4'><strong>Grand Total</strong></td>"
+                per_data += f"<td><strong>{round(final_total_do_qty, 2)}</strong></td>"
+                per_data += f"<td><strong>{round(final_total_challan_lr_qty, 2)}</strong></td>"
+                per_data += f"<td><strong>{round(final_total_cc_lr_qty, 2)}</strong></td>"
+                per_data += f"<td><strong>{round(final_total_balance_qty, 2)}</strong></td>"
+                per_data += f"<td><strong>{round(final_total_cc_lr_qty/final_total_do_qty, 2)}%</strong></td>"
+                per_data += f"<td colspan='4'><strong></strong></td>"
+                per_data += "</tr>"
+                per_data += "</tbody></table>"
+                return per_data
+            else:
+                return 404
 
         except Exception as e:
             # response.status_code = 400
@@ -2577,9 +3374,7 @@ class DataExecutions:
                                 if entry["balance_qty"] and entry["balance_qty"] != 0:
                                     if entry["balance_days"]:
                                         entry["asking_rate"] = round(entry["balance_qty"] / entry["balance_days"], 2)
-                        # return final_data
-                    
-                    console_logger.debug(final_data)
+
                     if final_data:
                         per_data = ""
                         per_data += "<table border='1'>"
@@ -3129,5 +3924,74 @@ class DataExecutions:
             return ''.join(reversed(arr))
         except Exception as e:
             console_logger.debug(e)
+    
+    def findSingleRailDataThroughRRNo(self, rr_no, response):
+        try:
+            try:
+                console_logger.debug("inside saprecords rail")
+                fetchRailData = None
+                fetchSapRecordsRail = None
+
+                try:
+                    fetchRailData = RailData.objects.get(rr_no=rr_no)
+                except DoesNotExist as e:
+                    pass
+
+                try:
+                    fetchSapRecordsRail = sapRecordsRail.objects.get(rr_no=rr_no)
+                except DoesNotExist as e:
+                    pass
+
+                payload = {}
+
+                if fetchRailData:
+                    payload.update(fetchRailData.averyPayload())
+
+                if fetchSapRecordsRail:
+                    anotherPay = fetchSapRecordsRail.anotherPayload()
+                    payload.update({
+                        "invoice_date": anotherPay.get("invoice_date"),
+                        "invoice_no": anotherPay.get("invoice_no"),
+                        "sale_date": anotherPay.get("sale_date"),
+                        "sizing_charges": anotherPay.get("sizing_charges"),
+                        "evac_facility_charge": anotherPay.get("evac_facility_charge"),
+                        "royality_charges": anotherPay.get("royality_charges"),
+                        "nmet_charges": anotherPay.get("nmet_charges"),
+                        "dmf": anotherPay.get("dmf"),
+                        "adho_sanrachna_vikas": anotherPay.get("adho_sanrachna_vikas"),
+                        "pariyavaran_upkar": anotherPay.get("pariyavaran_upkar"),
+                        "assessable_value": anotherPay.get("assessable_value"),
+                        "igst": anotherPay.get("igst"),
+                        "gst_comp_cess": anotherPay.get("gst_comp_cess"),
+                        "gross_bill_value": anotherPay.get("gross_bill_value"),
+                        "less_underloading_charges": anotherPay.get("less_underloading_charges"),
+                        "net_value": anotherPay.get("net_value"),
+                        "total_amount": anotherPay.get("total_amount"),
+                    })
+
+                try:
+                    fetchGrnData = Grn.objects.get(do_no=rr_no)
+                    payload["is_grn_booked"] = True
+                except DoesNotExist as e:
+                    payload["is_grn_booked"] = False
+
+                if payload:
+                    return payload
+                else:
+                    raise DoesNotExist("No data found in both RailData and sapRecordsRail.")
+            except Exception as e:
+                console_logger.error(f"Error while fetching data: {e}")
+                raise
+
+                # response.status_code = 404
+                # return {"details": "no data found"}
+        except Exception as e:
+            console_logger.debug("----- Error -----",e)
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+            console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            return e
+    
 
 DataExecutionsHandler = DataExecutions()

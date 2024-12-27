@@ -27,6 +27,7 @@ from fastapi import (
     Header,
     Request,
     Response,
+    status,
 )
 from lxml import etree
 import xml.etree.ElementTree as ET
@@ -53,6 +54,7 @@ from helpers.report_handler import generate_report
 from helpers.coal_consumption_report import generate_report_consumption
 from helpers.coal_gcv_comparision import generate_report_comparision
 from helpers.bunker_report_handler import bunker_generate_report, bunker_single_generate_report
+from helpers.form15_report_handler import single_generate_report_form15
 from helpers.data_execution import DataExecutions
 from service import host, db_port, username, password, ip
 from helpers.mail import send_email, send_test_email, send_multiapproval_mail
@@ -62,6 +64,7 @@ from io import BytesIO
 from pymongo import MongoClient
 from dotenv import load_dotenv, dotenv_values
 from bson.objectid import ObjectId
+from fastapi.responses import JSONResponse
 load_dotenv() 
 
 # mahabal starts
@@ -1217,8 +1220,8 @@ def extract_historian_data(start_date: Optional[str] = None, end_date: Optional[
                         avg = item_data.get("AVG")
                         created_date = item_data.get("CreatedDate")
 
-                    if tag_id in [16, 3538, 2, 3536] and avg is not None:
-                        sum_value = avg
+                        if tag_id in [16, 3538, 2, 3536] and avg is not None:
+                            sum_value = avg
 
                         if int(float(sum_value)) > 0:
                             existing_records = (
@@ -2512,11 +2515,11 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
                             )
                         else:
                             grade = None
-
                         fetchMineName = get_mine_name_from_sap_records(entry.get("rrNo"), "mine_name")
                         fetchMineGrade = get_mine_name_from_sap_records(entry.get("rrNo"), "grade")
                         fetchtypeConsumerRoad = get_mine_name_from_sap_records(entry.get("rrNo"), "consumer_type")
-                        
+                        found_data = find_update_receipt_coal_quality(entry.get("rrNo"))
+                        console_logger.debug(found_data)
                         try:
                             receipt = RecieptCoalQualityAnalysis.objects.get(
                                 plant_sample_id=entry.get("sample_Id_No")
@@ -2528,10 +2531,12 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
                                 plant_preperation_date=entry.get("sample_Received_Date"),
                                 plant_analysis_date=entry.get("analysis_Date"),
                                 sample_qty=float(entry.get("rR_Qty")),
-                                mine=fetchMineName or entry.get("supplier"),
+                                # mine=fetchMineName or entry.get("supplier"),
+                                mine=found_data.get("mine") if found_data else None,
                                 mine_grade=fetchMineGrade.replace(" ", "") if fetchMineGrade else None,
                                 mode="Road",
-                                type_consumer=fetchtypeConsumerRoad if fetchtypeConsumerRoad else None,
+                                # type_consumer=fetchtypeConsumerRoad if fetchtypeConsumerRoad else None,
+                                type_consumer=found_data.get("consumer_type") if found_data else None,
                                 plant_lab_temp=float(entry.get("test_Temp")),
                                 plant_lab_rh=float(entry.get("humidity")),
                                 plant_adb_im=get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)"),
@@ -2557,10 +2562,11 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
                                 plant_preperation_date = entry.get("sample_Received_Date"),
                                 plant_analysis_date = entry.get("analysis_Date"),
                                 sample_qty = float(entry.get("rR_Qty")),
-                                mine = fetchMineName if fetchMineName else entry.get("supplier"),
+                                mine = found_data.get("mine") if found_data else None,
                                 mine_grade = fetchMineGrade.replace(" ", "") if fetchMineGrade else None,
                                 mode = "Road",
-                                type_consumer=fetchtypeConsumerRoad if fetchtypeConsumerRoad else None,
+                                # type_consumer=fetchtypeConsumerRoad if fetchtypeConsumerRoad else None,
+                                type_consumer=found_data.get("consumer_type") if found_data else None,
                                 plant_lab_temp = float(entry.get("test_Temp")),
                                 plant_lab_rh = float(entry.get("humidity")),
                                 plant_adb_im = get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)"),
@@ -2602,18 +2608,19 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
                             )
                         else:
                             grade = None
+                        console_logger.debug(entry.get("rrNo"))
+                        console_logger.debug(entry.get("sample_Id_No"))
                         # fetchMineName = get_mine_name_from_sap_records(entry.get("rrNo"), "mine_name")
                         # fetchMineGrade = get_mine_name_from_sap_records(entry.get("rrNo"), "grade")
                         fetchMineGrade = get_mine_name_from_railData(entry.get("rrNo"), "grade")
                         fetchMineName = get_mine_name_from_railData(entry.get("rrNo"), "mine_name")
                         fetchTypeConsumerRail = get_mine_name_from_railData(entry.get("rrNo"), "type_consumer")
-
+                        found_data = find_update_receipt_coal_quality(entry.get("rrNo"))
                         try:
                             if len(entry.get("rake_No")) == 2:
                                 rake_data = str(entry.get("rake_No"))
                             else:
                                 rake_data = str(int(entry.get("rake_No").split("-")[1]))
-
                             receipt = RecieptCoalQualityAnalysis.objects.get(
                                 plant_sample_id=entry.get("sample_Id_No")
                             )
@@ -2625,10 +2632,12 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
                                 plant_preperation_date=entry.get("sample_Received_Date"),
                                 plant_analysis_date=entry.get("analysis_Date"),
                                 sample_qty=float(entry.get("rR_Qty")),
-                                mine=fetchMineName if fetchMineName else entry.get("supplier"),
+                                # mine=fetchMineName if fetchMineName else entry.get("supplier"),
+                                mine=found_data.get("mine") if found_data else None,
                                 mine_grade=fetchMineGrade.replace(" ", "") if fetchMineGrade else None,
                                 mode="Rail",
-                                type_consumer=fetchTypeConsumerRail if fetchTypeConsumerRail else None,
+                                # type_consumer=fetchTypeConsumerRail if fetchTypeConsumerRail else None,
+                                type_consumer=found_data.get("consumer_type") if found_data else None,
                                 plant_lab_temp=float(entry.get("test_Temp")),
                                 plant_lab_rh=float(entry.get("humidity")),
                                 plant_adb_im=get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)"),
@@ -2661,10 +2670,12 @@ def coal_test(start_date: Optional[str] = None, end_date: Optional[str] = None):
                                 plant_preperation_date = entry.get("sample_Received_Date"),
                                 plant_analysis_date = entry.get("analysis_Date"),
                                 sample_qty = float(entry.get("rR_Qty")),
-                                mine = fetchMineName if fetchMineName else entry.get("supplier"),
+                                # mine = fetchMineName if fetchMineName else entry.get("supplier"),
+                                mine = found_data.get("mine") if found_data else None,
                                 mine_grade = fetchMineGrade.replace(" ", "") if fetchMineGrade else None,
                                 mode = "Rail",
-                                type_consumer = fetchTypeConsumerRail if fetchTypeConsumerRail else None,
+                                # type_consumer = fetchTypeConsumerRail if fetchTypeConsumerRail else None,
+                                type_consumer=found_data.get("consumer_type") if found_data else None,
                                 plant_lab_temp = float(entry.get("test_Temp")),
                                 plant_lab_rh = float(entry.get("humidity")),
                                 plant_adb_im = get_val_from_sample_params(entry['sample_Parameters'], "Inherent Moisture (ADB)"),
@@ -8115,7 +8126,6 @@ def gmr_table_new_filter(response:Response, filter_data: Optional[List[str]] = Q
 
             for singlesapdata in sapRecordsOutput:
                 for sapDataload in singlesapdata["totalData"]:
-                    console_logger.debug(sapDataload)
                     sapDataload["do_no"] = sapDataload.get("do_number")
                     sapDataload["challan_gross_qty"] = 0
                     sapDataload["challan_tare_qty"] = 0
@@ -13411,7 +13421,7 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                                 'as': 'item', 
                                 'in': {
                                     '$convert': {
-                                        'input': '$$item.net_qty', 
+                                        'input': '$$item.dc_net_wt', 
                                         'to': 'double', 
                                         'onError': 0, 
                                         'onNull': 0
@@ -13502,7 +13512,7 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
                                 'as': 'item', 
                                 'in': {
                                     '$convert': {
-                                        'input': '$$item.net_qty', 
+                                        'input': '$$item.dc_net_wt', 
                                         'to': 'double', 
                                         'onError': 0, 
                                         'onNull': 0
@@ -13676,6 +13686,7 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
 
         fetchGmrData = Gmrdata.objects.aggregate(basePipeline)
         fetchGmrDatachallanltqty = Gmrdata.objects.aggregate(challanlrqtybasePipeline)
+        
         fetchGmrHistoricData = gmrdataHistoric.objects.aggregate(basePipelineHistoric)
         fetchGmrHistoricDataChallanLrQty = gmrdataHistoric.objects.aggregate(basepipelineHistoricChallanLrQty)
         
@@ -13974,7 +13985,7 @@ def generate_gmr_report(response: Response, specified_date: Optional[str]=None, 
             
             # If it exists, update the "challan_lr_qty" in listData
             if do_no_exists_rcr_road:
-                do_no_exists_historic["challan_lr_qty"] = dictDataRcrRoadlrQty["challan_lr_qty"]
+                do_no_exists_rcr_road["challan_lr_qty"] = dictDataRcrRoadlrQty["challan_lr_qty"]
             
         
         # final_data = [
@@ -16606,23 +16617,15 @@ def coal_logistics_report_test(
             #     if d['start_date'] is not None and datetime.datetime.strptime(d['start_date'], '%Y-%m-%d').date() <= datetime.datetime.now().date()
             # ]
 
-            final_data = listData
-
-            # console_logger.debug(final_data)
+            # final_data = listData
 
             result["labels"] = ["month", "DO_No", "mine_name", "DO_Qty", "date", "challan_lr_/_qty", "cumulative_challan_lr_/_qty","balance_qty", "percent_supply", "asking_rate", "average_GCV_Grade", "start_date", "end_date", "balance_days"]
-            # result["datasets"] = final_data
-            # result["total"] = len(final_data)
             result["total"] = len(listData)
 
-            # Apply pagination at the end after processing
             start_idx = (page_no - 1) * page_len
             end_idx = start_idx + page_len
             paginated_data = listData[start_idx:end_idx]
-
-            # Update result with paginated data
             result["datasets"] = paginated_data
-            # result["page_size"] = page_len
             return result
         elif type and type == "download":
             del type
@@ -19386,6 +19389,8 @@ def mine_wise_average_gwel_gcv(
         fetchRCAQualityRail = RecieptCoalQualityAnalysis.objects(plant_analysis_date__gte=datetime.datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), plant_analysis_date__lte=datetime.datetime.strptime(end_date, "%Y-%m-%d").strftime("%Y-%m-%dT%H:%M"), mode="Rail")
         
         for single_data_train in fetchRCAQualityRail:
+            console_logger.debug(single_data_train.sample_id)
+            console_logger.debug(single_data_train.mine)
             rrNo = single_data_train.sample_id
             filter = {
             'mine':single_data_train.mine,
@@ -21632,7 +21637,7 @@ def endpoint_to_fetch_railway_data(response: Response, currentPage: Optional[int
                 for log in logs:
                     result["labels"] = list(log.simplepayload().keys())
                     result["datasets"].append(log.simplepayload())
-                result["total"]= len(RailData.objects(data))
+                result["total"]= len(RailData.objects(data, avery_placement_date=None))
             return result
         elif type and type == "download":
             del type
@@ -21874,13 +21879,10 @@ def endpoint_to_fetch_railway_data_avery(response: Response, currentPage: Option
                 start_date = f'{month_date}-01'
                 startd_date=datetime.datetime.strptime(f"{start_date}T00:00:00","%Y-%m-%dT%H:%M:%S")
                 end_date = (datetime.datetime.strptime(start_date, "%Y-%m-%d") + relativedelta(day=31)).strftime("%Y-%m-%d")
-                # console_logger.debug(startd_date.strftime("%Y-%m-%dT%H:%M"))
-                # console_logger.debug(f"{end_date}T23:59")
                 data &= Q(avery_placement_date__gte = startd_date.strftime("%Y-%m-%dT%H:%M:%S"))
                 data &= Q(avery_placement_date__lte = f"{end_date}T23:59:59")
-            # console_logger.debug(data)
+            
             offset = (page_no - 1) * page_len
-            console_logger.debug(data)
             logs = (
                 RailData.objects(data)
                 .order_by("-avery_placement_date", "-avery_completion_date")
@@ -21888,13 +21890,15 @@ def endpoint_to_fetch_railway_data_avery(response: Response, currentPage: Option
                 .limit(page_len)
             )
 
-            # console_logger.debug(logs)  
-            # railData_result = []  # Initialize railData_result
             listData = []
             if any(logs):
                 for log in logs:
-                    console_logger.debug(log)
                     payload = log.averyPayloadMain()
+                    # if len(payload.get("po_date")) > 10:
+                    #     payload["po_date"] = str(datetime.datetime.fromtimestamp(int(payload["po_date"]) / 1000).strftime("%Y-%m-%d"))
+                    if payload.get("po_date"):
+                        if 10 < len(payload.get("po_date")) <= 13:
+                            payload["po_date"] = str(datetime.datetime.fromtimestamp(int(payload["po_date"]) / 1000).strftime("%Y-%m-%d"))
                     payload['total_gwel_gross_wt'] = 0
                     payload['total_gwel_tare_wt'] = 0
                     payload['total_gwel_net_wt'] = 0
@@ -22003,14 +22007,10 @@ def endpoint_to_fetch_railway_data_avery(response: Response, currentPage: Option
                             # payload["GWEL_received_wagons"] = gwel_received_wagons
                             # payload["GWEL_pending_wagons"] = int(log.boxes_loaded) - int(gwel_received_wagons)
                     # result["labels"] = list(payload.keys())
-
-            
-                    
                     result["datasets"].append(payload)
                     # listData.append(payload)
-                
-                result["labels"] = ["rr_no", "rr_qty", "po_no", "po_date", "line_item", "source", "GWEL_placement_date", "GWEL_completion_date", "GWEL_received_wagons", "GWEL_pending_wagons", "boxes_loaded", "total_secl_gross_wt", "total_secl_tare_wt", "total_secl_net_wt", "total_rly_gross_wt", "total_rly_tare_wt", "total_rly_net_wt", "total_gwel_gross_wt", "total_gwel_tare_wt", "total_gwel_net_wt", "source_type", "month", "rr_date", "siding", "mine", "grade", "adho_sanrachna_vikas", "assessable_value", "dmf", "evac_facility_charge", "gross_bill_value", "gst_comp_cess", "igst", "less_underloading_charges", "net_value", "nmet_charges", "pariyavaran_upkar", "sizing_charges", "royality_charges", "total_amount", "created_at"]
-                result["total"]= len(RailData.objects(data))
+                result["labels"] = ["rr_no", "rr_qty", "po_no", "po_date", "line_item", "source", "GWEL_placement_date", "GWEL_completion_date", "GWEL_received_wagons", "GWEL_pending_wagons", "boxes_loaded", "total_secl_gross_wt", "total_secl_tare_wt", "total_secl_net_wt", "total_rly_gross_wt", "total_rly_tare_wt", "total_rly_net_wt", "total_gwel_gross_wt", "total_gwel_tare_wt", "total_gwel_net_wt", "source_type", "month", "rr_date", "siding", "mine", "grade", "adho_sanrachna_vikas", "assessable_value", "dmf", "evac_facility_charge", "gross_bill_value", "gst_comp_cess", "igst", "less_underloading_charges", "net_value", "nmet_charges", "pariyavaran_upkar", "sizing_charges", "royality_charges", "total_amount", "freight", "gst", "pola", "total_freight", "sd", "created_at"]
+                result["total"] = RailData.objects(data).count()
             return result
         elif type and type == "download":
             del type
@@ -22139,6 +22139,9 @@ def endpoint_to_fetch_railway_data_avery(response: Response, currentPage: Option
 
                     for row, query in enumerate(usecase_data, start=3):
                         result = query.averyPayloadMain()
+                        if payload.get("po_date"):
+                            if 10 <= len(payload.get("po_date")) <= 13:
+                                result["po_date"] = str(datetime.datetime.fromtimestamp(int(result["po_date"]) / 1000).strftime("%Y-%m-%d"))
                         result['total_gwel_gross_wt'] = 0
                         result['total_gwel_tare_wt'] = 0
                         result['total_gwel_net_wt'] = 0
@@ -22388,11 +22391,8 @@ def endpoint_to_fetch_avery_rcr_data(response: Response, currentPage: Optional[i
                 start_date = f'{month_date}-01'
                 startd_date=datetime.datetime.strptime(f"{start_date}T00:00","%Y-%m-%dT%H:%M")
                 end_date = (datetime.datetime.strptime(start_date, "%Y-%m-%d") + relativedelta(day=31)).strftime("%Y-%m-%d")
-                # console_logger.debug(startd_date.strftime("%Y-%m-%dT%H:%M"))
-                # console_logger.debug(f"{end_date}T23:59")
                 data &= Q(avery_placement_date__gte = startd_date.strftime("%Y-%m-%dT%H:%M"))
                 data &= Q(avery_placement_date__lte = f"{end_date}T23:59")
-            # console_logger.debug(data)
             offset = (page_no - 1) * page_len
 
             logs = (
@@ -22401,10 +22401,12 @@ def endpoint_to_fetch_avery_rcr_data(response: Response, currentPage: Optional[i
                 .skip(offset)
                 .limit(page_len)
             )  
-            # railData_result = []  # Initialize railData_result
             if any(logs):
                 for log in logs:
                     payload = log.averyPayloadMain()
+                    if payload.get("po_date"):
+                        if 10 < len(payload.get("po_date")) <= 13:
+                            payload["po_date"] = str(datetime.datetime.fromtimestamp(int(payload["po_date"]) / 1000).strftime("%Y-%m-%d"))
                     payload['total_gwel_gross_wt'] = 0
                     payload['total_gwel_tare_wt'] = 0
                     payload['total_gwel_net_wt'] = 0
@@ -22520,7 +22522,7 @@ def endpoint_to_fetch_avery_rcr_data(response: Response, currentPage: Optional[i
                             # payload["GWEL_pending_wagons"] = int(log.boxes_loaded) - int(gwel_received_wagons)
                     # result["labels"] = list(payload.keys())
                     result["labels"] = ["rr_no", "rr_qty", "po_no", "po_date", "line_item", "source", "GWEL_placement_date", "GWEL_completion_date", "GWEL_received_wagons", "GWEL_pending_wagons", "boxes_loaded", "total_secl_gross_wt", "total_secl_tare_wt", "total_secl_net_wt", "total_rly_gross_wt", "total_rly_tare_wt", "total_rly_net_wt", "total_gwel_gross_wt", "total_gwel_tare_wt", "total_gwel_net_wt", "source_type", "month", "rr_date", "siding", "mine", "grade", "secl_mode_transport", "area", "secl_basic_price", "secl_sizing_charges", "secl_stc_charges", "secl_evac_facility_charges", "secl_nmet_charges", "secl_dmf", "secl_adho_sanrachna_vikas", "secl_pariyavaran_upkar", "secl_terminal_tax", "secl_assessable_tax",
-                    "secl_igst", "secl_gst_comp_cess", "sap_po", "created_at"]
+                    "secl_igst", "secl_gst_comp_cess", "sap_po", "freight", "gst", "pola", "total_freight", "sd", "created_at"]
                     result["datasets"].append(payload)
                     result["total"]= len(RcrData.objects(data))
             return result
@@ -22653,11 +22655,13 @@ def endpoint_to_fetch_avery_rcr_data(response: Response, currentPage: Optional[i
 
                     for row, query in enumerate(usecase_data, start=3):
                         result = query.averyPayloadMain()
+                        if result.get("po_date"):
+                            # if len(result.get("po_date")) > 10:
+                            if 10 < len(result.get("po_date")) <= 13:
+                                result["po_date"] = str(datetime.datetime.fromtimestamp(int(result["po_date"]) / 1000).strftime("%Y-%m-%d"))
                         result['total_gwel_gross_wt'] = 0
                         result['total_gwel_tare_wt'] = 0
                         result['total_gwel_net_wt'] = 0
-                        # result["GWEL_received_wagons"] = 0
-                        # result["GWEL_pending_wagons"] = 0
 
                         try:
                             fetchSapRcrRecords = sapRecordsRCR.objects.get(rr_no=query.rr_no)
@@ -23810,32 +23814,34 @@ def save_bunker_data(start_date: Optional[str] = None, end_date: Optional[str] =
         try:
             response = requests.get(f'http://{ip}/api/v1/host/bunker_extract_data', params=params, headers=headers_data)
             data = json.loads(response.text)
+            try:
+                for item in data["Data"]:
+                    if item["Data"] is not None:
+                        tag_id = item["Data"]["TagID"]
+                        unit = "Unit1" if tag_id == 15274 else "Unit2"
+                        sum = str(int(float(item["Data"]["SUM"])) / 1000)
+                        created_date = item["Data"]["CreatedDate"]
 
-            for item in data["Data"]:
-                if item["Data"] is not None:
-                    tag_id = item["Data"]["TagID"]
-                    unit = "Unit1" if tag_id == 15274 else "Unit2"
-                    sum = str(int(float(item["Data"]["SUM"])) / 1000)
-                    created_date = item["Data"]["CreatedDate"]
-
-                    if bunkerAnalysis.objects.filter(tagid = tag_id, created_date=created_date):
-                        console_logger.debug("data there bunkerAnalysis")
-                        pass
+                        if bunkerAnalysis.objects.filter(tagid = tag_id, created_date=created_date):
+                            console_logger.debug("data there bunkerAnalysis")
+                            pass
+                        else:
+                            console_logger.debug("adding data")
+                            bunkerAnalysis(
+                                tagid = tag_id,
+                                units = unit,
+                                bunkering = sum,
+                                shift_name = shift_name,
+                                created_date = created_date,
+                                ID = bunkerAnalysis.objects.count() + 1).save()
+                    
+                        success = "completed"
+                        console_logger.debug("successful")
                     else:
-                        console_logger.debug("adding data")
-                        bunkerAnalysis(
-                            tagid = tag_id,
-                            units = unit,
-                            bunkering = sum,
-                            shift_name = shift_name,
-                            created_date = created_date,
-                            ID = bunkerAnalysis.objects.count() + 1).save()
-                
-                    success = "completed"
-                    console_logger.debug("successful")
-                else:
-                    success = "No data found"
-                    console_logger.debug("No data found")
+                        success = "No data found"
+                        console_logger.debug("No data found")
+            except KeyError:
+                console_logger.debug("No Data Found!")
         except requests.exceptions.Timeout:
             console_logger.debug("Request Timed Out!")
         except requests.exceptions.ConnectionError:
@@ -24139,11 +24145,21 @@ def update_coal_bunker_data(response: Response, Data: BunkerAnalysisData):
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         success = e
 
+# def get_current_financial_year_data(Month):
+#     current_date = datetime.datetime.now(datetime.timezone.utc)    
+#     start_month = current_date.replace(month=Month,day=1, hour=0,minute=0,second=0,microsecond=0)
+#     end_month = start_month.replace(month=Month+1) - datetime.timedelta(days=1)
+    
+#     return start_month, end_month
+
 def get_current_financial_year_data(Month):
     current_date = datetime.datetime.now(datetime.timezone.utc)    
-    start_month = current_date.replace(month=Month,day=1, hour=0,minute=0,second=0,microsecond=0)
-    end_month = start_month.replace(month=Month+1) - datetime.timedelta(days=1)
-    
+    start_month = current_date.replace(month=Month, day=1, hour=0, minute=0, second=0, microsecond=0)
+    if Month == 12:
+        end_month = start_month.replace(month=1, year=current_date.year + 1) - datetime.timedelta(days=1)
+    else:
+        end_month = start_month.replace(month=Month + 1) - datetime.timedelta(days=1)
+
     return start_month, end_month
 
 def bunkerQualityAnanlysis():
@@ -24155,7 +24171,7 @@ def bunkerQualityAnanlysis():
         index_name = "po_index"
         BQA.create_index(index_name)
 
-        for month in range(1,12):
+        for month in range(1,13):
             start_day, end_day = get_current_financial_year_data(month)
             # logger.debug((start_day,end_day))
             filter={
@@ -24398,7 +24414,10 @@ def summarybyMonth():
 
         for i in range(1, len(df)):
             cum_total_qty = df['total_qty'][i] + cum_total_qty_list[i-1]
-            weighted_domestic_gcv = df['wt_gcv'][i] * df['total_qty'][i]
+            wt_gcv = df['wt_gcv'][i] if df['wt_gcv'][i] is not None else 0
+            total_qty = df['total_qty'][i] if df['total_qty'][i] is not None else 0
+            weighted_domestic_gcv = wt_gcv * total_qty
+            # weighted_domestic_gcv = df['wt_gcv'][i] * df['total_qty'][i]
             cum_weighted_domestic_gcv = weighted_domestic_gcv + cum_weighted_domestic_gcv_list[i-1]
             weighted_gcv = cum_weighted_domestic_gcv / cum_total_qty
 
@@ -25342,6 +25361,12 @@ def shiftSchedulerfunc(**kwargs):
             one_months_back = datetime.date.today() - relativedelta(months=1)
             end_date = one_months_back.strftime("%Y/%m/%d")
             endpoint_to_update_averydata(start_date=start_date, end_date=end_date)
+        elif kwargs["report_name"] == "form15_data":
+            today_date = datetime.datetime.today()
+            datem = datetime.datetime(today_date.year, today_date.month, 1)
+            endpoint_to_automate_form15_data(month=datem.strftime("Y-%m"))
+            # print(datem.strftime("%Y-%m"))
+            
     
         return "success"
 
@@ -26301,6 +26326,7 @@ async def endpoint_to_upload_sap_data(response: Response, pdf_upload: List[Uploa
 def endpoint_to_update_road_sap_upload(response: Response, data: roadSapUpload):
     try:
         multyData = data.dict()
+        
         for dataLoad in multyData["data"]:
             try:
                 checkSaprecords = SapRecords.objects.get(do_no=dataLoad.get("do_no"))
@@ -26310,7 +26336,7 @@ def endpoint_to_update_road_sap_upload(response: Response, data: roadSapUpload):
                 checkSaprecords.slno = dataLoad.get("slno")
                 checkSaprecords.consumer_type = dataLoad.get("consumer_type")
                 checkSaprecords.grade = dataLoad.get("grade")
-                checkSaprecords.mine_name = dataLoad.get("mine")
+                checkSaprecords.mine_name = dataLoad.get("mine_name")
                 checkSaprecords.do_qty = dataLoad.get("do_qty")
                 checkSaprecords.po_amount = dataLoad.get("po_amount")
                 # particulars start
@@ -26336,7 +26362,7 @@ def endpoint_to_update_road_sap_upload(response: Response, data: roadSapUpload):
                     slno=dataLoad.get("slno"), 
                     consumer_type=dataLoad.get("consumer_type"), 
                     grade=dataLoad.get("grade"), 
-                    mine_name=dataLoad.get("mine"), 
+                    mine_name=dataLoad.get("mine_name"), 
                     do_qty=dataLoad.get("do_qty"), 
                     po_amount=dataLoad.get("po_amount"),
                     # particulars start
@@ -26364,7 +26390,7 @@ def endpoint_to_update_road_sap_upload(response: Response, data: roadSapUpload):
                     singleCheckGmrData.slno = dataLoad.get("slno")
                     singleCheckGmrData.type_consumer = dataLoad.get("consumer_type")
                     singleCheckGmrData.grade = dataLoad.get("grade")
-                    singleCheckGmrData.mine = dataLoad.get("mine")
+                    singleCheckGmrData.mine = dataLoad.get("mine_name")
                     singleCheckGmrData.po_qty = dataLoad.get("do_qty")
                     singleCheckGmrData.po_amount = dataLoad.get("po_amount")
                     singleCheckGmrData.save()
@@ -30080,6 +30106,7 @@ def extract_fields_rail(pdf_path):
 @router.post("/rail/saprecords", tags=["Rail Map"])
 async def endpoint_to_upload_rail_data(response: Response, pdf_upload: List[UploadFile] = File(...)):
     try:
+        # pdfname starts with for eg:"Inv 162005063.PDF"
         for UploadedFile in pdf_upload:
 
             f_name = UploadedFile.filename
@@ -30106,32 +30133,37 @@ async def endpoint_to_upload_rail_data(response: Response, pdf_upload: List[Uplo
                 shutil.copyfileobj(contents, file_object)
 
             fetchRailData = extract_fields_rail(full_path)
+            console_logger.debug(fetchRailData)
             if fetchRailData:
                 try:
-                    checkRailSapRecords = sapRecordsRail.objects.get(rr_no=fetchRailData.get("rr_no"), siding=fetchRailData.get("siding"))
-                    # checkRailSapRecords = sapRecordsRail.objects.get(rr_no=fetchRailData.get("rr_no"))
-                    checkRailSapRecords.month = datetime.datetime.strptime(fetchRailData.get("sale_order_date"), "%b %d, %Y").strftime("%Y-%m-%d")
-                    checkRailSapRecords.rr_date = datetime.datetime.strptime(fetchRailData.get("rr_date"), '%b %d, %Y').strftime('%Y-%m-%d')
-                    checkRailSapRecords.siding = fetchRailData.get("siding")
-                    checkRailSapRecords.mine = fetchRailData.get("mine")
-                    checkRailSapRecords.grade = fetchRailData.get("grade_size")
-                    checkRailSapRecords.rr_qty = fetchRailData.get("billed_quantity")
-                    checkRailSapRecords.po_amount = fetchRailData.get("total_amount")
-                    checkRailSapRecords.sizing_charges = float(fetchRailData.get("table").get("sizing_charges_amount"))
-                    checkRailSapRecords.evac_facility_charge = float(fetchRailData.get("table").get("evac_facility_charge_amount"))
-                    checkRailSapRecords.royality_charges = float(fetchRailData.get("table").get("royalty_charges_amount"))
-                    checkRailSapRecords.nmet_charges = float(fetchRailData.get("table").get("nmet_amount"))
-                    checkRailSapRecords.dmf = float(fetchRailData.get("table").get("dmf_amount"))
-                    checkRailSapRecords.adho_sanrachna_vikas= float(fetchRailData.get("table").get("adho_sanrachna_vikas_amount"))
-                    checkRailSapRecords.pariyavaran_upkar = float(fetchRailData.get("table").get("pariyavaran_upkar_amount"))
-                    checkRailSapRecords.assessable_value = float(fetchRailData.get("table").get("assessable_value_amount"))
-                    checkRailSapRecords.igst = float(fetchRailData.get("table").get("igst_amount"))
-                    checkRailSapRecords.gst_comp_cess = float(fetchRailData.get("table").get("gst_comp_cess_amount"))
-                    checkRailSapRecords.gross_bill_value = float(fetchRailData.get("table").get("gross_bill_value_amount"))
-                    checkRailSapRecords.less_underloading_charges = float(fetchRailData.get("table").get("less_underloading_charges_amount"))
-                    checkRailSapRecords.net_value = float(fetchRailData.get("table").get("net_value_rate"))
-                    checkRailSapRecords.total_amount = float(fetchRailData.get("total_amount"))
-                    checkRailSapRecords.save()
+                    # checkRailSapRecords = sapRecordsRail.objects.get(rr_no=fetchRailData.get("rr_no"), siding=fetchRailData.get("siding"))
+                    checkRailSapRecords = sapRecordsRail.objects.get(rr_no=fetchRailData.get("rr_no"))
+                    checkRailSapRecords.update(
+                        month = datetime.datetime.strptime(fetchRailData.get("sale_order_date"), "%b %d, %Y").strftime("%Y-%m-%d"),
+                        rr_date = datetime.datetime.strptime(fetchRailData.get("rr_date"), '%b %d, %Y').strftime('%Y-%m-%d'),
+                        invoice_date=datetime.datetime.strptime(fetchRailData.get("invoice_date"), "%b %d, %Y").date(),
+                        invoice_no=fetchRailData.get("invoice_number"),
+                        sale_date=datetime.datetime.strptime(fetchRailData.get("sale_order_date"), "%b %d, %Y").date(),
+                        siding = fetchRailData.get("siding"),
+                        mine = fetchRailData.get("mine"),
+                        grade = fetchRailData.get("grade_size"),
+                        rr_qty = fetchRailData.get("billed_quantity"),
+                        po_amount = fetchRailData.get("total_amount"),
+                        sizing_charges = float(fetchRailData.get("table").get("sizing_charges_amount")),
+                        evac_facility_charge = float(fetchRailData.get("table").get("evac_facility_charge_amount")),
+                        royality_charges = float(fetchRailData.get("table").get("royalty_charges_amount")),
+                        nmet_charges = float(fetchRailData.get("table").get("nmet_amount")),
+                        dmf = float(fetchRailData.get("table").get("dmf_amount")),
+                        adho_sanrachna_vikas= float(fetchRailData.get("table").get("adho_sanrachna_vikas_amount")),
+                        pariyavaran_upkar = float(fetchRailData.get("table").get("pariyavaran_upkar_amount")),
+                        assessable_value = float(fetchRailData.get("table").get("assessable_value_amount")),
+                        igst = float(fetchRailData.get("table").get("igst_amount")),
+                        gst_comp_cess = float(fetchRailData.get("table").get("gst_comp_cess_amount")),
+                        gross_bill_value = float(fetchRailData.get("table").get("gross_bill_value_amount")),
+                        less_underloading_charges = float(fetchRailData.get("table").get("less_underloading_charges_amount")),
+                        net_value = float(fetchRailData.get("table").get("net_value_rate")),
+                        total_amount = float(fetchRailData.get("total_amount")),
+                    )
                 except DoesNotExist as e:
                     insertRailSapRecords = sapRecordsRail(
                         rr_no=fetchRailData.get("rr_no"),
@@ -30142,6 +30174,9 @@ async def endpoint_to_upload_rail_data(response: Response, pdf_upload: List[Uplo
                         grade=fetchRailData.get("grade_size"),
                         rr_qty=fetchRailData.get("billed_quantity"),
                         po_amount=fetchRailData.get("total_amount"),
+                        invoice_date=datetime.datetime.strptime(fetchRailData.get("invoice_date"), "%b %d, %Y").date(),
+                        invoice_no=fetchRailData.get("invoice_number"),
+                        sale_date=datetime.datetime.strptime(fetchRailData.get("sale_order_date"), "%b %d, %Y").date(),
                         sizing_charges = float(fetchRailData.get("table").get("sizing_charges_amount")),
                         evac_facility_charge = float(fetchRailData.get("table").get("evac_facility_charge_amount")),
                         royality_charges = float(fetchRailData.get("table").get("royalty_charges_amount")),
@@ -30172,6 +30207,83 @@ async def endpoint_to_upload_rail_data(response: Response, pdf_upload: List[Uplo
                         singleCheckRailData.save()
                 except DoesNotExist as e:
                     pass
+                # if "/" in fetchRailData.get("grade_size"):
+                #         gradeData = fetchRailData.get("grade_size").split("/")
+                #         finalGrade = f"{gradeData[0]}{gradeData[1]}"
+                #     else:
+                #         finalGrade = fetchRailData.get("grade_size")
+                # try:
+                #     checkGrnData = Grn.objects.get(do_no=fetchRailData.get("rr_no"), invoice_no=fetchRailData.get("invoice_number"))
+                #     checkGrnData.update(
+                #         invoice_date=str(datetime.datetime.strptime(fetchRailData.get("invoice_date"), "%b %d, %Y").date()),
+                #         sale_date=str(datetime.datetime.strptime(fetchRailData.get("sale_order_date"), "%b %d, %Y").date()),
+                #         grade=finalGrade,
+                #         mine=fetchRailData.get("mine"),
+                #         mode="rail",
+                #         sizing_charges_rate=fetchRailData.get("table").get("sizing_charges_rate"),
+                #         sizing_charges_amount=fetchRailData.get("table").get("sizing_charges_amount"),
+                #         evac_facility_charge_rate=fetchRailData.get("table").get("evac_facility_charge_rate"),
+                #         evac_facility_charge_amount=fetchRailData.get("table").get("evac_facility_charge_amount"),
+                #         royalty_charges_rate=fetchRailData.get("table").get("royalty_charges_rate"),
+                #         royalty_charges_amount= fetchRailData.get("table").get("royalty_charges_amount"),
+                #         nmet_rate=fetchRailData.get("table").get("nmet_rate"),
+                #         nmet_amount=fetchRailData.get("table").get("nmet_amount"),
+                #         dmf_rate=fetchRailData.get("table").get("dmf_rate"),
+                #         dmf_amount=fetchRailData.get("table").get("dmf_amount"),
+                #         adho_sanrachna_vikas_rate=fetchRailData.get("table").get("adho_sanrachna_vikas_rate"),
+                #         adho_sanrachna_vikas_amount=fetchRailData.get("table").get("adho_sanrachna_vikas_amount"),
+                #         pariyavaran_upkar_rate=fetchRailData.get("table").get("pariyavaran_upkar_rate"),
+                #         pariyavaran_upkar_amount=fetchRailData.get("table").get("pariyavaran_upkar_amount"),
+                #         assessable_value_rate=fetchRailData.get("table").get("assessable_value_rate"),
+                #         assessable_value_amount=fetchRailData.get("table").get("assessable_value_amount"),
+                #         igst_rate=fetchRailData.get("table").get("igst_rate"),
+                #         igst_amount=fetchRailData.get("table").get("igst_amount"),
+                #         gst_comp_cess_rate=fetchRailData.get("table").get("gst_comp_cess_rate"),
+                #         gst_comp_cess_amount=fetchRailData.get("table").get("gst_comp_cess_amount"),
+                #         gross_bill_value_rate=fetchRailData.get("table").get("gross_bill_value_rate"),
+                #         gross_bill_value_amount=fetchRailData.get("table").get("gross_bill_value_amount"),
+                #         less_underloading_charges_rate=fetchRailData.get("table").get("less_underloading_charges_rate"),
+                #         less_underloading_charges_amount=fetchRailData.get("table").get("less_underloading_charges_amount"),
+                #         net_value_rate=fetchRailData.get("table").get("net_value_rate"),
+                #         net_value_amount=fetchRailData.get("table").get("net_value_amount"),
+                #     )
+                    
+                # except DoesNotExist as e:
+                #     Grn(
+                #         do_no=fetchRailData.get("rr_no"),
+                #         invoice_date=str(datetime.datetime.strptime(fetchRailData.get("invoice_date"), "%b %d, %Y").date()),
+                #         invoice_no=fetchRailData.get("invoice_number"),
+                #         sale_date=str(datetime.datetime.strptime(fetchRailData.get("sale_order_date"), "%b %d, %Y").date()),
+                #         grade=finalGrade,
+                #         mine=fetchRailData.get("mine"),
+                #         mode="rail",
+                #         sizing_charges_rate=fetchRailData.get("table").get("sizing_charges_rate"),
+                #         sizing_charges_amount=fetchRailData.get("table").get("sizing_charges_amount"),
+                #         evac_facility_charge_rate=fetchRailData.get("table").get("evac_facility_charge_rate"),
+                #         evac_facility_charge_amount=fetchRailData.get("table").get("evac_facility_charge_amount"),
+                #         royalty_charges_rate=fetchRailData.get("table").get("royalty_charges_rate"),
+                #         royalty_charges_amount= fetchRailData.get("table").get("royalty_charges_amount"),
+                #         nmet_rate=fetchRailData.get("table").get("nmet_rate"),
+                #         nmet_amount=fetchRailData.get("table").get("nmet_amount"),
+                #         dmf_rate=fetchRailData.get("table").get("dmf_rate"),
+                #         dmf_amount=fetchRailData.get("table").get("dmf_amount"),
+                #         adho_sanrachna_vikas_rate=fetchRailData.get("table").get("adho_sanrachna_vikas_rate"),
+                #         adho_sanrachna_vikas_amount=fetchRailData.get("table").get("adho_sanrachna_vikas_amount"),
+                #         pariyavaran_upkar_rate=fetchRailData.get("table").get("pariyavaran_upkar_rate"),
+                #         pariyavaran_upkar_amount=fetchRailData.get("table").get("pariyavaran_upkar_amount"),
+                #         assessable_value_rate=fetchRailData.get("table").get("assessable_value_rate"),
+                #         assessable_value_amount=fetchRailData.get("table").get("assessable_value_amount"),
+                #         igst_rate=fetchRailData.get("table").get("igst_rate"),
+                #         igst_amount=fetchRailData.get("table").get("igst_amount"),
+                #         gst_comp_cess_rate=fetchRailData.get("table").get("gst_comp_cess_rate"),
+                #         gst_comp_cess_amount=fetchRailData.get("table").get("gst_comp_cess_amount"),
+                #         gross_bill_value_rate=fetchRailData.get("table").get("gross_bill_value_rate"),
+                #         gross_bill_value_amount=fetchRailData.get("table").get("gross_bill_value_amount"),
+                #         less_underloading_charges_rate=fetchRailData.get("table").get("less_underloading_charges_rate"),
+                #         less_underloading_charges_amount=fetchRailData.get("table").get("less_underloading_charges_amount"),
+                #         net_value_rate=fetchRailData.get("table").get("net_value_rate"),
+                #         net_value_amount=fetchRailData.get("table").get("net_value_amount"),
+                #     ).save()
 
         return {"details": "success"}      
     except Exception as e:
@@ -30469,11 +30581,11 @@ def endpoint_to_fetch_rcr_road_data(response: Response, currentPage: Optional[in
             # based on condition for timestamp playing with & and | 
             if start_timestamp:
                 start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
-                data &= Q(created_at__gte = start_date)
+                data &= Q(tar_wt_date__gte = start_date)
 
             if end_timestamp:
                 end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
-                data &= Q(created_at__lte = end_date)
+                data &= Q(tar_wt_date__lte = end_date)
 
             if search_text:
                 if search_text.isdigit():
@@ -30518,11 +30630,11 @@ def endpoint_to_fetch_rcr_road_data(response: Response, currentPage: Optional[in
 
             if start_timestamp:
                 start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
-                data &= Q(created_at__gte = start_date)
+                data &= Q(tar_wt_date__gte = start_date)
 
             if end_timestamp:
                 end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
-                data &= Q(created_at__lte = end_date)
+                data &= Q(tar_wt_date__lte = end_date)
             
             if search_text:
                 if search_text.isdigit():
@@ -30530,7 +30642,7 @@ def endpoint_to_fetch_rcr_road_data(response: Response, currentPage: Optional[in
                 else:
                     data &= (Q(mine__icontains=search_text))
 
-            usecase_data = RcrRoadData.objects(data).order_by("-created_at")
+            usecase_data = RcrRoadData.objects(data).order_by("-tar_wt_date")
             count = len(usecase_data)
             path = None
             logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
@@ -32179,7 +32291,12 @@ def endpoint_to_fetch_wcl_linkage_matrialization(response: Response, year_data: 
 
         flat_gmrData_result = [item for sublist in listData for item in sublist]
 
-        gmr_data_dict = {item['_id']: item['total_net_qty'] for item in flat_gmrData_result}
+        clubbed_agg_data = {
+            month: sum(round(item['total_net_qty'], 2) for item in flat_gmrData_result if item['_id'] == month)
+            for month in {item['_id'] for item in flat_gmrData_result}
+        }
+
+        # gmr_data_dict = {item['_id']: item['total_net_qty'] for item in flat_gmrData_result}
 
         chart_data = {
             'labels': [],
@@ -32195,7 +32312,7 @@ def endpoint_to_fetch_wcl_linkage_matrialization(response: Response, year_data: 
         for month_data in sapData_result:
             month = month_data['_id']
             total_do_qty = month_data['total_do_qty']
-            total_net_qty = gmr_data_dict.get(month, 0)
+            total_net_qty = clubbed_agg_data.get(month, 0)
             
             percentage = (total_net_qty / total_do_qty) * 100 if total_do_qty > 0 else 0
             new_percentage = percentage if percentage < 100 else 100.0
@@ -32793,7 +32910,6 @@ def endpoint_to_update_averydata(start_date: str, end_date: str):
         listData = []
         for name, url in urls.items():
             fetchAveryData = make_request(name, url, avery_id, avery_pass, proxies)
-            console_logger.debug(fetchAveryData)
             if fetchAveryData:
                 for singleAveryData in fetchAveryData:
                     if singleAveryData.get("rakeId"):
@@ -34629,17 +34745,15 @@ def endpoint_to_fetch_coal_statement(response:Response, currentPage: Optional[in
                     elif do_no_exists:
                         # updating saprecords data on gmr dictionary
                         update_data = [item.update({"material_code": sapDataload.get("material_code"), "material_description": sapDataload.get("material_description"), "plant_code": sapDataload.get("plant_code"), "po_open_quantity": sapDataload.get("po_open_quantity"), "storage_location": sapDataload.get("storage_location"), "transport_code": sapDataload.get("transport_code"), "transport_name": sapDataload.get("transport_name"), "uom": sapDataload.get("uom"), "valuation_type": sapDataload.get("valuation_type"), "basic_price": sapDataload.get("basic_price"), "cgst": sapDataload.get("cgst"), "dmf": sapDataload.get("dmf"),"evac_facility_charges": sapDataload.get("evac_facility_charges"), "gst_comp_cess": sapDataload.get("gst_comp_cess"), "nmet_charges": sapDataload.get("nmet_charges"), "royality_charges": sapDataload.get("royality_charges"), "sgst": sapDataload.get("sgst"), "sizing_charges": sapDataload.get("sizing_charges"), "so_value_grand_total": sapDataload.get("so_value_grand_total"), "stc_charges": sapDataload.get("stc_charges")}) for item in listData if item['do_no'] == sapDataload.get("do_number")]
-            # total_count = len(listData)
             start_idx = (page_no - 1) * page_len
             end_idx = start_idx + page_len
             paginated_data = listData[start_idx:end_idx]
 
-            # total_count = results[0]["totalCount"][0]["count"] + historicgmrresults[0]["totalCount"][0]["count"] + saprecordsResults[0]["totalCount"][0]["count"]
             total_count = results[0]["totalCount"][0]["count"] + historicgmrresults[0]["totalCount"][0]["count"] + saprecordsResults[0]["totalCount"][0]["count"]
-            # result["labels"] = ["do_no", "mine", "quota", "do_qty", "challan_gross_qty", "challan_tare_qty", "challan_net_qty", "gwel_actual_gross_qty", "gwel_actual_tare_qty", "gwel_actual_net_qty", "transist_loss", "line_item", "start_date", "end_date", "po_no", "po_date"]
             result["labels"] = ["do_no", "mine", "quota", "do_qty", "challan_gross_qty", "challan_tare_qty", "challan_net_qty", "gwel_actual_gross_qty", "gwel_actual_tare_qty", "gwel_actual_net_qty", "transist_loss", "line_item", "start_date", "end_date", "po_no", "po_date", "material_code", "material_description", "plant_code", "po_open_quantity", "storage_location", "transport_code", "transport_name", "uom", "valuation_type", "basic_price", "cgst", "dmf", "evac_facility_charges", "gst_comp_cess", "nmet_charges", "royality_charges", "sgst", "sizing_charges", "so_value_grand_total", "stc_charges"]
             result["datasets"] = paginated_data
-            result["total"] = total_count
+            # result["total"] = total_count
+            result["total"] = len(listData)
 
             return result
         elif type and type == "download":
@@ -34982,7 +35096,6 @@ def endpoint_to_fetch_coal_statement(response:Response, currentPage: Optional[in
             outputDict = {}
             listData = []
             for singleData in output:
-                # console_logger.debug(singleData["totalData"])
                 for dataload in singleData["totalData"]:
                     dataload["do_no"] = dataload.get("do_number")
                     dataload["quota"] = dataload.get("month")
@@ -35144,7 +35257,6 @@ def endpoint_to_fetch_coal_statement(response:Response, currentPage: Optional[in
                 worksheet.write(2, index, header, cell_format2)
 
             for singleData in output:
-                # console_logger.debug(singleData["totalData"])
                 for dataload in singleData["totalData"]:
                     dataload["do_no"] = dataload.get("do_number")
                     dataload["quota"] = dataload.get("month")
@@ -35212,7 +35324,6 @@ def endpoint_to_fetch_coal_statement(response:Response, currentPage: Optional[in
                     worksheet.write(row, 3, singlelistData["do_qty"], cell_format)
                 else:
                     worksheet.write(row, 3, singlelistData["do_qty"], cell_format)
-                console_logger.debug(singlelistData.get("challan_gross_qty"))
                 try:
                     if singlelistData.get("challan_gross_qty"):
                         worksheet.write(row, 4, round(singlelistData["challan_gross_qty"], 2), cell_format)
@@ -35374,155 +35485,8 @@ def endpoint_to_fetch_coal_statement(response:Response, currentPage: Optional[in
         console_logger.debug(e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        # console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
-
-
-
-# @router.get("/rcf_losses", tags=["Recovery"])
-# def get_rcf_losses(response: Response,
-#                    month: Optional[str] = None,
-#                    currentPage: Optional[int] = None,
-#                    perPage: Optional[int] = None,
-#                    type: Optional[str] = "display"):
-#     try:
-#         result = {        
-#                 "labels": [],
-#                 "datasets": [],
-#                 "total" : 0,
-#                 "page_size": 15
-#         }
-#         query = {}
-#         if type and type == "display":
-#             page_no = 1
-#             page_len = result["page_size"]
-
-#             if currentPage:
-#                 page_no = currentPage
-
-#             if perPage:
-#                 page_len = perPage
-#                 result["page_size"] = perPage
-
-#             # Calculate skip value
-#             skip_value = (page_no - 1) * page_len
-
-#             if month:
-#                 query["month"] = {"$regex": f"{month}", "$options": "i"}
-
-#             pipeline = [
-#                 {'$match': query}, 
-#                 {
-#                     "$group": {
-#                         "_id": {
-#                             "$substr": ["$month", 0, 7]
-#                         },
-#                         "total_secl_net_wt_sum": {"$sum": {"$toDouble": "$total_secl_net_wt"}},
-#                         "total_gwel_net_wt_sum": {"$sum": {"$toDouble": "$total_gwel_net_wt"}},
-#                         "tl_sum": {
-#                             "$sum": {
-#                                 "$subtract": [
-#                                     {"$toDouble": "$total_secl_net_wt"},
-#                                     {"$toDouble": "$total_gwel_net_wt"}
-#                                 ]
-#                             }
-#                         },
-#                         "tl_tolerance_sum": {
-#                             "$sum": {
-#                                 "$multiply": [
-#                                     {"$toDouble": "$total_secl_net_wt"},
-#                                     0.008
-#                                 ]
-#                             }
-#                         }
-#                     }
-#                 },
-#                 {
-#                     "$project": {
-#                         "month": "$_id",
-#                         "total_secl_net_wt_sum": 1,
-#                         "total_gwel_net_wt_sum": 1,
-#                         "tl_sum": 1,
-#                         "tl_tolerance_sum": 1,
-#                         "_id": 0
-#                     }
-#                 },
-#                 {
-#                     "$sort": {"month": 1}
-#                 },
-#                 { 
-#                     "$skip": skip_value 
-#                 },
-#                 { 
-#                     "$limit": page_len 
-#                 }
-#             ]
-
-#             alldata = list(RailData.objects().aggregate(pipeline))
-
-#             path = None
-#             if alldata:
-#                 result["labels"] = [
-#                     "month",
-#                     "secl_qty",
-#                     "gwel_qty",
-#                     "transit_loss",
-#                     "tl_tolerance",
-#                     "50_percent_of_ol_recovery",                        
-#                     "ul_recovery"                                 
-#                 ]
-#                 grand_total_secl = 0
-#                 grand_total_gwel = 0
-#                 grand_total_tl = 0
-#                 grand_total_tolerance = 0
-#                 sr_no = 1
-#                 listData = []
-#                 for row, item in enumerate(alldata, start=1):
-#                     secl_qty = item["total_secl_net_wt_sum"]
-#                     gwel_qty = item["total_gwel_net_wt_sum"]
-#                     tl = item["tl_sum"]
-#                     tl_tolerance = round(item["tl_tolerance_sum"], 2)  # Round to 2 decimal places
-#                     dictData = {} 
-#                     if item.get("month"):
-#                         dictData["month"] = str(item["month"])
-#                     else:
-#                         dictData["month"] = "N/A"
-#                     dictData["secl_qty"] = secl_qty
-#                     dictData["gwel_qty"] = gwel_qty
-#                     dictData["transit_loss"] = tl
-#                     dictData["tl_tolerance"] = tl_tolerance
-#                     dictData["50_percent_of_ol_recovery"] = 0
-#                     dictData["ul_recovery"] = 0
-
-#                     listData.append(dictData)
-
-#                     grand_total_secl += secl_qty
-#                     grand_total_gwel += gwel_qty
-#                     grand_total_tl += tl
-#                     grand_total_tolerance += tl_tolerance
-                    
-#                 totalDict = {}
-#                 grand_total_row = len(alldata) + 1
-#                 totalDict["grand_total"] = grand_total_row
-#                 totalDict["grand_total_secl"] = grand_total_secl
-#                 totalDict["grand_total_gwel"] = grand_total_gwel
-#                 totalDict["grand_total_tl"] = grand_total_tl
-#                 totalDict["grand_total_tolerance"] = round(grand_total_tolerance, 2)
-#                 listData.append({"total": totalDict})
-        
-#         result["datasets"] = listData
-
-#         return result
-
-#     except Exception as e:
-#         console_logger.debug(e)
-#         response.status_code = 400
-#         exc_type, exc_obj, exc_tb = sys.exc_info()
-#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-#         console_logger.debug((exc_type, fname, exc_tb.tb_lineno))
-#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
-#         return e
 
 
 def get_sap_data(arv_cum_do_numbers):
@@ -35555,8 +35519,6 @@ def get_sap_data(arv_cum_do_numbers):
             }
         }
     ]
-
-    # console_logger.debug(sap_pipeline)
     
     sap_results = list(SapRecords.objects().aggregate(sap_pipeline))
     
@@ -35576,7 +35538,6 @@ def normalize_sample_qty(qty):
 def update_data_type():
     result = RCA.find()
     for d in result:
-        console_logger.debug(d)
         if type(d.get("sample_qty")) == str:
             try:
                 # RCA.update_one(filter={"_id":d.get("_id")}, update={"$set":{"plant_analysis_date":datetime.strptime(d.get("plant_analysis_date"), '%d/%m/%Y')}})
@@ -35616,13 +35577,7 @@ def fetch_bunker_data_gcv():
 def endpoint_to_fetch_coal_recipt_summary():
     try:
         monthends = get_monthends()
-        # console_logger.debug(monthends)
         bunker_dates, bunker_values = fetch_bunker_data_gcv()
-        # logger.debug((monthends, bunker_data, bunker_values))
-
-        console_logger.debug(bunker_dates)
-        console_logger.debug(bunker_values)
-
         project={
             'plant_preperation_date': 0,
             'plant_certificate_id':0,
@@ -35682,13 +35637,10 @@ def endpoint_to_fetch_coal_recipt_summary():
             gcv_total = cum_weighted_gcv_total/cum_wt_total
             if len(bunker_values) > 0 and cum_wt_total >= bunker_values[0]:
                 # month = df['plant_analysis_date'][i].replace(day=1, month=(df['plant_analysis_date'][i].month) + 1) - timedelta(days=1)               #For Monthend
-             
-                # console_logger.debug(month)
+                
                 to_sub = bunker_values.pop(0)
                 date = bunker_dates.pop(0)
                 month = date
-                console_logger.debug(month)
-                console_logger.debug((len(bunker_values), cum_wt_total >= bunker_values[0], bunker_values))
                 wt = cum_wt_total - to_sub
                 wgcv = wt*float(df['plant_arb_gcv'][i])
                 cwgcv = wgcv+cum_weighted_gcv_list[i-1]
@@ -35802,12 +35754,7 @@ def endpoint_to_fetch_coal_recipt_summary():
         #     cum_wt_list.append(cum_wt_total)
         #     weighted_gcv_list.append(weighted_gcv_total)
         #     cum_weighted_gcv_list.append(cum_weighted_gcv_total)
-        #     gcv_list.append(gcv_total)
-
-        # console_logger.debug(len(cum_wt_list))       
-        # console_logger.debug(len(weighted_gcv_list))       
-        # console_logger.debug(len(cum_weighted_gcv_list))       
-        # console_logger.debug(len(gcv_list))       
+        #     gcv_list.append(gcv_total)     
         
         df = df.with_columns(
             pl.Series('cum_wt', cum_wt_list),
@@ -35840,23 +35787,18 @@ def endpoint_to_fetch_coal_recipt_summary():
         return e
 
 def get_week_ends(month: int, year: int):
-    # Get the start and end of the month
     start_month = datetime.datetime(year, month, 1)
     if month == 12:
         end_month = start_month.replace(year=year + 1, month=1) - datetime.timedelta(days=1)
     else:
         end_month = start_month.replace(month=month + 1) - datetime.timedelta(days=1)
-    
     weekends = []
-
-    # Iterate through all days in the month
     current_day = start_month
     while current_day <= end_month:
         # Check if the current day is a weekend (Saturday or Sunday)
         if current_day.weekday() == 5 or current_day.weekday() == 6:  # 5 = Saturday, 6 = Sunday
             weekends.append(current_day)
-        current_day += datetime.timedelta(days=1)
-    
+        current_day += datetime.timedelta(days=1)    
     return weekends
 
 
@@ -35889,7 +35831,6 @@ def summarybyWeek():
             start_year, end_year = get_current_financial_year_week(month)
             weekends.extend(get_week_ends(start_year.month, end_year.year))
         weekends.sort()
-        # print(weekends)
         
         result = BQA.aggregate([ 
             { 
@@ -36083,8 +36024,6 @@ def summarybyWeek():
         
         today = datetime.datetime.today()
 
-        console_logger.debug(df)
-
         # Extract the latest date from your dataframe
         latest_date = df['date'].max()
 
@@ -36110,7 +36049,6 @@ def summarybyWeek():
             console_logger.info("The current month is completed; no data will be inserted.")
             
         if bulk:
-            # console_logger.debug(bulk)
             BQS.bulk_write(bulk)
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -36120,31 +36058,10 @@ def summarybyWeek():
         return e
 
 def last_day_of_month(date):
+    
     if date.month == 12:
         return date.replace(day=31)
     return date.replace(month=date.month+1, day=1) - datetime.timedelta(days=1)
-
-
-# @router.get("/test_data_summary", tags=["Road Coal"])
-# def endpoint_to_test_gcv_analysis():
-#     try:
-#         listData = ["04/30/2024", "05/31/2024", "06/30/2024", "07/31/2024", "08/31/2024", "09/30/2024", "10/31/2024", "11/03/2024"]
-
-#         for single_data in listData:
-#             date_data = datetime.datetime.strptime(single_data, "%m/%d/%Y").strftime("%Y-%m")
-#             date_data_dateee = datetime.datetime.strptime(single_data, "%m/%d/%Y").date()
-#             start_date = f"{date_data}-01"
-#             end_date = str(last_day_of_month(date_data_dateee))
-#             fetchBunkerSummary = BunkerQualitySummary.objects.get(date__gte=start_date, date__lte=end_date)
-#             console_logger.debug(fetchBunkerSummary.date)
-#             console_logger.debug(fetchBunkerSummary.cum_total_qty)
-#     except Exception as e:
-#         exc_type, exc_obj, exc_tb = sys.exc_info()
-#         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-#         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
-#         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
-#         return e
-
     
 @router.get("/test_coalgcv", tags=["Road Coal"])
 def endpoint_to_insert_gcv_analysis():
@@ -36154,20 +36071,16 @@ def endpoint_to_insert_gcv_analysis():
         for i, fetch_date in enumerate(fetchreciptData['date']):
             try:
                 fetchBunkerSummary = BunkerQualitySummary.objects.get(date=fetch_date)
-                # date_data = datetime.datetime.strptime(fetch_date, "%m/%d/%Y").strftime("%Y-%m")
-                # date_data_dateee = datetime.datetime.strptime(fetch_date, "%m/%d/%Y").date()
-                # start_date = f"{date_data}-01"
-                # end_date = str(last_day_of_month(date_data_dateee))
-                # console_logger.debug(start_date)
-                # console_logger.debug(end_date)
-                # fetchBunkerSummary = BunkerQualitySummary.objects.get(date__gte=start_date, date__lte=end_date)
                 cr_domestic_gcv_mtd = round(fetchreciptData['weighted_gcv'][i], 2)
                 cr_weighted_gcv_ytd = round(fetchreciptData['domestic_gcv'][i], 2)
                 cr_domestic_qty_mtd = round(fetchBunkerSummary.domestic_qty, 2)
                 cr_imported_qty_mtd = 0 
                 cr_imported_gcv_mtd = 0 
                 cr_weighted_gcv_mtd = round(((fetchBunkerSummary.domestic_qty*cr_domestic_gcv_mtd) + (cr_imported_qty_mtd*cr_imported_gcv_mtd)) / (cr_domestic_qty_mtd+cr_imported_qty_mtd), 2) #((sample_qty*weighted_gcv) + (imported_qty_mtd*imported_gcv_mtd))/ sample_qty+imported_qty_mtd
+                if fetchBunkerSummary.wt_gcv is None:
+                    fetchBunkerSummary.wt_gcv = 0
                 difference_in_gcv_mtd = round(cr_weighted_gcv_mtd - fetchBunkerSummary.wt_gcv, 3)
+                # difference_in_gcv_mtd = round(cr_weighted_gcv_mtd - fetchBunkerSummary.wt_gcv, 3)
                 difference_in_gcv_ytd = round(cr_weighted_gcv_ytd - fetchBunkerSummary.weighted_gcv, 3)
                 
                 fetchBunkerSummary.cr_domestic_gcv_mtd = cr_domestic_gcv_mtd
@@ -36184,8 +36097,7 @@ def endpoint_to_insert_gcv_analysis():
                 continue
         return {"detail": "success"}
     except Exception as e:
-        console_logger.debug("----- Vehicle Scanned Count Error -----",e)
-        # response.status_code = 400
+        console_logger.debug("----- Coal GCV update Error -----",e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
@@ -36217,7 +36129,6 @@ def endpoint_to_fetch_gcv_analysis(response: Response, currentPage: Optional[int
 
             listData = []
             logs = BunkerQualitySummary.objects().skip(offset).limit(page_len).order_by("date")
-            # result["labels"] = list(dataDict.keys())
             if any(logs):
                 for log in logs:
                     # result["labels"] = ["year", "month", "cb_domestic_qty_mtd", "cb_imported_qty_mtd", "cb_weighted_gcv_mtd", "cb_weighted_gcv_ytd", "cr_domestic_qty_mtd", "cr_domestic_gcv_mtd", "cr_imported_qty_mtd",  "cr_imported_gcv_mtd", "cr_weighted_gcv_mtd", "cr_weighted_gcv_ytd", "difference_in_gcv_mtd", "difference_in_gcv_ytd"]
@@ -36225,17 +36136,13 @@ def endpoint_to_fetch_gcv_analysis(response: Response, currentPage: Optional[int
                     # result["datasets"].append(log.simplepayload())
                     payload = log.simplepayload()
                     
-                    # Add search filtering here
                     if search_text:
-                        # Search through the values of the payload dictionary
                         if search_text.lower() in str(payload).lower():
-                            # result["labels"] = list(payload.keys())
                             result["labels"] = ["year", "month", "cb_domestic_qty_mtd", "cb_imported_qty_mtd", "cb_weighted_gcv_mtd", "cb_weighted_gcv_ytd", "cr_domestic_qty_mtd", "cr_domestic_gcv_mtd", "cr_imported_qty_mtd",  "cr_imported_gcv_mtd", "cr_weighted_gcv_mtd", "cr_weighted_gcv_ytd", "difference_in_gcv_mtd", "difference_in_gcv_ytd"]
                             
                             result["datasets"].append(payload)
                     else:
                         # If no search_text provided, add all the data
-                        # result["labels"] = list(payload.keys())
                         result["labels"] = ["year", "month", "cb_domestic_qty_mtd", "cb_imported_qty_mtd", "cb_weighted_gcv_mtd", "cb_weighted_gcv_ytd", "cr_domestic_qty_mtd", "cr_domestic_gcv_mtd", "cr_imported_qty_mtd",  "cr_imported_gcv_mtd", "cr_weighted_gcv_mtd", "cr_weighted_gcv_ytd", "difference_in_gcv_mtd", "difference_in_gcv_ytd"]
 
                         result["datasets"].append(payload)
@@ -36345,9 +36252,7 @@ def endpoint_to_fetch_gcv_analysis(response: Response, currentPage: Optional[int
                         else:
                             finalData = dataField
                         if finalData is not None:
-                            # Writing data to the worksheet
-                            worksheet.write(row, 0, count, cell_format)  # Ensure cell_format is properly defined
-
+                            worksheet.write(row, 0, count, cell_format)
                             worksheet.write(row, 1, finalData["year"], cell_format)
                             worksheet.write(row, 2, finalData["month"], cell_format)
                             worksheet.write(row, 3, finalData["cb_domestic_qty_mtd"], cell_format)
@@ -37491,7 +37396,6 @@ def get_rcf_losses(response: Response,
 
                         sr_no += 1
                     grand_total_row = len(alldata) + 3
-                    console_logger.debug(grand_total_row)
                     worksheet.write(grand_total_row, 0, "", cell_format2)
                     worksheet.write(grand_total_row, 1, "Grand Total", cell_format2)
                     worksheet.write(grand_total_row, 2, grand_total_secl, cell_format2)
@@ -38078,7 +37982,6 @@ def get_consumer_types(response: Response,):
     try:
         consumer_types = sapdb.distinct("consumer_type", {"consumer_type": {"$ne": None}})
         return consumer_types
-    
     except Exception as e:
         console_logger.debug(f"----- Consumer Type Get Error ----- {e}")
         response.status_code = 400
@@ -38522,7 +38425,6 @@ def get_wcl_analysis(response: Response,
                     grouped_data[consumer_type][rrNo].append(item)
                 else:
                     console_logger.debug(f"No matching entry in sapdb_dict for rrNo: {rrNo}")
-            # console_logger.debug(grouped_data)
             path = None
             logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
             if os.path.exists(target_directory):
@@ -38899,8 +38801,6 @@ def get_overall_analysis(response: Response,
                         grouped_data[consumer_type][rr_no] = []
                     grouped_data[consumer_type][rr_no].append(item)
 
-                # Add to SECL Linkage data using 'SECL Linkage' as the consumer type, fetched from sapraildb
-                
                 if secl_entry:
                     if "SECL Linkage" not in grouped_data:
                         grouped_data["SECL Linkage"] = {}
@@ -39018,18 +38918,13 @@ def get_overall_analysis(response: Response,
                         worksheet.merge_range("A1:Q1", main_header, header_format) 
                         worksheet.merge_range("C2:Q2", f"Coal Analysis", report_name_format)
 
-
-
                     current_row = 2
-
                     secl_linkage_headers_written = False
-
                     for do_no, entries in do_grouped_data.items():
                         if consumer_type != "SECL Linkage" or not secl_linkage_headers_written:
                             for index, header in enumerate(headers):
                                 worksheet.write(current_row, index, header, normal_row_format)
                             current_row += 1
-
                             if consumer_type == "SECL Linkage":
                                 secl_linkage_headers_written = True 
                         
@@ -39063,7 +38958,7 @@ def get_overall_analysis(response: Response,
                                 try:
                                     worksheet.write(current_row, 2, datetime.datetime.strptime(secl_month, "%Y-%m").strftime("%b %Y"), cell_format)
                                 except ValueError as e:
-                                    worksheet.write(current_row, 2, "", cell_format)
+                                    worksheet.write(current_row, 2, "N/A", cell_format)
 
                                 worksheet.write(current_row, 3, do_no, cell_format)
                                 worksheet.write(current_row, 4, secl_dict.get(do_no, {}).get("rr_date", 0), cell_format)
@@ -39091,7 +38986,10 @@ def get_overall_analysis(response: Response,
                             else:
                                 worksheet.write(current_row, 0, lot_no, cell_format)
                                 worksheet.write(current_row, 1, mine_name, cell_format)
-                                worksheet.write(current_row, 2, datetime.datetime.strptime(month, "%Y%m").strftime("%b %Y"), cell_format)
+                                if month is not None:
+                                    worksheet.write(current_row, 2, datetime.datetime.strptime(month, "%Y%m").strftime("%b %Y"), cell_format)
+                                else:
+                                    worksheet.write(current_row, 2, "N/A", cell_format)
                                 worksheet.write(current_row, 3, sapdb_dict.get(do_no, {}).get("do_qty", 0), cell_format)
                                 worksheet.write(current_row, 4, item.get("mine_qty", 0), cell_format)
                                 worksheet.write(current_row, 5, item.get("mine_qty", 0), cell_format)
@@ -39370,8 +39268,6 @@ def endpoint_to_fetch_minesamplequalityanalysis(response: Response, currentPage:
                 start_date = f'{month_date}-01'
                 startd_date=datetime.datetime.strptime(f"{start_date}T00:00","%Y-%m-%dT%H:%M")
                 end_date = (datetime.datetime.strptime(start_date, "%Y-%m-%d") + relativedelta(day=31)).strftime("%Y-%m-%d")
-                # console_logger.debug(startd_date.strftime("%Y-%m-%dT%H:%M"))
-                # console_logger.debug(f"{end_date}T23:59")
                 data &= Q(plant_analysis_date__gte = startd_date.strftime("%Y-%m-%dT%H:%M"))
                 data &= Q(plant_analysis_date__lte = f"{end_date}T23:59")
 
@@ -39936,6 +39832,7 @@ def endpoint_to_add_zero_after_dot(value):
 @router.post("/extract/tax/invoice", tags=["Road Map"])
 async def endpoint_to_extract_tax_invoice_data(response: Response, file: UploadFile = File(...)):
     try:
+        # pdfname starts eg: 14-08-2024 10201.PDF
         if file is None:
             return {"error": "No file Uploaded!"}
         
@@ -39973,7 +39870,7 @@ async def endpoint_to_extract_tax_invoice_data(response: Response, file: UploadF
                         db_data["object_id"] = str(fetchGmrData.id)
                         db_data["sales_doc_no"] = fetchGmrData.arv_cum_do_number
                         datesplit = fetchGmrData.delivery_challan_date.split("-")
-                        date_form = f"{datesplit[0]}-{datesplit[1].zfill(2)}-{datesplit[2]}"
+                        date_form = f"{datesplit[0].zfill(2)}-{datesplit[1].zfill(2)}-{datesplit[2]}"
                         db_data["dispatch_date_time"] = date_form
                         db_data["challan_number"] = fetchGmrData.delivery_challan_number
                         db_data["grade_size"] = fetchGmrData.grade
@@ -39984,10 +39881,10 @@ async def endpoint_to_extract_tax_invoice_data(response: Response, file: UploadF
                         db_data["actual_gross_qty"] = fetchGmrData.actual_gross_qty
                         db_data["actual_tare_qty"] = fetchGmrData.actual_tare_qty
                         db_data["actual_net_qty"] = fetchGmrData.actual_net_qty
+                        db_data["type_consumer"] = fetchGmrData.type_consumer
                         list_data.append(db_data)
                     except DoesNotExist as e:
                         continue
-        # console_logger.debug(list_data)
         headerData = {
             "invoice_date": datetime.datetime.strptime(fetchInvoiceData.get("tax_invoice").get("Invoice Date"), "%b %d, %Y").date(),
             "invoice_no": fetchInvoiceData.get("tax_invoice").get("Invoice No"),
@@ -40039,13 +39936,18 @@ async def endpoint_to_fetch_gmrdata_dcdate(response: Response, dc_date: str):
         fetchGmrData = Gmrdata.objects(delivery_challan_date=dc_date)
         if fetchGmrData:
             for single_data in fetchGmrData:
-                listData.append(single_data.payload())
+                dictData = single_data.payload()
+                if single_data.delivery_challan_date:
+                    datesplit = single_data.delivery_challan_date.split("-")
+                    date_form = f"{datesplit[0].zfill(2)}-{datesplit[1].zfill(2)}-{datesplit[2]}"
+                    dictData.update({'DC_Date': date_form})
+                listData.append(dictData)
             return listData
         else:
             raise HTTPException(status_code=404, detail="No data found")
     except Exception as e:
         response.status_code = 400
-        console_logger.debug("----- Sap Excel Error -----", e)
+        console_logger.debug("----- GmrData Dc Date Error -----", e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
@@ -40079,17 +39981,21 @@ def endpoint_to_insert_grn(response: Response, data: grnStatus):
 @router.post("/creategrnfile", tags=["Grn Status"])
 def endpoint_to_create_grnfile(data: GrnFileData, invoice_no: Optional[str] = None):
     try:
+        console_logger.debug("grn file creation")
         payloadData = data.dict()
         truck_count = len(payloadData.get("table_data"))
         fetchsapRecordsData = SapRecords.objects.get(do_no=payloadData.get("do_no"))
         lot_no = []
         accepted_qty = []
         for single_data_fetch in payloadData.get("table_data"):
-            fetchGmrData = Gmrdata.objects.get(delivery_challan_number=single_data_fetch.get("challan_number"))
-            lot_no.append(fetchGmrData.lot)
-            if fetchGmrData.actual_net_qty:
-                # accepted_qty.append(round(float(fetchGmrData.actual_net_qty), 2))
-                accepted_qty.append(round(float(fetchGmrData.actual_net_qty), 2))
+            try:
+                fetchGmrData = Gmrdata.objects.get(delivery_challan_number=single_data_fetch.get("challan_number"))
+                lot_no.append(fetchGmrData.lot)
+                if fetchGmrData.actual_net_qty:
+                    # accepted_qty.append(round(float(fetchGmrData.actual_net_qty), 2))
+                    accepted_qty.append(round(float(fetchGmrData.actual_net_qty), 2))
+            except DoesNotExist as e:
+                pass
         getCountNetweight = sum(float(single_data.get("net_weight")) for single_data in payloadData.get("table_data"))
         file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
         # target_directory = f"static_server/gmr_ai/{file}"
@@ -40097,16 +40003,59 @@ def endpoint_to_create_grnfile(data: GrnFileData, invoice_no: Optional[str] = No
         file_name = f'Challan Invoice No_{invoice_no}.txt'
         os.umask(0)
         os.makedirs(target_directory, exist_ok=True, mode=0o777)
-        console_logger.debug(os.path.join(os.getcwd(), target_directory, file_name))
+        full_path = os.path.join(os.getcwd(), target_directory, file_name)
+
+        with open(full_path, 'a') as f:
+            f.write(f"PO number|PO Item no|Invoice Date|GRN Posting Date|Challan/ Invoice No.|Mine Name|Header Text|Material code|Material Description|Valuation Type|quantity  as per Challan|Accepted Qty.|Plant code|storage location|Transporter name\n")
+            f.write(f"""{fetchsapRecordsData.sap_po}|{"{:05d}".format(int(fetchsapRecordsData.line_item.strip()))}|{datetime.datetime.strptime(payloadData.get('invoice_date'), "%Y-%m-%d").strftime("%d.%m.%Y")}|{datetime.datetime.strptime(payloadData.get('dc_date'), "%Y-%m-%d").strftime("%d.%m.%Y")}|{payloadData.get('invoice_no')}|{fetchsapRecordsData.mine_name}|DO{payloadData.get('do_no')}{fetchsapRecordsData.mine_name}{truck_count}TLOT-01|{fetchsapRecordsData.material_code if fetchsapRecordsData.material_code else ' '}|{fetchsapRecordsData.material_description if fetchsapRecordsData.material_description else ' '}|{fetchsapRecordsData.valuation_type if fetchsapRecordsData.valuation_type else ' '}|{round(getCountNetweight, 2)}|{round(sum(accepted_qty), 2)}|{fetchsapRecordsData.plant_code if fetchsapRecordsData.plant_code else ' '}|{fetchsapRecordsData.storage_location if fetchsapRecordsData.storage_location else ' '}|{fetchsapRecordsData.transport_name if fetchsapRecordsData.transport_name else ' '}\n""")
+        
+        for single_data_inside in payloadData.get("table_data"):
+            Gmrdata.objects(arv_cum_do_number=single_data_inside.get("sales_doc_no"), delivery_challan_number=single_data_inside.get("challan_number")).update(grn_status=True, mine_invoice=payloadData.get("invoice_no"))
+
+        return full_path
+    except Exception as e:
+        console_logger.debug("----- Sap Excel Error -----", e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return {"error": str(e)}
+
+@router.post("/creategrnfilerail", tags=["Grn Status"])
+def endpoint_to_create_grnfile(data: GrnFileDataRail, invoice_no: Optional[str] = None):
+    try:
+        payloadData = data.dict()
+        truck_count = len(payloadData.get("table_data"))
+        fetchsapRecordsData = sapRecordsRail.objects.get(rr_no=payloadData.get("do_no"))
+        # lot_no = []
+        accepted_qty = []
+        fetchRailData = RailData.objects.get(rr_no=payloadData.get("do_no"))
+        if fetchRailData.rake_no:
+            if "Rev" in fetchRailData.rake_no:
+                split_rakeno = fetchRailData.rake_no.split("-")
+                split_rake = int(split_rakeno[1])
+            else:
+                split_rake = int(fetchRailData.rake_no)
+        else:
+            split_rake = 0
+        for single_data_fetch in payloadData.get("table_data"):
+            if single_data_fetch.get("gwel_net_wt"):
+                accepted_qty.append(round(float(single_data_fetch.get("gwel_net_wt")), 2))
+        rake_no = split_rake
+        getCountNetweight = sum(float(single_data.secl_net_wt) for single_data in fetchRailData.secl_rly_data)
+        file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+        target_directory = f"sap_ftp/GRN"
+        file_name = f'Challan Invoice No_{invoice_no}.txt'
+        os.umask(0)
+        os.makedirs(target_directory, exist_ok=True, mode=0o777)
         full_path = os.path.join(os.getcwd(), target_directory, file_name)
 
         # filename = f'{target_directory}/challan_invoice_no_{datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S")}.txt'
         with open(full_path, 'a') as f:
             f.write(f"PO number|PO Item no|Invoice Date|GRN Posting Date|Challan/ Invoice No.|Mine Name|Header Text|Material code|Material Description|Valuation Type|quantity  as per Challan|Accepted Qty.|Plant code|storage location|Transporter name\n")
-            f.write(f"""{fetchsapRecordsData.sap_po}|{fetchsapRecordsData.line_item.strip()}|{payloadData.get('invoice_date')}|{payloadData.get('dc_date')}|{payloadData.get('invoice_no')}|{fetchsapRecordsData.mine_name}|DO{payloadData.get('do_no')}{fetchsapRecordsData.mine_name}{truck_count}TLOT-01|{fetchsapRecordsData.material_code if fetchsapRecordsData.material_code else ' '}|{fetchsapRecordsData.material_description if fetchsapRecordsData.material_description else ' '}|{fetchsapRecordsData.valuation_type if fetchsapRecordsData.valuation_type else ' '}|{getCountNetweight}|{round(sum(accepted_qty), 2)}|{fetchsapRecordsData.plant_code if fetchsapRecordsData.plant_code else ' '}|{fetchsapRecordsData.storage_location if fetchsapRecordsData.storage_location else ' '}|{fetchsapRecordsData.transport_name if fetchsapRecordsData.transport_name else ' '}\n""")
+            f.write(f"""{fetchsapRecordsData.sap_po}|{"{:05d}".format(int(fetchsapRecordsData.line_item.strip())) if fetchsapRecordsData.line_item else " "}|{datetime.datetime.strptime(payloadData.get('invoice_date'), "%Y-%m-%d").strftime("%d.%m.%Y")}|{datetime.datetime.strptime(payloadData.get('dc_date'), "%Y-%m-%d").strftime("%d.%m.%Y")}|{payloadData.get('invoice_no')}|{fetchsapRecordsData.mine}|RR{payloadData.get('do_no')}{fetchsapRecordsData.mine}{truck_count}TWGRACK-{rake_no}|{fetchsapRecordsData.material_code if fetchsapRecordsData.material_code else ' '}|{fetchsapRecordsData.material_description if fetchsapRecordsData.material_description else ' '}|{fetchsapRecordsData.valuation_type if fetchsapRecordsData.valuation_type else ' '}|{round(getCountNetweight, 2)}|{round(sum(accepted_qty), 2)}|{fetchsapRecordsData.plant_code if fetchsapRecordsData.plant_code else ' '}|{fetchsapRecordsData.storage_location if fetchsapRecordsData.storage_location else ' '}|{fetchsapRecordsData.transport_name if fetchsapRecordsData.transport_name else ' '}\n""")
         
-        for single_data_inside in payloadData.get("table_data"):
-            Gmrdata.objects(arv_cum_do_number=single_data_inside.get("sales_doc_no"), delivery_challan_number=single_data_inside.get("challan_number")).update(grn_status=True, mine_invoice=payloadData.get("invoice_no"))
+        RailData.objects.get(rr_no=payloadData.get('do_no')).update(grn_status=True, mine_invoice=payloadData.get("invoice_no"))
 
         return full_path
     except Exception as e:
@@ -40384,22 +40333,7 @@ def endpoint_to_insert_roadjourneyconsumertype(response: Response, consumer_type
 def endpoint_to_fetch_consumer_type_data(response: Response):
     try:
         fetchConsumerType = roadjourneyconsumertype.objects.first()
-        # fetchConsumerType.consumer_type
-
         return fetchConsumerType.consumer_type
-    except Exception as e:
-        console_logger.debug("----- consumer type Error -----",e)
-        exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
-        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
-        return e
-
-    
-@router.delete("/delete/consumertype", tags={"Road Map"})
-def endpoint_to_delete_consumer_type_data(response: Response, ):
-    try:
-        pass
     except Exception as e:
         console_logger.debug("----- consumer type Error -----",e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -40657,39 +40591,76 @@ def create_coal_data(response: Response,
         data.closing_coal_stock.particular = "Closing stock of coal as on last Day of the Month"
         data.closing_coal_stock_value.particular = "Value of Closing stock as on  last Day of the Month"
 
-        coal_data = Form15Data(
-            osd_month = data.osd_month.dict(exclude_unset=True),
-            vos_month = data.vos_month.dict(exclude_unset=True),
-            qty_supplied = data.qty_supplied.dict(exclude_unset=True),
-            adj_qty = data.adj_qty.dict(exclude_unset=True),
-            coal_supplied = data.coal_supplied.dict(exclude_unset=True),
-            norm_transit_loss = data.norm_transit_loss.dict(exclude_unset=True),
-            net_supplied = data.net_supplied.dict(exclude_unset=True),
-            amt_charged = data.amt_charged.dict(exclude_unset=True),
-            adj_amt = data.adj_amt.dict(exclude_unset=True),
-            unloading_charges = data.unloading_charges.dict(exclude_unset=True),
-            total_amt_charged = data.total_amt_charged.dict(exclude_unset=True),
-            trans_charges = data.trans_charges.dict(exclude_unset=True),
-            adj_trans_charges = data.adj_trans_charges.dict(exclude_unset=True),
-            demurrage = data.demurrage.dict(exclude_unset=True),
-            diesel_cost = data.diesel_cost.dict(exclude_unset=True),
-            total_trans_charges = data.total_trans_charges.dict(exclude_unset=True),
-            total_amt_incl_trans = data.total_amt_incl_trans.dict(exclude_unset=True),
-            qty_at_station = data.qty_at_station.dict(exclude_unset=True),
-            total_amt_for_coal = data.total_amt_for_coal.dict(exclude_unset=True),
-            landed_cost = data.landed_cost.dict(exclude_unset=True),
-            qty_consumed = data.qty_consumed.dict(exclude_unset=True),
-            value_consumed = data.value_consumed.dict(exclude_unset=True),
-            wtd_avg_gcv_prev = data.wtd_avg_gcv_prev.dict(exclude_unset=True),
-            wtd_avg_gcv_recv = data.wtd_avg_gcv_recv.dict(exclude_unset=True),
-            wtd_avg_gcv_less_85 = data.wtd_avg_gcv_less_85.dict(exclude_unset=True),
-            closing_coal_stock = data.closing_coal_stock.dict(exclude_unset=True),
-            closing_coal_stock_value = data.closing_coal_stock_value.dict(exclude_unset=True),  
-            month = data.month
-        )
+        try:
+            split_date = str(data.month).split(" ")
+            split_part_date = split_date[0].split("-")
+            start_date = f"{split_part_date[0]}-{split_part_date[1]}-01"
+            end_date = (datetime.datetime.strptime(start_date, "%Y-%m-%d") + relativedelta(day=31)).strftime("%Y-%m-%d")
+            fetchform15data = Form15Data.objects.get(month__gte=start_date, month__lte=end_date)
+            fetchform15data.update(
+                osd_month = data.osd_month.dict(exclude_unset=True),
+                vos_month = data.vos_month.dict(exclude_unset=True),
+                qty_supplied = data.qty_supplied.dict(exclude_unset=True),
+                adj_qty = data.adj_qty.dict(exclude_unset=True),
+                coal_supplied = data.coal_supplied.dict(exclude_unset=True),
+                norm_transit_loss = data.norm_transit_loss.dict(exclude_unset=True),
+                net_supplied = data.net_supplied.dict(exclude_unset=True),
+                amt_charged = data.amt_charged.dict(exclude_unset=True),
+                adj_amt = data.adj_amt.dict(exclude_unset=True),
+                unloading_charges = data.unloading_charges.dict(exclude_unset=True),
+                total_amt_charged = data.total_amt_charged.dict(exclude_unset=True),
+                trans_charges = data.trans_charges.dict(exclude_unset=True),
+                adj_trans_charges = data.adj_trans_charges.dict(exclude_unset=True),
+                demurrage = data.demurrage.dict(exclude_unset=True),
+                diesel_cost = data.diesel_cost.dict(exclude_unset=True),
+                total_trans_charges = data.total_trans_charges.dict(exclude_unset=True),
+                total_amt_incl_trans = data.total_amt_incl_trans.dict(exclude_unset=True),
+                qty_at_station = data.qty_at_station.dict(exclude_unset=True),
+                total_amt_for_coal = data.total_amt_for_coal.dict(exclude_unset=True),
+                landed_cost = data.landed_cost.dict(exclude_unset=True),
+                qty_consumed = data.qty_consumed.dict(exclude_unset=True),
+                value_consumed = data.value_consumed.dict(exclude_unset=True),
+                wtd_avg_gcv_prev = data.wtd_avg_gcv_prev.dict(exclude_unset=True),
+                wtd_avg_gcv_recv = data.wtd_avg_gcv_recv.dict(exclude_unset=True),
+                wtd_avg_gcv_less_85 = data.wtd_avg_gcv_less_85.dict(exclude_unset=True),
+                closing_coal_stock = data.closing_coal_stock.dict(exclude_unset=True),
+                closing_coal_stock_value = data.closing_coal_stock_value.dict(exclude_unset=True), 
+            )
+        except DoesNotExist as e:
+            coal_data = Form15Data(
+                osd_month = data.osd_month.dict(exclude_unset=True),
+                vos_month = data.vos_month.dict(exclude_unset=True),
+                qty_supplied = data.qty_supplied.dict(exclude_unset=True),
+                adj_qty = data.adj_qty.dict(exclude_unset=True),
+                coal_supplied = data.coal_supplied.dict(exclude_unset=True),
+                norm_transit_loss = data.norm_transit_loss.dict(exclude_unset=True),
+                net_supplied = data.net_supplied.dict(exclude_unset=True),
+                amt_charged = data.amt_charged.dict(exclude_unset=True),
+                adj_amt = data.adj_amt.dict(exclude_unset=True),
+                unloading_charges = data.unloading_charges.dict(exclude_unset=True),
+                total_amt_charged = data.total_amt_charged.dict(exclude_unset=True),
+                trans_charges = data.trans_charges.dict(exclude_unset=True),
+                adj_trans_charges = data.adj_trans_charges.dict(exclude_unset=True),
+                demurrage = data.demurrage.dict(exclude_unset=True),
+                diesel_cost = data.diesel_cost.dict(exclude_unset=True),
+                total_trans_charges = data.total_trans_charges.dict(exclude_unset=True),
+                total_amt_incl_trans = data.total_amt_incl_trans.dict(exclude_unset=True),
+                qty_at_station = data.qty_at_station.dict(exclude_unset=True),
+                total_amt_for_coal = data.total_amt_for_coal.dict(exclude_unset=True),
+                landed_cost = data.landed_cost.dict(exclude_unset=True),
+                qty_consumed = data.qty_consumed.dict(exclude_unset=True),
+                value_consumed = data.value_consumed.dict(exclude_unset=True),
+                wtd_avg_gcv_prev = data.wtd_avg_gcv_prev.dict(exclude_unset=True),
+                wtd_avg_gcv_recv = data.wtd_avg_gcv_recv.dict(exclude_unset=True),
+                wtd_avg_gcv_less_85 = data.wtd_avg_gcv_less_85.dict(exclude_unset=True),
+                closing_coal_stock = data.closing_coal_stock.dict(exclude_unset=True),
+                closing_coal_stock_value = data.closing_coal_stock_value.dict(exclude_unset=True),  
+                month = data.month
+            )
 
-        coal_data.save()
-        return {"message": "Form 15 saved successfully."}
+            coal_data.save()
+        
+        return {"Details": "success"}
     
     except Exception as e:
         response.status_code = 400
@@ -40701,8 +40672,103 @@ def create_coal_data(response: Response,
         return e
 
 
+@router.post("/manual/coaldata", tags=["Form 15"])
+def create_manual_coal_data(response: Response,
+                     data: CoalDataModelManual):
+    try:
+        data.osd_month.particular = "Opening stock of coal as on 1st Day of the Month" #1
+        data.adj_qty.particular = "Adjustment (+/-) in quantity supplied made by Coal/Lignite Company" #4
+        data.norm_transit_loss.particular = "Normative Transit & Handling Losses" #6
+        data.amt_charged.particular = "Amount charged by the Coal/Lignite Company" #8
+        data.adj_amt.particular = "Adjustments (+/-) in amount charged by Coal/Lignite Company" #9
+        data.unloading_charges.particular = "Unloading, Sampling Charges, AMM etc" #10
+        data.trans_charges.particular = "Transportation charges by Rail/Ship/Road transportation" #12
+        data.adj_trans_charges.particular = "Adjustment (+/-) in amount charged by railway transport" #13
+        data.demurrage.particular = "Demurrage Charge, if any" #14
+        data.diesel_cost.particular = "Cost of diesel in transporting coal" #15
+
+        data.qty_consumed.particular = "Coal Quantity consumed" #21
+        data.wtd_avg_gcv_prev.particular = "Weighted average GCV with previous month's coal" #23
+        data.wtd_avg_gcv_recv.particular = "Wtd. Average as received GCV" #24
+        data.wtd_avg_gcv_less_85.particular = "Weighted Average GCV of caol as received" #25
+        
+        try:
+            split_date = str(data.month).split(" ")
+            split_part_date = split_date[0].split("-")
+            start_date = f"{split_part_date[0]}-{split_part_date[1]}-01"
+            end_date = (datetime.datetime.strptime(start_date, "%Y-%m-%d") + relativedelta(day=31)).strftime("%Y-%m-%d")
+            fetchform15data = Form15Data.objects.get(month__gte=start_date, month__lte=end_date)
+            fetchform15data.update(
+                osd_month = data.osd_month.dict(exclude_unset=True), #1
+                adj_qty = data.adj_qty.dict(exclude_unset=True), #4
+                norm_transit_loss = data.norm_transit_loss.dict(exclude_unset=True), #6
+                amt_charged = data.amt_charged.dict(exclude_unset=True), #6
+                adj_amt = data.adj_amt.dict(exclude_unset=True), #9
+                unloading_charges = data.unloading_charges.dict(exclude_unset=True), #10
+                trans_charges = data.trans_charges.dict(exclude_unset=True), #10
+                adj_trans_charges = data.adj_trans_charges.dict(exclude_unset=True), #13
+                demurrage = data.demurrage.dict(exclude_unset=True), #14
+                diesel_cost = data.diesel_cost.dict(exclude_unset=True), #15 
+                qty_consumed = data.qty_consumed.dict(exclude_unset=True), #21
+                wtd_avg_gcv_prev = data.wtd_avg_gcv_prev.dict(exclude_unset=True), #23 
+                wtd_avg_gcv_recv = data.wtd_avg_gcv_recv.dict(exclude_unset=True), #24 
+                wtd_avg_gcv_less_85 = data.wtd_avg_gcv_less_85.dict(exclude_unset=True) #25 
+            )
+        except DoesNotExist as e:
+            coal_data = Form15Data(
+                osd_month = data.osd_month.dict(exclude_unset=True), #1
+                adj_qty = data.adj_qty.dict(exclude_unset=True), #4
+                norm_transit_loss = data.norm_transit_loss.dict(exclude_unset=True), #6
+                amt_charged = data.amt_charged.dict(exclude_unset=True), #6
+                adj_amt = data.adj_amt.dict(exclude_unset=True), #9
+                unloading_charges = data.unloading_charges.dict(exclude_unset=True), #10
+                trans_charges = data.trans_charges.dict(exclude_unset=True), #10
+                adj_trans_charges = data.adj_trans_charges.dict(exclude_unset=True), #13
+                demurrage = data.demurrage.dict(exclude_unset=True), #14
+                diesel_cost = data.diesel_cost.dict(exclude_unset=True), #15 
+                qty_consumed = data.qty_consumed.dict(exclude_unset=True), #21
+                wtd_avg_gcv_prev = data.wtd_avg_gcv_prev.dict(exclude_unset=True), #23 
+                wtd_avg_gcv_recv = data.wtd_avg_gcv_recv.dict(exclude_unset=True), #24 
+                wtd_avg_gcv_less_85 = data.wtd_avg_gcv_less_85.dict(exclude_unset=True), #25
+                month = data.month
+            )
+            coal_data.save()
+        return {"details": "success"}
+    
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug("----- Form 15 Manual -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+def safe_divide(numerator, denominator):
+    try:
+        return numerator / denominator if denominator else 0
+    except (TypeError, ZeroDivisionError):
+        return 0
+
+def round_numeric_values(d):
+    try:
+        for key, value in d.items():
+            if isinstance(value, (int, float)):
+                d[key] = round(value)
+            elif isinstance(value, dict):
+                round_numeric_values(value)
+    except Exception as e:
+        # response.status_code = 400
+        console_logger.debug("----- Form 15 Manual -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
 @router.get("/form15data", tags=["Form 15"])
-def get_form15data(month:Optional[str] = None):
+def get_form15data(month:Optional[str] = None, display_type: Optional[str] = "display", download_type: Optional[str] = "excel"):
     try:
         start_date = f'{month}-01'
         format_data = "%Y-%m-%d"
@@ -40712,16 +40778,176 @@ def get_form15data(month:Optional[str] = None):
         endd_date = end_date.replace(hour=23, minute=59, second=0, microsecond=0)
         from_ts = convert_to_utc_format(f"{startd_date}", "%Y-%m-%d %H:%M:%S")
         to_ts = convert_to_utc_format(f"{endd_date}", "%Y-%m-%d %H:%M:%S")
-        data = Form15Data.objects(month__gte=from_ts, month__lte=to_ts)
-        response = []
-        for item in data:
-            item_dict = json.loads(json_util.dumps(item.to_mongo()))
-            item_dict.pop('_id', None)  # Remove _id field
-            item_dict.pop('created_at', None)  # Remove created_at field
-            response.append(item_dict)
+        if display_type and display_type=="display":
+            data = Form15Data.objects(month__gte=from_ts, month__lte=to_ts)
+            response = []
+            dictData = {}
+            for item in data:
+                item_dict = json.loads(json_util.dumps(item.to_mongo()))
+                item_dict.pop('_id', None)  # Remove _id field
+                item_dict.pop('created_at', None)  # Remove created_at field
+                dictData["month"] = item_dict.get("month")
+                item_dict.pop('month', None)  # Remove created_at field
+                round_numeric_values(item_dict)
+                response.append(item_dict)
+                response.append(dictData)
 
-        return response
-    
+            return response
+        elif display_type and display_type == "download":
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+            usecase_data = Form15Data.objects(month__gte=from_ts, month__lte=to_ts)
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
+            if download_type and download_type == "excel":
+                try:
+                    path = os.path.join(
+                        "static_server",
+                        "gmr_ai",
+                        file,
+                        "Form15_Report_{}.xlsx".format(
+                            datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                        ),
+                    )
+                    filename = os.path.join(os.getcwd(), path)
+                    workbook = xlsxwriter.Workbook(filename)
+                    workbook.use_zip64()
+                    cell_format2 = workbook.add_format()
+                    cell_format2.set_bold()
+                    cell_format2.set_font_size(10)
+                    cell_format2.set_align("center")
+                    cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+                    cell_format2.set_border(1)
+
+                    cell_format3 = workbook.add_format()
+                    cell_format3.set_bold()
+                    cell_format3.set_font_size(10)
+                    cell_format3.set_align("center")
+                    cell_format3.set_align("vcenter")
+                    cell_format3.set_text_wrap(True)
+                    cell_format3.set_border(1)
+
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+                    date_format1 = workbook.add_format({'align': 'center', 'font_size': 14, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+                    footer_name_format1 = workbook.add_format({'align': 'left', 'font_size': 20, "bold": True, 'font_name':'Calibri', 'text_wrap':'true'})
+                    footer_name_format2 = workbook.add_format({'align': 'right', 'font_size': 20, "bold": True, 'font_name':'Calibri', 'text_wrap':'true'})
+                    footer_name_format3 = workbook.add_format({'align': 'left', 'font_size': 20, "bold": True, 'font_name':'Calibri', 'text_wrap':'true'})
+                    footer_name_format4 = workbook.add_format({'align': 'right', 'font_size': 20, "bold": True, 'font_name':'Calibri', 'text_wrap':'true'})
+
+                    worksheet = workbook.add_worksheet()
+                    worksheet.set_column("A:AZ", 20)
+                    worksheet.set_default_row(50)
+                    cell_format = workbook.add_format()
+                    cell_format.set_font_size(10)
+                    cell_format.set_align("center")
+                    cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+                    cell_format.set_border(1)
+
+                    cell_format4 = workbook.add_format()
+                    cell_format4.set_font_size(10)
+                    cell_format4.set_align("center")
+                    cell_format4.set_align("vcenter")
+                    cell_format4.set_text_wrap(True)
+                    cell_format4.set_border(1)
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range("A1:O1", main_header, header_format)  # Merge cells A1 to H1 for the header
+
+                    main_header = "Name of Project: Warora Thermal Power Project"  # Set your main header text here
+                    worksheet.merge_range("A2:O2", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    
+                    # Write the current date on the left side (A2)
+                    worksheet.merge_range("A3:B3", f"Month: {datetime.datetime.strptime(month, '%Y-%m').strftime('%B, %Y')}", date_format1)
+                    worksheet.merge_range("C3:O3", f"Form - 15", report_name_format)
+
+                    headers = [
+                        "Sr.No",
+                        "Particulars",
+                        "Remarks",
+                        "UOM",
+                        "MoU Coal",
+                        "Linkage",
+                        "AIWIB Washery",
+                        "Open Mkt",
+                        "Spot E-auction",
+                        "Spl For-E-auction",
+                        "Imported",
+                        "Total",
+                        # "ShaktiB(viii)*",
+                        # "Shakti B3"
+                    ]
+
+                    headers_shakti = [
+                        "ShaktiB(viii)*",
+                        "Shakti B3"
+                    ]
+                    
+                    for index, header in enumerate(headers):
+                        worksheet.write(3, index, header, cell_format2)
+
+                    worksheet.write(3, 13, "ShaktiB(viii)*", cell_format2)
+                    worksheet.write(3, 14, "Shakti B3", cell_format3)
+                    
+                    for row, query in enumerate(usecase_data, start=4):
+                        result = query.payload()
+                        row_number = 4
+                        for index, (key, data) in enumerate(result.items(), start=1):
+                            if type(data) == dict:
+                                worksheet.write(row_number, 0, index, cell_format)  # Sr. No
+                                worksheet.write(row_number, 1, data.get("particular", ""), cell_format)  # Particulars
+                                if data.get("remark") == "string":
+                                    worksheet.write(row_number, 2, "-", cell_format)  # Remarks
+                                else:
+                                    worksheet.write(row_number, 2, data.get("remark", ""), cell_format)  # Remarks
+                                if data.get("uom") == "string":
+                                    worksheet.write(row_number, 3, "-", cell_format)  # UOM
+                                else:
+                                    worksheet.write(row_number, 3, data.get("uom", ""), cell_format)  # UOM
+                                worksheet.write(row_number, 4, round(data.get("mou_coal", 0.0), 2), cell_format)  # MoU Coal
+                                worksheet.write(row_number, 5, round(data.get("linkage", 0.0), 2), cell_format)  # Linkage
+                                worksheet.write(row_number, 6, round(data.get("aiwib_washery", 0.0), 2), cell_format)  # AIWIB Washery
+                                worksheet.write(row_number, 7, round(data.get("open_mkt", 0.0), 2), cell_format)  # Open Mkt
+                                worksheet.write(row_number, 8, round(data.get("spot_eauction", 0.0), 2), cell_format)  # Spot E-auction
+                                worksheet.write(row_number, 9, round(data.get("spl_for_eauction", 0.0), 2), cell_format)  # Spl For-E-auction
+                                worksheet.write(row_number, 10, round(data.get("imported", 0.0), 2), cell_format)  # Imported
+                                worksheet.write(row_number, 11, round(data.get("total", 0.0), 2), cell_format)  # Total
+                                worksheet.write(row_number, 13, round(data.get("shakti_b", 0.0), 2), cell_format4)  # ShaktiB(viii)*
+                                worksheet.write(row_number, 14, round(data.get("shakti_b3", 0.0), 2), cell_format4)  # Shakti B3                  
+
+                                row_number += 1 
+                        # count-=1
+                    #footer details start
+                    worksheet.merge_range("A35:F35", f"Date: {datetime.datetime.now().date().strftime('%d.%m.%Y')}\nFor GMR Warora Energy Limited", footer_name_format1)
+                    worksheet.merge_range("G35:L35", f"For Kuralkar Shastri & Co\nChartered Accountants", footer_name_format2)
+                    worksheet.merge_range("A36:F38", f"\n\n\n(Dhananjay Deshpande)                                                             (Ashish Deshpande)\nChief Operating Officer                                                                              Head - F&A", footer_name_format3)
+                    worksheet.merge_range("G36:L38", f"\n\n\n(Nitin R. Kuralkar - Partner)\nM. No. 106430\nFRN : 110010W", footer_name_format4)
+                    #footer details end
+                    workbook.close()
+                    console_logger.debug("Successfully {} report generated".format(service_id))
+                    console_logger.debug("sent data {}".format(path))
+
+                    return {
+                            "Type": "gmr_from15_download_event",
+                            "Datatype": "Report",
+                            "File_Path": path,
+                            }
+                except Exception as e:
+                    console_logger.debug(e)
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+                    console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            elif download_type and download_type == "pdf":
+                fetchOutputData = single_generate_report_form15(usecase_data, month)
+                return fetchOutputData
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -40930,99 +41156,171 @@ def endpoint_to_fetch_single_user_data_using_email(email):
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
         
 
-def endpoint_to_make_data_on_table(new_data, original_data):
+def generate_header_rail(header_text):
+    return f'<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">{header_text}</th>'
+
+
+def endpoint_to_make_data_on_table(new_data, original_data, mode, do_no):
     try:
         # per_data = ""
-        per_data = '<table style="width: 100%; border-collapse: collapse; margin: 20px 0;">'
-        per_data += '<thead><tr>'
-        per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Ship To Party</th>'
-        per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Sales Doc No</th>'
-        per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Dispatch Date Time</th>'
-        per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Challan Number</th>'
-        per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Grade Size</th>'
-        per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Truck Number</th>'
-        per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Tare Weight</th>'
-        per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Gross Weight</th>'
-        per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Net Weight</th>'
-        per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Actual Tare Wt</th>'
-        per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Actual Gross WT</th>'
-        per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Actual Net Wt</th>'
-        per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Transist Loss</th>'
-        per_data += '</tr></thead><tbody>'
-        for send_new_data in new_data:
-            found = False
-            for og_data in original_data:
-                if send_new_data.get("object_id") == og_data.get("object_id"):
-                    per_data += '<tr>'
-                    per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("ship_to_party")}</div></td>'
-                    if send_new_data.get("sales_doc_no") != og_data.get("sales_doc_no"):
-                        per_data += f'<td style="background-color: #fef7ec; border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("sales_doc_no")}</div> <div style="display: flex; flex-direction: column;">{og_data.get("sales_doc_no")}</div></td>'
-                    else:
-                        per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("sales_doc_no")}</div></td>'
-                    if send_new_data.get("dispatch_date_time") != og_data.get("dispatch_date_time"):
-                        per_data += f'<td style="background-color: #fef7ec; border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("dispatch_date_time")}</div> <div style="display: flex; flex-direction: column;">{og_data.get("dispatch_date_time")}</div></td>'
-                    else:
-                        per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("dispatch_date_time")}</div></td>'
-                    
-                    if send_new_data.get("challan_number") != og_data.get("challan_number"):
-                        per_data += f'<td style="background-color: #fef7ec; border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("challan_number")}</div> <div style="display: flex; flex-direction: column;">{og_data.get("challan_number")}</td>'
-                    else:
-                        per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("challan_number")}</td>'
-                    
-                    if send_new_data.get("grade_size") != og_data.get("grade_size"):
-                        per_data += f'<td style="background-color: #fef7ec; border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("grade_size")}</div> <div style="display: flex; flex-direction: column;">{og_data.get("grade_size")}</div></td>'
-                    else:
-                        per_data += f'<td atyle="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("grade_size")}</div></td>'
+        if mode=="road":
+            per_data = '<table style="width: 100%; border-collapse: collapse; margin: 20px 0;">'
+            per_data += '<thead><tr>'
+            per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Ship To Party</th>'
+            per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Sales Doc No</th>'
+            per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Dispatch Date Time</th>'
+            per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Challan Number</th>'
+            per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Grade Size</th>'
+            per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Truck Number</th>'
+            per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Challan Gross Weight</th>'
+            per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Challan Tare Weight</th>'
+            per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Challan Net Weight</th>'
+            per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">GWEL Gross Wt</th>'
+            per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">GWEL Tare WT</th>'
+            per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">GWEL Net Wt</th>'
+            per_data += '<th style="border: 1px solid #ddd; padding: 8px; background-color: #003974; color: #fff;">Transist Loss</th>'
+            per_data += '</tr></thead><tbody>'
+            for send_new_data in new_data:
+                found = False
+                for og_data in original_data:
+                    if send_new_data.get("object_id") == og_data.get("object_id"):
+                        per_data += '<tr>'
+                        per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("ship_to_party")}</div></td>'
+                        if "sales_doc_no_isEdited" in send_new_data:
+                            if send_new_data.get("sales_doc_no_isEdited"):
+                                per_data += f'<td style="background-color: #fef7ec; border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("sales_doc_no")}</div> <div style="display: flex; flex-direction: column;">{og_data.get("sales_doc_no")}</div></td>'
+                        else:
+                            per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("sales_doc_no")}</div></td>'
+                        if "dispatch_date_time_isEdited" in send_new_data:
+                            if send_new_data.get("dispatch_date_time_isEdited"):
+                                per_data += f'<td style="background-color: #fef7ec; border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("dispatch_date_time")}</div> <div style="display: flex; flex-direction: column;">{og_data.get("dispatch_date_time")}</div></td>'
+                        else:
+                            per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("dispatch_date_time")}</div></td>'
+                        
+                        if "challan_number_isEdited" in send_new_data:
+                            if send_new_data.get("challan_number_isEdited"):
+                                per_data += f'<td style="background-color: #fef7ec; border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("challan_number")}</div> <div style="display: flex; flex-direction: column;">{og_data.get("challan_number")}</td>'
+                        else:
+                            per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("challan_number")}</td>'
+                        
+                        if "grade_size_isEdited" in send_new_data:
+                            if send_new_data.get("grade_size_isEdited"):
+                                per_data += f'<td style="background-color: #fef7ec; border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("grade_size")}</div> <div style="display: flex; flex-direction: column;">{og_data.get("grade_size")}</div></td>'
+                        else:
+                            per_data += f'<td atyle="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("grade_size")}</div></td>'
 
-                    if send_new_data.get("truck_number") != og_data.get("truck_number"):
-                        per_data += f'<td style="background-color: #fef7ec; border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("truck_number")}</div> <div style="display: flex; flex-direction: column;">{og_data.get("truck_number")}</div></td>'
-                    else:
-                        per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("truck_number")}</div></td>'
-                    
-                    if send_new_data.get("tare_weight") != og_data.get("tare_weight"):
-                        per_data += f'<td style="background-color: #fef7ec; border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("tare_weight")}</div> <div style="display: flex; flex-direction: column;">{og_data.get("tare_weight")}</div></td>'
-                    else:
-                        per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("tare_weight")}</div></td>'
-                    
-                    if send_new_data.get("gross_weight") != og_data.get("gross_weight"):
-                        per_data += f'<td style="background-color: #fef7ec; border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("gross_weight")}</div> <div style="display: flex; flex-direction: column;">{og_data.get("gross_weight")}</div></td>'
-                    else:
-                        per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("gross_weight")}</div></td>'
-                    
-                    if send_new_data.get("net_weight") != og_data.get("net_weight"):
-                        per_data += f'<td style="background-color: #fef7ec; border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("net_weight")}</div> <div style="display: flex; flex-direction: column;">{og_data.get("net_weight")}</div></td>'
-                    else:
-                        per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("net_weight")}</div></td>'
-                    if og_data.get("actual_tare_qty"):
-                        per_data += f'<td style="style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{round(float(og_data.get("actual_tare_qty")), 2)}</div></td>'
-                    else:
-                        per_data += f'<td style="style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">0</div></td>'
-                    if og_data.get("actual_gross_qty"):
-                        per_data += f'<td style="style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{round(float(og_data.get("actual_gross_qty")), 2)}</div></td>'
-                    else:
-                        per_data += f'<td style="style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">0</div></td>'
-                    if og_data.get("actual_net_qty"):
-                        per_data += f'<td style="style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{round(float(og_data.get("actual_net_qty")), 2)}</div></td>'
-                    else:
-                        per_data += f'<td style="style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">0</div></td>'
-                    if og_data.get("actual_net_qty"):
-                        transist_loss = float(og_data.get("net_weight")) - float(og_data.get("actual_net_qty"))
-                    else:
-                        transist_loss = 0
-                    per_data += f'<td style="style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{round(transist_loss, 2)}</div></td>'
-                    per_data += "</tr>"
-        #     per_data += '<tr>'
-        #     per_data += f'<td style="border: 1px solid #ddd; padding: 8px;">{single_data.get("ship_to_party")}</td>'
-        #     per_data += f'<td style="border: 1px solid #ddd; padding: 8px;">{single_data.get("sales_doc_no")}</td>'
-        #     per_data += f'<td style="border: 1px solid #ddd; padding: 8px;">{single_data.get("dispatch_date_time")}</td>'
-        #     per_data += f'<td style="border: 1px solid #ddd; padding: 8px;">{single_data.get("challan_number")}</td>'
-        #     per_data += f'<td style="border: 1px solid #ddd; padding: 8px;">{single_data.get("grade_size")}</td>'
-        #     per_data += f'<td style="border: 1px solid #ddd; padding: 8px;">{single_data.get("truck_number")}</td>'
-        #     per_data += f'<td style="border: 1px solid #ddd; padding: 8px;">{single_data.get("tare_weight")}</td>'
-        #     per_data += f'<td style="border: 1px solid #ddd; padding: 8px;">{single_data.get("gross_weight")}</td>'
-        #     per_data += f'<td style="border: 1px solid #ddd; padding: 8px;">{single_data.get("net_weight")}</td>'
-        #     per_data += '</tr>'
-        # per_data += '</tbody></table>'
+                        if "truck_number_isEdited" in send_new_data:
+                            if send_new_data.get("truck_number_isEdited"):
+                                per_data += f'<td style="background-color: #fef7ec; border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("truck_number")}</div> <div style="display: flex; flex-direction: column;">{og_data.get("truck_number")}</div></td>'
+                        else:
+                            per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("truck_number")}</div></td>'
+                        
+                        if "gross_weight_isEdited" in send_new_data:
+                            if send_new_data.get("gross_weight_isEdited"):
+                                per_data += f'<td style="background-color: #fef7ec; border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("gross_weight")}</div> <div style="display: flex; flex-direction: column;">{og_data.get("gross_weight")}</div></td>'
+                        else:
+                            per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("gross_weight")}</div></td>'
+
+                        if "tare_weight_isEdited" in send_new_data:
+                            if send_new_data.get("tare_weight_isEdited"):
+                                per_data += f'<td style="background-color: #fef7ec; border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("tare_weight")}</div> <div style="display: flex; flex-direction: column;">{og_data.get("tare_weight")}</div></td>'
+                        else:
+                            per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("tare_weight")}</div></td>'
+                        
+                        if "net_weight_isEdited" in send_new_data:
+                            if send_new_data.get("net_weight_isEdited"):
+                                per_data += f'<td style="background-color: #fef7ec; border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("net_weight")}</div> <div style="display: flex; flex-direction: column;">{og_data.get("net_weight")}</div></td>'
+                        else:
+                            per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{send_new_data.get("net_weight")}</div></td>'
+                        
+                        if og_data.get("actual_gross_qty"):
+                            per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{round(float(og_data.get("actual_gross_qty")), 2)}</div></td>'
+                        else:
+                            per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">0</div></td>'
+
+                        if og_data.get("actual_tare_qty"):
+                            per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{round(float(og_data.get("actual_tare_qty")), 2)}</div></td>'
+                        else:
+                            per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">0</div></td>'
+                        
+                        if og_data.get("actual_net_qty"):
+                            per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{round(float(og_data.get("actual_net_qty")), 2)}</div></td>'
+                        else:
+                            per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">0</div></td>'
+                        if og_data.get("actual_net_qty"):
+                            transist_loss = float(og_data.get("net_weight")) - float(og_data.get("actual_net_qty"))
+                        else:
+                            transist_loss = float(og_data.get("net_weight")) - 0
+                        per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{round(transist_loss, 2)}</div></td>'
+                        per_data += "</tr>"
+            per_data += '</tbody></table>'
+        elif mode=="rail":
+            fetchRailData = RailData.objects.get(rr_no=do_no)
+            per_data = '<table style="width: 100%; border-collapse: collapse; margin: 20px 0;">'
+            per_data += '<thead><tr>'
+            headers = [
+                "Sr. No.", "Wagon Owner", "Wagon Type", "Wagon No", "Ser No", "Rake No", "Secl Gross WT", "Secl Tare WT", "Secl Net WT", "Gwel Gross WT", "Gwel Tare WT", "Gwel Net WT", "Transist Loss"
+            ]
+            per_data += ''.join(generate_header_rail(header) for header in headers)
+            per_data += '</tr></thead><tbody>'
+
+            # Create a mapping for easy lookup of SECL data by wagon_no
+            secl_data_mapping = {data.wagon_no: data for data in fetchRailData.secl_rly_data}
+
+            for send_new_data in new_data:
+                per_data += '<tr>'
+
+                columns = [
+                    send_new_data.get("indexing", "N/A"),
+                    send_new_data.get("wagon_owner", "N/A"),
+                    send_new_data.get("wagon_type", "N/A"),
+                    send_new_data.get("wagon_no", "N/A"),
+                    send_new_data.get("ser_no", "N/A"),
+                    send_new_data.get("rake_no", "N/A")
+                ]
+
+                for col in columns:
+                    per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{col}</div></td>'
+
+                wagon_no = send_new_data.get("wagon_no")
+                secl_data = secl_data_mapping.get(wagon_no)
+
+                if secl_data:
+                    secl_columns = [
+                        secl_data.secl_gross_wt or 0,
+                        secl_data.secl_tare_wt or 0,
+                        secl_data.secl_net_wt or 0
+                    ]
+                else:
+                    # if no match then set "N/A"
+                    secl_columns = ["N/A", "N/A", "N/A"]
+
+                for col in secl_columns:
+                    per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{col}</div></td>'
+
+                if send_new_data.get("gwel_net_wt") is not None and secl_data.secl_net_wt is not None:
+                    secl_net_wt = secl_data.secl_net_wt.encode('ascii', 'ignore') if secl_data.secl_net_wt else b"0"
+                    gwel_net_wt = send_new_data.get("gwel_net_wt").encode('ascii', 'ignore') if send_new_data.get("gwel_net_wt") else b"0"
+                    weight_diff = round(float(secl_net_wt) - float(gwel_net_wt), 2)
+                else:
+                    secl_net_wt = secl_data.secl_net_wt.encode('ascii', 'ignore') if secl_data.secl_net_wt else b"0"
+                    weight_diff = float(secl_net_wt)
+
+                additional_columns = [
+                    send_new_data.get("gwel_gross_wt") or 0,
+                    send_new_data.get("gwel_tare_wt") or 0,
+                    send_new_data.get("gwel_net_wt") or 0,
+                    # send_new_data.get("coal_grade", "N/A"),
+                    weight_diff
+                ]
+
+                for col in additional_columns:
+                    per_data += f'<td style="border: 1px solid #ddd; padding: 8px;"><div style="display: flex; flex-direction: column;">{col}</div></td>'
+
+                per_data += '</tr>'
+
+            per_data += '</tbody></table>'
+
         return per_data
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -41033,8 +41331,10 @@ def endpoint_to_make_data_on_table(new_data, original_data):
 
 
 @router.get("/update/level/status", tags=['Approval list'])
-def endpoint_to_update_level_status_multilevel(response: Response, do_no: Optional[str] = None, username: Optional[str] = None, status: Optional[str] = None, comment:Optional[str] = None, level_name:Optional[str]=None, level_no: Optional[str]=None, invoice_no: Optional[str]=None, edited_by: Optional[str]=None):
+def endpoint_to_update_level_status_multilevel(response: Response, do_no: Optional[str] = None, username: Optional[str] = None, status: Optional[str] = None, comment:Optional[str] = None, level_name:Optional[str]=None, level_no: Optional[str]=None, invoice_no: Optional[str]=None, edited_by: Optional[str]=None, mode: Optional[str]=None):
     try:
+        console_logger.debug(do_no)
+        console_logger.debug(invoice_no)
         grn_instance = Grn.objects.get(do_no=do_no, invoice_no=invoice_no)
         dataCheck = grn_instance.approvals
         add_level_no = int(level_no) + 1
@@ -41067,36 +41367,80 @@ def endpoint_to_update_level_status_multilevel(response: Response, do_no: Option
                         params = {
                             'invoice_no': grn_instance.invoice_no,
                         }
-                        json_data = {
-                            "do_no": grn_instance.do_no,
-                            "dc_date": grn_instance.dispatch_date,
-                            "invoice_date": grn_instance.invoice_date,
-                            "invoice_no": grn_instance.invoice_no,
-                            "sale_date": grn_instance.sale_date,
-                            "grade": grn_instance.grade,
-                            "dispatch_date": grn_instance.dispatch_date,
-                            "mine": grn_instance.mine,
-                            "do_qty": grn_instance.do_qty,
-                            "table_data": grn_instance.new_data,
-                            }
-                        headers = {
-                            'accept': 'application/json',
-                            'Content-Type': 'application/json',
-                        }
-
-                        response = requests.post(f'http://{ip}:7704/creategrnfile', params=params, headers=headers, json=json_data)
+                        
                         # console_logger.debug(response.text)
-                        for single_struct in grn_instance.new_data:
-                            console_logger.debug(single_struct.get("object_id"))
-                            Gmrdata.objects.get(id=ObjectId(single_struct.get("object_id"))).update(
-                                delivery_challan_number=str(single_struct.get("challan_number")),
-                                delivery_challan_date=str(single_struct.get("dispatch_date_time")),
-                                grade=str(single_struct.get("grade_size")),
-                                gross_qty=str(single_struct.get("gross_weight")),
-                                net_qty=str(single_struct.get("net_weight")),
-                                tare_qty=str(single_struct.get("tare_weight")),
-                                vehicle_number=str(single_struct.get("truck_number")),
-                                arv_cum_do_number=str(single_struct.get("sales_doc_no"))
+                        if mode == "road":
+                            listDataFinal = []
+                            for single_new_data in grn_instance.new_data:
+                                dictDataa = {
+                                    "sales_doc_no": single_new_data.get("sales_doc_no"),
+                                    "dispatch_date_time": single_new_data.get("dispatch_date_time"),
+                                    "challan_number": single_new_data.get("challan_number"),
+                                    "grade_size": single_new_data.get("grade_size"),
+                                    "truck_number": single_new_data.get("truck_number"),
+                                    "tare_weight": str(single_new_data.get("tare_weight")),
+                                    "gross_weight": str(single_new_data.get("gross_weight")),
+                                    "net_weight": str(single_new_data.get("net_weight"))
+                                }
+                                listDataFinal.append(dictDataa)
+                            json_data = {
+                                "do_no": grn_instance.do_no,
+                                "dc_date": grn_instance.dispatch_date,
+                                "invoice_date": grn_instance.invoice_date,
+                                "invoice_no": grn_instance.invoice_no,
+                                "sale_date": grn_instance.sale_date,
+                                "grade": grn_instance.grade,
+                                "dispatch_date": grn_instance.dispatch_date,
+                                "mine": grn_instance.mine,
+                                "do_qty": grn_instance.do_qty,
+                                "table_data": listDataFinal,
+                            }
+                            headers = {
+                                'accept': 'application/json',
+                                'Content-Type': 'application/json',
+                            }
+                            console_logger.debug(params)
+                            console_logger.debug(json_data)
+                            response = requests.post(f'http://{ip}:7704/creategrnfile', params=params, headers=headers, json=json_data)
+                            for single_struct in grn_instance.new_data:
+                                # console_logger.debug(single_struct.get("object_id"))
+                                try:
+                                    Gmrdata.objects.get(id=ObjectId(single_struct.get("object_id"))).update(
+                                        delivery_challan_number=str(single_struct.get("challan_number")),
+                                        delivery_challan_date=str(single_struct.get("dispatch_date_time")),
+                                        grade=str(single_struct.get("grade_size")),
+                                        gross_qty=str(single_struct.get("gross_weight")),
+                                        net_qty=str(single_struct.get("net_weight")),
+                                        tare_qty=str(single_struct.get("tare_weight")),
+                                        vehicle_number=str(single_struct.get("truck_number")),
+                                        arv_cum_do_number=str(single_struct.get("sales_doc_no"))
+                                    )
+                                except DoesNotExist as e:
+                                    continue
+                        elif mode == "rail":
+                            json_data = {
+                                "do_no": grn_instance.do_no,
+                                "dc_date": grn_instance.dispatch_date,
+                                "invoice_date": grn_instance.invoice_date,
+                                "invoice_no": grn_instance.invoice_no,
+                                "sale_date": grn_instance.sale_date,
+                                "grade": grn_instance.grade,
+                                "dispatch_date": grn_instance.dispatch_date,
+                                "mine": grn_instance.mine,
+                                "do_qty": grn_instance.do_qty,
+                                "table_data": grn_instance.new_data,
+                            }
+                            headers = {
+                                'accept': 'application/json',
+                                'Content-Type': 'application/json',
+                            }
+                            response = requests.post(f'http://{ip}:7704/creategrnfilerail', params=params, headers=headers, json=json_data)
+                            RailData.objects.get(rr_no=do_no).update(
+                                avery_rly_data=grn_instance.new_data,
+                                grade=grn_instance.grade,
+                                mine=grn_instance.mine,
+                                rr_qty=grn_instance.do_qty,
+                                avery_placement_date=grn_instance.dispatch_date,
                             )
 
                         html_output = endpoint_to_show_html_struct("Thankyou, This GRN Flow has been accepted!!", username)
@@ -41109,10 +41453,9 @@ def endpoint_to_update_level_status_multilevel(response: Response, do_no: Option
                     if 0 <= add_level_no < len(fetchMultilevelApproval.levels):
                         console_logger.debug("Pass to next")
                         for user_data in fetchMultilevelApproval.levels[add_level_no].user:
-                            console_logger.debug(user_data)
                             # user_data = endpoint_to_fetch_single_user_data_using_email(email=email)
                             
-                            fetchtabledata = endpoint_to_generate_email_template(new_data=grn_instance.new_data, original_data=grn_instance.original_data, user_data=user_data, do_no=grn_instance.do_no, level_name="grn_approval", level_count=add_level_no, header_data=header_data, edited_by=edited_by, status="Approve")
+                            fetchtabledata = endpoint_to_generate_email_template(new_data=grn_instance.new_data, original_data=grn_instance.original_data, user_data=user_data, do_no=grn_instance.do_no, level_name="grn_approval", level_count=add_level_no, header_data=header_data, edited_by=edited_by, status="Approve", mode=mode)
                             response_code, fetch_email = fetch_email_data()
                             subject = "GRN Flow"
                             to_data = user_data.get("email")
@@ -41164,11 +41507,10 @@ def endpoint_to_update_level_status_multilevel(response: Response, do_no: Option
                     to_data = user_data.get("Email")
                     # console_logger.debug(to_data)
                     # console_logger.debug(fetchtabledata)
-                    fetchtabledata = endpoint_to_generate_email_template(new_data=grn_instance.new_data, original_data=grn_instance.original_data, user_data=user_data, do_no=grn_instance.do_no, level_name="grn_approval", level_count=add_level_no, header_data=header_data, edited_by=edited_by, status="Decline")
+                    fetchtabledata = endpoint_to_generate_email_template(new_data=grn_instance.new_data, original_data=grn_instance.original_data, user_data=user_data, do_no=grn_instance.do_no, level_name="grn_approval", level_count=add_level_no, header_data=header_data, edited_by=edited_by, status="Decline", mode=mode)
                     html_data = "<h1>Your GRN Flow has been disapprove, Please contact higher Authorities for more.</h1><br><br>"
                     html_data += f"{fetchtabledata}"
                     body = html_data
-
                     sender_email = fetch_email.get("Smtp_user")
                     password = fetch_email.get("Smtp_password") 
                     smtp_host = fetch_email.get("Smtp_host")
@@ -41200,9 +41542,7 @@ def endpoint_to_update_level_status_multilevel(response: Response, do_no: Option
             # return HTMLResponse(content=html_content, status_code=200)
             html_output = endpoint_to_show_html_struct("Not Allowed!", username)
             return html_output
-        
-        # return {"detail", "success"}
-        
+          
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -41215,30 +41555,46 @@ def endpoint_to_show_html_struct(text_data, username):
     try:
         html_content = f"""
             <!DOCTYPE html>
-            <html>
+            <!--<html>
             <head>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>GRN Flow</title>
             </head>
             <body>
                 <div class="email-container" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">
-                    <!-- Header -->
                     <div class="header" style="background-color: #ffffff; text-align: center; padding: 20px;">
-                        <!-- <img src="https://via.placeholder.com/150" style="max-width: 150px;" alt="Company Logo"> -->
-                        <H1>GMR</H1>
+                        <img src="http://{ip}/static_server/receipt/report_logo.png" style="max-width: 150px;" alt="GMR">
                     </div>
-                    <!-- Content -->
                     <div class="content" style="padding: 20px; text-align: center;">
-                        <p style="color: #333333; font-size: 16px; margin: 0;">Hi, {username}</p>
-                        <div class="status" style="background-color: #d4edda; color: #155724; padding: 10px; border-radius: 4px; font-weight: bold; margin-bottom: 20px;">{text_data}</div>
-                        <!-- <p style="color: #333333; font-size: 16px; margin: 0;">Hi User,</p>
-                        <p style="color: #333333; font-size: 16px; margin: 0;">This alert is generated for source <strong>(body.source_name)</strong> on <strong>(body.date)</strong> at <strong>(body.time)</strong>.</p> -->
+                        <p style="color: #333333; font-size: 16px; margin: 0;">HI, {username.upper()}</p>
+                        <div class="status" style="background-color: #d4edda; color: #155724; padding: 10px; border-radius: 4px; font-weight: bold; margin-bottom: 20px;">{text_data.upper()}</div>
                     </div>
-                    <!-- Footer -->
                     <div class="footer" style="text-align: center; padding: 20px; background-color: #f9f9f9;">
                         <div class="social-icons" style="margin-top: 10px;">
                             <p style="color: #333333; font-size: 16px; margin: 0;">&copy; 2024 GMR. All rights reserved.</p>
                         </div>
+                    </div>
+                </div>
+            </body>
+            </html>-->
+
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>GRN Flow Confirmation</title>
+            </head>
+            <body style="font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f9; text-align: center;">
+                <div style="max-width: 600px; margin: 50px auto; background: #fff; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); overflow: hidden;">
+                    <div style="padding: 20px; background: #3f68e1; color: white;">
+                        <img src="http://{ip}/static_server/receipt/report_logo.png" alt="GMR Logo" style="max-width: 100px; margin-bottom: 10px;">
+                        <h1 style="margin: 0; font-size: 24px;">HI, {username.upper()}</h1>
+                    </div>
+                    <div style="padding: 30px; background: #e6f7e6; color: #333;">
+                        <p style="font-size: 18px; font-weight: bold; margin: 0;">{text_data.upper()}!!</p>
+                    </div>
+                    <div style="padding: 20px; background: #f4f4f9; color: #666; font-size: 14px;">
+                        <p style="font-weight: bold;">&copy; 2024 GMR. All rights reserved.</p>
                     </div>
                 </div>
             </body>
@@ -41274,19 +41630,59 @@ def encoded_data(image_path):
     except Exception as e:
         console_logger.debug(e)
 
-def endpoint_to_generate_email_template(new_data, original_data, user_data, do_no, level_name, level_count, header_data, edited_by, status):
+def endpoint_for_above_table_data(header_data, mode, new_data):
     try:
-        # console_logger.debug(user_data)
-        # console_logger.debug(do_no)
+        if mode == "road":
+            header_part = '<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; border-spacing: 0;">'
+            header_part += '<tr><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Do Number</th><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Invoice Date</th><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Invoice Number</th><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Sale Date</th></tr>'
+            header_part += f'<tr><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get("do_no")}</td><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get("invoice_date")}</td><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get("invoice_no")}</td><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get("sale_date")}</td></tr>'
+            header_part += f'<tr><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Grade</th><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Dispatch Date</th><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Mine</th><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Do Qty</th></tr>'
+            header_part += f'<tr><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get("grade")}</td><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get("dispatch_date")}</td><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get("mine")}</td><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get("do_qty")}</td></tr></table>'
+        elif mode == "rail":
+            header_part = '<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; border-spacing: 0;">'
+            header_part += '<tr><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">RR Number</th><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Coal Grade</th><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Invoice Date</th><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Invoice Number</th><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Sale Date</th></tr>'
+            header_part += f'<tr><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get("do_no")}</td><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{new_data[0]["coal_grade"]}</td><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get("invoice_date")}</td><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get("invoice_no")}</td><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get("sale_date")}</td></tr>'
+            header_part += f'<tr><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Grade</th><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Dispatch Date</th><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Mine</th><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Do Qty</th><th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">PO Number</th></tr>'
+            header_part += f'<tr><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get("grade")}</td><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get("dispatch_date")}</td><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get("mine")}</td><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get("do_qty")}</td><td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{new_data[0]["po_number"]}</td></tr></table>'
+        # console_logger.debug(header_part)
+        return header_part
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(f"Exception type: {exc_type}, Filename: {fname}, Line number: {exc_tb.tb_lineno}")
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+def endpoint_to_show_button_based_condition(do_no, username, level_name, level_count, comment, edited_by, mode, invoice_no):
+    try:
+        if mode == "road":
+            button_part = '<div style="text-align:center;">'
+            button_part += f'<a href="http://{ip}:7704/update/level/status?do_no={do_no}&username={username}&status=approve&level_name={level_name}&level_no={level_count}&comment={comment}&invoice_no={invoice_no}&edited_by={edited_by}&mode={mode}" style="display: inline-block; background-color: #003974; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 5px; font-size: 16px; margin-right: 10px">Approve</a>'
+            button_part += f'<a href="http://{ip}:7704/update/level/status?do_no={do_no}&username={username}&status=decline&level_name={level_name}&level_no={level_count}&comment={comment}&invoice_no={invoice_no}&edited_by={edited_by}&mode={mode}" style="display: inline-block; background-color: #003974; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 5px; font-size: 16px;">Decline</a>'
+            button_part += '</div>'
+        elif mode == "rail":
+            button_part = '<div style="text-align:center;">'
+            button_part += f'<a href="http://{ip}:7704/update/level/status?do_no={do_no}&username={username}&status=approve&level_name={level_name}&level_no={level_count}&comment={comment}&invoice_no={invoice_no}&edited_by={edited_by}&mode={mode}" style="display: inline-block; background-color: #003974; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 5px; font-size: 16px; margin-right: 10px;">Approve</a>'
+            button_part += f'<a href="http://{ip}:7704/update/level/status?do_no={do_no}&username={username}&status=decline&level_name={level_name}&level_no={level_count}&comment={comment}&invoice_no={invoice_no}&edited_by={edited_by}&mode={mode}" style="display: inline-block; background-color: #003974; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 5px; font-size: 16px;">Decline</a>'
+            button_part += '</div>'
+        return button_part
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(f"Exception type: {exc_type}, Filename: {fname}, Line number: {exc_tb.tb_lineno}")
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+    
+
+
+def endpoint_to_generate_email_template(new_data, original_data, user_data, do_no, level_name, level_count, header_data, edited_by, status, mode):
+    try:
         comment = ""
         username = user_data.get("username")
-        # encode_img = encoded_data(f"{os.path.join(os.getcwd())}/static_server/receipt/report_logo.png")
-        # console_logger.debug(encode_img)
-        # if encode_img:
-        #     logo_img_data = f'<img src="cid:image1" alt="Logo" style="max-width: 100%; height: auto;">'
-        # else:
-        #     logo_img_data  = '<center>GMR</center>'
-        table_data = endpoint_to_make_data_on_table(new_data=new_data, original_data=original_data)
+        table_data = endpoint_to_make_data_on_table(new_data=new_data, original_data=original_data, mode=mode, do_no=do_no)
+        header_part = endpoint_for_above_table_data(header_data=header_data, mode=mode, new_data=new_data)
+        button_part = endpoint_to_show_button_based_condition(do_no=do_no, username=username, level_name=level_name, level_count=level_count, comment=comment, edited_by=edited_by, mode=mode, invoice_no=header_data.get('invoice_no'))
         if status == "Approve":
             html_template = f"""
                 <!DOCTYPE html>
@@ -41298,164 +41694,108 @@ def endpoint_to_generate_email_template(new_data, original_data, user_data, do_n
                 </head>
                 <body style="font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f4;">
                     <div style="width: 80%; margin: 20px auto; background-color: #fff; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); padding: 20px;">
-                        <div style="text-align: center; margin-bottom: 10px;">
-                            <img src="logo1.png" alt="Company Logo 1" style="max-width: 150px; margin: 0 10px;">
+
+                        <div style="display:flex; justify-content: center; align-items: center;">
+                            <div style="width:33.33vw;"></div>
+                            <div style="width:33.33vw;">
+                                <img src="cid:image1" alt="Company Logo 1" style="max-width:60px; margin:0 10px; text-align:center; display:block; margin:auto;">
+                            </div>
+                            <div style="width:33.33vw;" sty>
+                                <img src="cid:image2" alt="Company Logo 2" style="max-width:60px; margin:0 10px;  display:block; float:right;">
+                            </div>
                         </div>
+
+
                         <div style="text-align: center; padding: 10px;">
                             <h1 style="margin: 0; font-size: 24px; color: #2a68af;">Hello, {username}</h1>
                             <p style="font-size: 14px; color: #666;">Here's A Quick Summary Of GRN:</p>
                         </div>
                 
                         <div style="margin-top: 20px;">
-                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; border-spacing: 0;">
-                                <tr>
-                                    <th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Do Number</th>
-                                    <th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Invoice Date</th>
-                                    <th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Invoice Number</th>
-                                    <th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Sale Date</th>
-                                </tr>
-                                <tr>
-                                    <td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get('do_no')}</td>
-                                    <td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get('invoice_date')}</td>
-                                    <td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get('invoice_no')}</td>
-                                    <td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get('sale_date')}</td>
-                                </tr>
-                                <tr>
-                                    <th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Grade</th>
-                                    <th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Dispatch Date</th>
-                                    <th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Mine</th>
-                                    <th style="border: 1px solid #ddd; padding: 10px; background-color: #003974; color: #fff; text-align: center;">Do Qty</th>
-                                </tr>
-                                <tr>
-                                    <td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get('grade')}</td>
-                                    <td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get('dispatch_date')}</td>
-                                    <td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get('mine')}</td>
-                                    <td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get('do_qty')}</td>
-                                </tr>
-                            </table>
+                            <div style="float: right;">
+                                <div style="display: inline-block; vertical-align: middle;">
+                                    <div class="icon_div"> 
+                                        <div class="box" style="width: 1px; height: 1px; border: 1px solid #cf9336; padding: 10px; margin: 10px; background-color: #fef7ec;">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="display: inline-block; vertical-align: middle;">
+                                    <span style="color: #58666e; font-size: 17px; font-weight: bold;">Modified Data</span>
+                                </div>
+                            </div>
+                            {header_part}
                         </div>
-                
                         <div style="margin-top: 20px;">
                             {table_data}
                         </div>
-                
-                        <div class="modified-data">
-                            <label><input type="checkbox"> Modified Data</label><br><br>
-                            <tr>
-                                <td style="text-align: center; padding: 20px;">
-                                    <a href="http://{ip}:7704/update/level/status?do_no={do_no}&username={username}&status=approve&level_name={level_name}&level_no={level_count}&comment={comment}&invoice_no={header_data.get('invoice_no')}&edited_by={edited_by}" style="display: inline-block; background-color: #007bff; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 5px; font-size: 16px;">Approve</a>
-                                    <a href="http://{ip}:7704/update/level/status?do_no={do_no}&username={username}&status=decline&level_name={level_name}&level_no={level_count}&comment={comment}&invoice_no={header_data.get('invoice_no')}&edited_by={edited_by}" style="display: inline-block; background-color: #007bff; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 5px; font-size: 16px;">Decline</a>
-                                </td>
-                            </tr>
+                        <div style="display:flex; justify-content: center; align-items: center;">
+                            <div style="width:33.33vw;"></div>
+                            <div style="width:33.33vw; text-align: center;">
+                                {button_part}
+                            </div>
+                            <div style="width:33.33vw;"></div>
                         </div>
                 
-                        <div class="footer">
-                            &copy; 2024 GMR. All rights reserved.
+                        <div class="footer" style="background-color: #003974; color: #fff; text-align: center; margin-top: 20px; padding: 8px;">
+                            <p style="font-weight: bold;">&copy; 2024 GMR. All rights reserved.</p>
                         </div>
                     </div>
                 </body>
                 </html>
                 """
-            # html_template = f"""
-            #     <table style="width: 100%; max-width: 600px; margin: 20px auto; background-color: #ffffff; border-collapse: collapse; border: 1px solid #ddd;">
-            #     <tr>
-            #         <td style="text-align: center; padding: 20px;">
-            #             <img src="cid:image1" alt="Logo" style="max-width: 100%; height: auto;">
-            #         </td>
-            #     </tr>
-
-            #     <tr>
-            #         <td style="padding: 20px;">
-            #             <h2 style="margin: 0; color: #333;">Hello, {username}</h2>
-            #             <p style="margin: 10px 0; color: #555;">Here's a quick summary of GRN:</p>
-
-                            
-
-            #             <!-- Table -->
-            #             {table_data}
-            #             <p style="margin: 10px 0; color: #555;">Feel free to contact us if you have any questions.</p>
-            #         </td>
-            #     </tr>
-
-            #     <tr>
-            #         <td style="text-align: center; padding: 20px;">
-            #             <a href="http://{ip}:7704/update/level/status?do_no={do_no}&username={username}&status=approve&level_name={level_name}&level_no={level_count}&comment={comment}&invoice_no={header_data.get('invoice_no')}&edited_by={edited_by}" style="display: inline-block; background-color: #007bff; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 5px; font-size: 16px;">Approve</a>
-            #             <a href="http://{ip}:7704/update/level/status?do_no={do_no}&username={username}&status=decline&level_name={level_name}&level_no={level_count}&comment={comment}&invoice_no={header_data.get('invoice_no')}&edited_by={edited_by}" style="display: inline-block; background-color: #007bff; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 5px; font-size: 16px;">Decline</a>
-            #         </td>
-            #     </tr>
-
-            #     <tr>
-            #         <td style="text-align: center; padding: 10px; background-color: #f4f4f4; font-size: 12px; color: #888;">
-            #             &copy; 2024 GMR. All rights reserved.
-            #         </td>
-            #     </tr>
-            # </table>
-            # """
         elif status == "Decline":
             html_template = f"""
-                <table style="width: 100%; max-width: 600px; margin: 20px auto; background-color: #ffffff; border-collapse: collapse; border: 1px solid #ddd;">
-                <tr>
-                    <td style="text-align: center; padding: 20px;">
-                        <img src="logo1.png" alt="Company Logo 1" style="max-width: 150px; margin: 0 10px;">
-                    </td>
-                </tr>
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>GRN Summary</title>
+                </head>
+                <body style="font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f4;">
+                    <div style="width: 80%; margin: 20px auto; background-color: #fff; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); padding: 20px;">
 
-                <tr>
-                    <td style="padding: 20px;">
-                        <h2 style="margin: 0; color: #333;">Hello, {username}</h2>
-                        <p style="margin: 10px 0; color: #555;">Here's a quick summary of GRN:</p>
+                        <div style="display:flex; justify-content: center; align-items: center;">
+                            <div style="width:33.33vw;"></div>
+                            <div style="width:33.33vw;">
+                                <img src="cid:image1" alt="Company Logo 1" style="max-width:60px; margin:0 10px; text-align:center; display:block; margin:auto;">
+                            </div>
+                            <div style="width:33.33vw;" sty>
+                                <img src="cid:image2" alt="Company Logo 2" style="max-width:60px; margin:0 10px;  display:block; float:right;">
+                            </div>
+                        </div>
 
-                        <table style="width: 100%; border-spacing: 0; border-collapse: collapse;">
-                        <!-- First Row -->
-                        <tr>
-                            <td style="width: 25%; background-color: #dcdcdc; padding: 10px; text-align: center;">Do Number</td>
-                            <td style="width: 25%; background-color: #dcdcdc; padding: 10px; text-align: center;">Invoice Date</td>
-                            <td style="width: 25%; background-color: #dcdcdc; padding: 10px; text-align: center;">Invoice Number</td>
-                            <td style="width: 25%; background-color: #dcdcdc; padding: 10px; text-align: center;">Sale Date</td>
-                        </tr>
-                        
-                        <tr>
-                            <td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get('do_no')}</td>
-                            <td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get('invoice_date')}</td>
-                            <td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get('invoice_no')}</td>
-                            <td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get('sale_date')}</td>
-                        </tr>
-                        <!-- Second Row -->
-                        <tr>
-                            <td style="width: 25%; background-color: #dcdcdc; padding: 10px; text-align: center;">Grade</td>
-                            <td style="width: 25%; background-color: #dcdcdc; padding: 10px; text-align: center;">Dispatch Date</td>
-                            <td style="width: 25%; background-color: #dcdcdc; padding: 10px; text-align: center;">Mine</td>
-                            <td style="width: 25%; background-color: #dcdcdc; padding: 10px; text-align: center;">Do Qty</td>
-                        </tr>
-                        <tr>
-                            <td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get('grade')}</td>
-                            <td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get('dispatch_date')}</td>
-                            <td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get('mine')}</td>
-                            <td style="width: 25%; background-color: #ffffff; padding: 10px; text-align: center;">{header_data.get('do_qty')}</td>
-                        </tr>
-                        </table>
 
-                        <!-- Table -->
-                        {table_data}
-                        <p style="margin: 10px 0; color: #555;">Feel free to contact us if you have any questions.</p>
-                    </td>
-                </tr>
-
-                <tr>
-                    <td style="text-align: center; padding: 10px; background-color: #f4f4f4; font-size: 12px; color: #888;">
-                        &copy; 2024 GMR. All rights reserved.
-                    </td>
-                </tr>
-            </table>
+                        <div style="text-align: center; padding: 10px;">
+                            <h1 style="margin: 0; font-size: 24px; color: #2a68af;">Hello, {username}</h1>
+                            <p style="font-size: 14px; color: #666;">Here's A Quick Summary Of GRN:</p>
+                        </div>
+                
+                        <div style="margin-top: 20px;">
+                            <div style="float: right;">
+                                <div style="display: inline-block; vertical-align: middle;">
+                                    <div class="icon_div"> 
+                                        <div class="box" style="width: 1px; height: 1px; border: 1px solid #cf9336; padding: 10px; margin: 10px; background-color: #fef7ec;">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="display: inline-block; vertical-align: middle;">
+                                    <span style="color: #58666e; font-size: 17px; font-weight: bold;">Modified Data</span>
+                                </div>
+                            </div>
+                            {header_part}
+                        </div>
+                        <div style="margin-top: 20px;">
+                            {table_data}
+                        </div>
+                        <div class="footer" style="background-color: #003974; color: #fff; text-align: center; margin-top: 20px; padding: 8px;">
+                            <p style="font-weight: bold;">&copy; 2024 GMR. All rights reserved.</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
             """
         file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
-        # target_directory = f"static_server/gmr_ai/{file}"
-        # os.umask(0)
-        # os.makedirs(target_directory, exist_ok=True, mode=0o777)
-        # filename = f'{target_directory}/test_html_template_{datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S")}.txt'
-        # with open(filename, 'a') as f:
-        #     f.write(f"{html_template}")
-        # console_logger.debug(filename)
         return html_template
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -41484,10 +41824,6 @@ def endpoint_to_test_multiapproval(response: Response):
                 "do_qty": grn_instance.do_qty,
                 "table_data": []
                 }
-            # console_logger.debug(json_data)
-            # createTextFile = endpoint_to_create_grnfile(json_data)
-            # console_logger.debug(createTextFile)
-
             headers = {
                 'accept': 'application/json',
                 'Content-Type': 'application/json',
@@ -41511,7 +41847,8 @@ def endpoint_to_update_grntax(response: Response, data: grnUpdateTax):
         payload=data.dict()
         try:
             checkGrn = Grn.objects.get(do_no=payload.get("do_no"), invoice_no=payload.get("invoice_no"))
-            return {"detail": "GRN already booked"}
+            response.status_code = 409
+            return {"details": "GRN already booked"}
         except DoesNotExist as e:
             Grn(
                 do_no=payload.get("do_no"),
@@ -41540,18 +41877,14 @@ def endpoint_to_update_grntax(response: Response, data: grnUpdateTax):
                 gross_bill_value = payload.get("particulars").get("gross_bill_value"),
                 net_value = payload.get("particulars").get("net_value"),
                 total_amount = payload.get("particulars").get("total_amount"),
+                mode="road",
+                type_consumer=payload.get("type_consumer")
             ).save()
         
         level_count = 0
         fetchMultilevelApproval = MultiApproval.objects.get(approval_name="grn_approval")
-        # console_logger.debug(fetchMultilevelApproval.levels[0])
-        # for single_val_detail in fetchMultilevelApproval.levels[0]:
-        #     console_logger.debug(single_val_detail)
-        # console_logger.debug(fetchMultilevelApproval.levels[level_count].user)
         if not fetchMultilevelApproval.bypass_level:
             for user_data in fetchMultilevelApproval.levels[level_count].user:
-                console_logger.debug(user_data)
-                # user_data = endpoint_to_fetch_single_user_data_using_email(email=email)
                 header_data = {
                     "do_no":payload.get("do_no"),
                     "invoice_date":payload.get("invoice_date"),
@@ -41562,12 +41895,10 @@ def endpoint_to_update_grntax(response: Response, data: grnUpdateTax):
                     "mine":payload.get("mine"),
                     "do_qty":payload.get("do_qty"),
                 }
-                fetchtabledata = endpoint_to_generate_email_template(new_data=payload.get("new_data"), original_data=payload.get("original_data"), user_data=user_data, do_no=payload.get("do_no"), level_name="grn_approval", level_count=level_count, header_data=header_data, edited_by=payload.get("changed_by"), status="Approve")
+                fetchtabledata = endpoint_to_generate_email_template(new_data=payload.get("new_data"), original_data=payload.get("original_data"), user_data=user_data, do_no=payload.get("do_no"), level_name="grn_approval", level_count=level_count, header_data=header_data, edited_by=payload.get("changed_by"), status="Approve", mode="road")
                 response_code, fetch_email = fetch_email_data()
                 subject = "GRN Flow"
                 to_data = user_data.get("email")
-                # console_logger.debug(to_data)
-                # console_logger.debug(fetchtabledata)
                 body = fetchtabledata
 
                 sender_email = fetch_email.get("Smtp_user")
@@ -41606,12 +41937,10 @@ def endpoint_to_update_grntax(response: Response, data: grnUpdateTax):
                     "mine":payload.get("mine"),
                     "do_qty":payload.get("do_qty"),
                 }
-                fetchtabledata = endpoint_to_generate_email_template(new_data=payload.get("new_data"), original_data=payload.get("original_data"), user_data=user_data, do_no=payload.get("do_no"), level_name="grn_approval", level_count=level_count_data, header_data=header_data, edited_by=payload.get("changed_by"), status="Approve")
+                fetchtabledata = endpoint_to_generate_email_template(new_data=payload.get("new_data"), original_data=payload.get("original_data"), user_data=user_data, do_no=payload.get("do_no"), level_name="grn_approval", level_count=level_count_data, header_data=header_data, edited_by=payload.get("changed_by"), status="Approve", mode="road")
                 response_code, fetch_email = fetch_email_data()
                 subject = "GRN Flow"
                 to_data = user_data.get("email")
-                # console_logger.debug(to_data)
-                # console_logger.debug(fetchtabledata)
                 body = fetchtabledata
 
                 sender_email = fetch_email.get("Smtp_user")
@@ -41657,6 +41986,41 @@ def send_multiapproval_email_struct(params:dict):
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
 
+def is_user_approved(user, data2):
+    for approval_data in data2:
+        for key, approval_list in approval_data.items():
+            for approval in approval_list:
+                if approval["username"] == user["username"] and approval["status"] == "approve":
+                    return True
+    return False
+
+
+def get_current_level(data, invoice_no):
+    try:
+        # Filter data for the specific invoice_no
+        filtered_data = [entry for entry in data if entry['invoice_no'] == invoice_no]
+        # Sort levels dynamically based on their names (e.g., "level1", "level2", etc.)
+        levels = sorted(
+            (key for entry in filtered_data for key in entry if key.startswith('level')),
+            key=lambda x: int(x[5:])  # Extract and sort by the number in "levelX"
+        )
+        # Determine the current level
+        for level in levels:
+            for entry in filtered_data:
+                if level in entry and entry[level]:  # If the level is True
+                    break
+            else:
+                return level  # Return the current level where the condition is False
+        
+        return levels[-1]  # If all levels are True, return the highest level
+    except Exception as e:
+        console_logger.debug(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
 @router.get("/fetch/grntax", tags=["Approval list"])
 def endpoint_to_fetch_grntax(response: Response, currentPage: Optional[int] = None,
                 perPage: Optional[int] = None,
@@ -41664,74 +42028,490 @@ def endpoint_to_fetch_grntax(response: Response, currentPage: Optional[int] = No
                 search_text: Optional[str] = None,
                 start_timestamp: Optional[str] = None,
                 end_timestamp: Optional[str] = None,
-                type: Optional[str] = "display"):
+                mode: Optional[str] = None,
+                type: Optional[str] = "display",
+                status: Optional[str] = None,
+                user_name: Optional[str] = None,
+                table_type: Optional[str] = None,
+                ):
     try:
         data = {}
         result = {        
                 "labels": [],
                 "datasets": [],
-                "weight_total":[],
                 "total" : 0,
                 "page_size": 15
         }
 
         if type and type == "display":
+            if table_type == "portal":
+                page_no = 1
+                page_len = result["page_size"]
 
-            page_no = 1
-            page_len = result["page_size"]
+                if currentPage:
+                    page_no = currentPage
 
-            if currentPage:
-                page_no = currentPage
+                if perPage:
+                    page_len = perPage
+                    result["page_size"] = perPage
 
-            if perPage:
-                page_len = perPage
-                result["page_size"] = perPage
+                if date:
+                    end =f'{date} 23:59:59'
+                    start = f'{date} 00:00:00'
+                    
+                    data["created_at__gte"] = convert_to_utc_format(start, "%Y-%m-%d %H:%M:%S")
+                    data["created_at__lte"] = convert_to_utc_format(end, "%Y-%m-%d %H:%M:%S")
 
-            if date:
-                end =f'{date} 23:59:59'
-                start = f'{date} 00:00:00'
+                if start_timestamp:
+                    data["created_at__gte"] = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+
+                if end_timestamp:
+                    data["created_at__lte"] = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
                 
-                data["created_at__gte"] = convert_to_utc_format(start, "%Y-%m-%d %H:%M:%S")
-                data["created_at__lte"] = convert_to_utc_format(end, "%Y-%m-%d %H:%M:%S")
+                if search_text:
+                    data &= Q(do_no__icontains = search_text) | Q(invoice_no__icontains = search_text)
+                
+                offset = (page_no - 1) * page_len
+                if status == "completed":
+                    logs = (
+                        Grn.objects(**data, mode=mode, rejected=False)
+                        .order_by("do_no", "-created_at")
+                        .skip(offset)
+                        .limit(page_len)
+                    )
+                elif status == "pending":
+                    logs = (
+                        Grn.objects(**data, mode=mode,  rejected=True)
+                        .order_by("do_no", "-created_at")
+                        .skip(offset)
+                        .limit(page_len)
+                    )
+                fetchMultilevelApproval = MultiApproval.objects.get(approval_name="grn_approval")
+                # dictData = {}
+                # is_edit_btn_show = False
+                is_edit_btn_list = []
+                get_list_name = []
+                dataDictVal = {"invoice_no": "", "is_btn_active": False}
+                if any(logs):
+                    for log in logs:
+                        payload = log.frpayload()
+                        levels = fetchMultilevelApproval.levels
+                        grn_approvals = log.approvals
+                        #hide show btn start
+                        if not grn_approvals:
+                            console_logger.debug("inside iff leveelll")
+                            # If no approvals, check the first level in MultiApproval DB
+                            first_level_users = {user["username"] for user in levels[0]["user"]}
+                            if user_name in first_level_users:
+                                console_logger.debug("comingggggg")
+                                # is_edit_btn_show = True
+                                dataDictVal["invoice_no"] = payload.get("invoice_no")
+                                dataDictVal["is_btn_active"] = True
+                                is_edit_btn_list.append(dataDictVal)
+                        else:
+                            console_logger.debug("inside else")
+                            # Check approvals level by level
+                            for level_index, level in enumerate(levels):
+                                console_logger.debug(level_index)
+                                console_logger.debug(level)
+                                level_users = {user["username"] for user in levels[level_index+1]["user"]}
+                                approved_users = {
+                                    approval["username"]
+                                    for approval in grn_approvals.get(str(level_index), [])
+                                    if approval["status"] == "approve"
+                                }
+                                console_logger.debug(approved_users)
+                                console_logger.debug(level_users)
+                                # If the current level is not fully approved
+                                if level_users != approved_users:
+                                    console_logger.debug("inisde if level")
+                                    # Check if the user is part of this level and can edit
+                                    if user_name in level_users and user_name not in approved_users:
+                                        # is_edit_btn_show = True
+                                        dataDictVal["invoice_no"] = payload.get("invoice_no")
+                                        dataDictVal["is_btn_active"] = True
+                                        is_edit_btn_list.append(dataDictVal)
+                                    break
+                        #hide show btn end
 
-            if start_timestamp:
-                data["created_at__gte"] = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                        for level_index, level in enumerate(levels):
+                            dictData = {}
+                            level_users = {user["username"] for user in level["user"]}
+                            console_logger.debug(f"Level {level_index + 1} Users: {level_users}")
 
-            if end_timestamp:
-                data["created_at__lte"] = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
-            
-            if search_text:
-                data &= Q(do_no__icontains = search_text) | Q(invoice_no__icontains = search_text)
-            
-            offset = (page_no - 1) * page_len
+                            approved_users = {
+                                approval["username"]
+                                for approval in grn_approvals.get(str(level_index), [])
+                                if approval["status"] == "approve"
+                            }
+                            console_logger.debug(f"Approved Users for Level {level_index + 1}: {approved_users}")
 
-            logs = (
-                Grn.objects(**data)
-                .order_by("do_no", "-created_at")
-                .skip(offset)
-                .limit(page_len)
-            )
+                            is_level_approved = not level_users.isdisjoint(approved_users)  # True if there is any overlap
+                            dictData[f"invoice_no"] = payload.get("invoice_no")
+                            dictData[f"level{level_index + 1}"] = True if is_level_approved else False
+                            get_list_name.append(dictData)
+                            console_logger.debug(f"Level {level_index + 1} Approval Status: {dictData[f'level{level_index + 1}']}")
 
-            if any(logs):
-                for log in logs:
-                    payload = log.frpayload()
-                    # result["labels"] = list(payload.keys())
-                    result["labels"] = ["do_no",
-                        "invoice_date",
-                        "invoice_no",
-                        "sale_date",
-                        "grade",
-                        "dispatch_date",
-                        "mine",
-                        "do_qty",
-                        "created_at"
-                    ]
+                        # result["labels"] = list(payload.keys())
+                        if mode == "road":
+                            do_rr_no = "do_no"
+                        elif mode == "rail":
+                            do_rr_no = "rr_no"
 
-                    result["datasets"].append(payload)
+                        result["labels"] = [
+                            do_rr_no,
+                            "invoice_date",
+                            "invoice_no",
+                            "sale_date",
+                            "grade",
+                            "dispatch_date",
+                            "mine",
+                            "do_qty",
+                            "grn_status",
+                            "created_at"
+                        ]
+                        fetchCurrentLevel = get_current_level(get_list_name, payload["invoice_no"])
 
-            result["total"] = Grn.objects(**data).count()
-            return result
+                        if get_list_name:
+                            payload["grn_status"] = fetchCurrentLevel
+                        else:
+                            payload["grn_status"] = "level1"
+                        if any(d['invoice_no'] == payload["invoice_no"] for d in is_edit_btn_list):
+                            console_logger.debug("matched")
+                            payload["is_edit_btn_show"] = True
+                        else:
+                            console_logger.debug("not matched")
+                            payload["is_edit_btn_show"] = False
+                        result["datasets"].append(payload)
+                result["total"] = Grn.objects(**data, mode=mode).count()
+                return result
+            elif table_type == "approval":
+                console_logger.debug("inside approval")
+                # approval table type
+                page_no = 1
+                page_len = result["page_size"]
 
+                if currentPage:
+                    page_no = currentPage
+
+                if perPage:
+                    page_len = perPage
+                    result["page_size"] = perPage
+
+                if date:
+                    end =f'{date} 23:59:59'
+                    start = f'{date} 00:00:00'
+                    
+                    data["created_at__gte"] = convert_to_utc_format(start, "%Y-%m-%d %H:%M:%S")
+                    data["created_at__lte"] = convert_to_utc_format(end, "%Y-%m-%d %H:%M:%S")
+
+                if start_timestamp:
+                    data["created_at__gte"] = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+
+                if end_timestamp:
+                    data["created_at__lte"] = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
+                
+                if search_text:
+                    data &= Q(do_no__icontains = search_text) | Q(invoice_no__icontains = search_text)
+                
+                offset = (page_no - 1) * page_len
+                fetchMultilevelApproval = MultiApproval.objects.get(approval_name="grn_approval")
+                levels = fetchMultilevelApproval.levels
+                if status == "completed":
+                    console_logger.debug("here completed")
+                    logs = (
+                        Grn.objects(**data, mode=mode, rejected=False)
+                        .order_by("do_no", "-created_at")
+                        .skip(offset)
+                        .limit(page_len)
+                    )
+                    
+                    multilevel_data = [single_user["user"] for single_user in levels]
+
+                    grn_data = [single_logs.approvals for single_logs in logs]
+
+                    # Check if each sublist in data1 has at least one approved user in data2
+                    resultData = {}
+                    for index, user_list in enumerate(multilevel_data):
+                        approved_users_in_level = [user for user in user_list if is_user_approved(user, grn_data)]
+                        if approved_users_in_level:
+                            resultData[f"level{index + 1}"] = "approve"
+                        else:
+                            resultData[f"level{index + 1}"] = "unapprove"
+
+                    console_logger.debug(resultData)
+                    final_result = all(value == "approve" for value in resultData.values())
+                    console_logger.debug(final_result)
+                    if final_result:
+                        if mode == "road":
+                            if any(logs):
+                                for log in logs:
+                                    payload = log.frpayload()
+                                    # result["labels"] = list(payload.keys())
+                                    if mode == "road":
+                                        do_rr_no = "do_no"
+                                    elif mode == "rail":
+                                        do_rr_no = "rr_no"
+
+                                    result["labels"] = [
+                                        do_rr_no,
+                                        "invoice_date",
+                                        "invoice_no",
+                                        "sale_date",
+                                        "grade",
+                                        "dispatch_date",
+                                        "mine",
+                                        "do_qty",
+                                        "created_at"
+                                    ]
+                                    # checkGrnStatus = [key for key, value in dictData.items() if value == True]
+                                    # if checkGrnStatus:
+                                    #     payload["grn_status"] = checkGrnStatus[-1]
+                                    # else:
+                                    #     payload["grn_status"] = "level1"
+                                    result["datasets"].append(payload)
+                            result["total"] = Grn.objects(**data, mode=mode).count()
+                            return result 
+                        elif mode =="rail":
+                            # inside rail
+                            console_logger.debug("inside rail")
+                            is_edit_btn_list = []
+                            get_list_name = []
+                            dataDictVal = {"invoice_no": "", "is_btn_active": False}
+                            
+                            if any(logs):
+                                for log in logs:
+                                    payload = log.frpayload()
+                                    grn_approvals = log.approvals
+
+                                    console_logger.debug(levels)
+                                    for level_index, level in enumerate(levels):
+                                        dictData = {}
+                                        level_users = {user["username"] for user in level["user"]}
+                                        console_logger.debug(f"Level {level_index + 1} Users: {level_users}")
+
+                                        approved_users = {
+                                            approval["username"]
+                                            for approval in grn_approvals.get(str(level_index), [])
+                                            if approval["status"] == "approve"
+                                        }
+                                        console_logger.debug(f"Approved Users for Level {level_index + 1}: {approved_users}")
+                                        is_level_approved = not level_users.isdisjoint(approved_users)  # True if there is any overlap
+                                        dictData[f"invoice_no"] = payload.get("invoice_no")
+                                        dictData[f"level{level_index + 1}"] = True if is_level_approved else False
+                                        get_list_name.append(dictData)
+                                        console_logger.debug(f"Level {level_index + 1} Approval Status: {dictData[f'level{level_index + 1}']}")
+                                    do_rr_no = "rr_no"
+
+                                    result["labels"] = [
+                                        do_rr_no,
+                                        "invoice_date",
+                                        "invoice_no",
+                                        "sale_date",
+                                        "grade",
+                                        "dispatch_date",
+                                        "mine",
+                                        "do_qty",
+                                        "grn_status",
+                                        "created_at"
+                                    ]
+                                    # Filter data for the given invoice_no
+                                    filtered_data = [entry for entry in get_list_name if entry['invoice_no'] == payload.get("invoice_no")]
+
+                                    # Check if all levels are True for the given invoice_no
+                                    is_completed = all(value is True for entry in filtered_data for key, value in entry.items() if key.startswith('level'))
+                                    console_logger.debug(payload.get("invoice_no"))
+                                    console_logger.debug(is_completed)
+                                    if is_completed:
+                                        fetchCurrentLevel = get_current_level(get_list_name, payload.get("invoice_no"))
+                                        if get_list_name:
+                                            payload["grn_status"] = fetchCurrentLevel
+                                        else:
+                                            payload["grn_status"] = "level1"
+                                        if any(d['invoice_no'] == payload.get("invoice_no") for d in is_edit_btn_list):
+                                            payload["is_edit_btn_show"] = True
+                                        else:
+                                            payload["is_edit_btn_show"] = False
+                                        result["datasets"].append(payload)
+                            result["total"] = Grn.objects(**data, mode=mode).count()
+                            return result
+                    else:
+                        return result
+                elif status == "pending":
+                    # inside approval pending
+                    console_logger.debug("approval pending")
+                    logs = (
+                        Grn.objects(**data, mode=mode)
+                        .order_by("do_no", "-created_at")
+                        .skip(offset)
+                        .limit(page_len)
+                    )
+                    multilevel_data = [single_user["user"] for single_user in levels]
+
+                    grn_data = [single_logs.approvals for single_logs in logs]
+                    
+                    resultData = {}
+                    for index, user_list in enumerate(multilevel_data):
+                        approved_users_in_level = [user for user in user_list if is_user_approved(user, grn_data)]
+                        if approved_users_in_level:
+                            resultData[f"level{index + 1}"] = "approve"
+                        else:
+                            resultData[f"level{index + 1}"] = "unapprove"
+
+                    console_logger.debug(resultData)
+                    final_result = all(value == "approve" for value in resultData.values())
+                    console_logger.debug(final_result)
+                    # dictData = {}
+                    is_edit_btn_list = []
+                    get_list_name = []
+                    dataDictVal = {"invoice_no": "", "is_btn_active": False}
+                    if not final_result:
+                        console_logger.debug("inside not final result")
+                        if any(logs):
+                            for log in logs:
+                                payload = log.frpayload()
+                                grn_approvals = log.approvals
+
+                                #hide show btn start
+                                if not grn_approvals:
+                                    # If no approvals, check the first level in MultiApproval DB
+                                    first_level_users = {user["username"] for user in levels[0]["user"]}
+                                    if user_name in first_level_users:
+                                        console_logger.debug("comingggggg")
+                                        # is_edit_btn_show = True
+                                        dataDictVal["invoice_no"] = payload.get("invoice_no")
+                                        dataDictVal["is_btn_active"] = True
+                                        is_edit_btn_list.append(dataDictVal)
+                                else:
+                                    console_logger.debug("inside else")
+                                    # Check approvals level by level
+                                    for level_index, level in enumerate(levels):
+                                        level_users = {user["username"] for user in levels[level_index+1]["user"]}
+                                        approved_users = {
+                                            approval["username"]
+                                            for approval in grn_approvals.get(str(level_index), [])
+                                            if approval["status"] == "approve"
+                                        }
+                                        # If the current level is not fully approved
+                                        if level_users != approved_users:
+                                            # Check if the user is part of this level and can edit
+                                            if user_name in level_users and user_name not in approved_users:
+                                                dataDictVal["invoice_no"] = payload.get("invoice_no")
+                                                dataDictVal["is_btn_active"] = True
+                                                is_edit_btn_list.append(dataDictVal)
+                                            break
+                                #hide show btn end
+
+                                console_logger.debug(levels)
+                                for level_index, level in enumerate(levels):
+                                    dictData = {}
+                                    level_users = {user["username"] for user in level["user"]}
+                                    console_logger.debug(f"Level {level_index + 1} Users: {level_users}")
+
+                                    approved_users = {
+                                        approval["username"]
+                                        for approval in grn_approvals.get(str(level_index), [])
+                                        if approval["status"] == "approve"
+                                    }
+                                    console_logger.debug(f"Approved Users for Level {level_index + 1}: {approved_users}")
+                                    is_level_approved = not level_users.isdisjoint(approved_users)  # True if there is any overlap
+                                    dictData[f"invoice_no"] = payload.get("invoice_no")
+                                    dictData[f"level{level_index + 1}"] = True if is_level_approved else False
+                                    get_list_name.append(dictData)
+                                    console_logger.debug(f"Level {level_index + 1} Approval Status: {dictData[f'level{level_index + 1}']}")
+
+                                if mode == "road":
+                                    do_rr_no = "do_no"
+                                elif mode == "rail":
+                                    do_rr_no = "rr_no"
+
+                                result["labels"] = [
+                                    do_rr_no,
+                                    "invoice_date",
+                                    "invoice_no",
+                                    "sale_date",
+                                    "grade",
+                                    "dispatch_date",
+                                    "mine",
+                                    "do_qty",
+                                    "grn_status",
+                                    "created_at"
+                                ]
+                                fetchCurrentLevel = get_current_level(get_list_name, payload["invoice_no"])
+                                if get_list_name:
+                                    payload["grn_status"] = fetchCurrentLevel
+                                else:
+                                    payload["grn_status"] = "level1"
+                                if any(d['invoice_no'] == payload["invoice_no"] for d in is_edit_btn_list):
+                                    payload["is_edit_btn_show"] = True
+                                else:
+                                    payload["is_edit_btn_show"] = False
+                                result["datasets"].append(payload)
+                        result["total"] = Grn.objects(**data, mode=mode).count()
+                        return result 
+                    else:
+                        # inside rail pending
+                        console_logger.debug("inisde elseeeeee rail pending")
+                        is_edit_btn_list = []
+                        get_list_name = []
+                        dataDictVal = {"invoice_no": "", "is_btn_active": False}
+                        
+                        if any(logs):
+                            for log in logs:
+                                payload = log.frpayload()
+                                grn_approvals = log.approvals
+
+                                console_logger.debug(levels)
+                                for level_index, level in enumerate(levels):
+                                    dictData = {}
+                                    level_users = {user["username"] for user in level["user"]}
+                                    console_logger.debug(f"Level {level_index + 1} Users: {level_users}")
+
+                                    approved_users = {
+                                        approval["username"]
+                                        for approval in grn_approvals.get(str(level_index), [])
+                                        if approval["status"] == "approve"
+                                    }
+                                    console_logger.debug(f"Approved Users for Level {level_index + 1}: {approved_users}")
+                                    is_level_approved = not level_users.isdisjoint(approved_users)  # True if there is any overlap
+                                    dictData[f"invoice_no"] = payload.get("invoice_no")
+                                    dictData[f"level{level_index + 1}"] = True if is_level_approved else False
+                                    get_list_name.append(dictData)
+                                    console_logger.debug(f"Level {level_index + 1} Approval Status: {dictData[f'level{level_index + 1}']}")
+                                do_rr_no = "rr_no"
+
+                                result["labels"] = [
+                                    do_rr_no,
+                                    "invoice_date",
+                                    "invoice_no",
+                                    "sale_date",
+                                    "grade",
+                                    "dispatch_date",
+                                    "mine",
+                                    "do_qty",
+                                    "grn_status",
+                                    "created_at"
+                                ]
+                                # Filter data for the given invoice_no
+                                filtered_data = [entry for entry in get_list_name if entry['invoice_no'] == payload.get("invoice_no")]
+
+                                # Check if all levels are True for the given invoice_no
+                                is_completed = all(value is False for entry in filtered_data for key, value in entry.items() if key.startswith('level'))
+                                console_logger.debug(payload.get("invoice_no"))
+                                console_logger.debug(is_completed)
+                                if is_completed:
+                                    fetchCurrentLevel = get_current_level(get_list_name, payload.get("invoice_no"))
+                                    if get_list_name:
+                                        payload["grn_status"] = fetchCurrentLevel
+                                    else:
+                                        payload["grn_status"] = "level1"
+                                    if any(d['invoice_no'] == payload.get("invoice_no") for d in is_edit_btn_list):
+                                        payload["is_edit_btn_show"] = True
+                                    else:
+                                        payload["is_edit_btn_show"] = False
+                                    result["datasets"].append(payload)
+                        result["total"] = Grn.objects(**data, mode=mode).count()
+                        return result
         elif type and type == "download":
             del type
 
@@ -41746,7 +42526,7 @@ def endpoint_to_fetch_grntax(response: Response, currentPage: Optional[int] = No
             if end_timestamp:
                 data["created_at__lte"] = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M")
 
-            usecase_data = Grn.objects(**data).order_by("-created_at")
+            usecase_data = Grn.objects(**data, mode=mode).order_by("-created_at")
             count = len(usecase_data)
             path = None
             logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
@@ -41787,11 +42567,9 @@ def endpoint_to_fetch_grntax(response: Response, currentPage: Optional[int] = No
 
                     worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
                     
-                    # Merge cells for the main header and place it in the center
                     main_header = "GMR Warora Energy Limited"  # Set your main header text here
                     worksheet.merge_range("A1:O1", main_header, header_format)  # Merge cells A1 to H1 for the header
                     
-                    # Write the current date on the left side (A2)
                     worksheet.write("A2", f"Date: {datetime.datetime.now().strftime('%d-%m-%Y')}", date_format)
                     worksheet.merge_range("C2:H2", f"Report Name: Mine Wise Table", report_name_format)
 
@@ -41878,7 +42656,6 @@ def endpoint_to_update_averyplacement_date(response: Response, start_date= str, 
         for singleraildata in fetchRailData:
             if singleraildata.avery_placement_date is None:
                 placement_date = datetime.datetime.strptime(singleraildata.placement_date, "%Y-%m-%dT%H:%M")
-
                 # Add two days
                 new_date = placement_date + datetime.timedelta(days=2)
                 final_date = new_date.strftime("%Y-%m-%dT%H:%M")
@@ -41931,8 +42708,6 @@ async def endpoint_to_update_third_party_data(response: Response, file: UploadFi
             data_excel_fetch = json.loads(excel_data.to_json(orient="records"))
             for single_data in data_excel_fetch:
                 try:
-                    # console_logger.debug(str(single_data.get("sample_id")))
-                    # console_logger.debug(str(single_data.get("sample_no")))
                     fetchReceiptQualityAnalysis = RecieptCoalQualityAnalysis.objects.get(sample_id=str(single_data.get("sample_id")), sample_no=str(single_data.get("sample_no")))
                     fetchReceiptQualityAnalysis.update(
                         thirdparty_report_date=single_data.get("thirdparty_report_date"),
@@ -41985,12 +42760,6 @@ async def endpoint_to_update_third_party_data(response: Response, file: UploadFi
 @router.get("/fetch/recipt_quality_analysis_graph", tags=["Coal Quality"])
 def endpoint_to_create_graph_receipt_quality_analysis(response: Response, month_date: str):
     try:
-        # dateData = datetime.datetime.now().date()
-        # console_logger.debug(dateData)
-        # # financial_year = get_financial_year(str(dateData))
-        # # start_date = financial_year.get("start_date")
-        # # end_date = financial_year.get("end_date")
-        
         if month_date:
             final_month_date = month_date.replace(' ', '')
             start_date = f'{final_month_date}-01'
@@ -42870,10 +43639,17 @@ def endpoint_to_export_table_data_to_email(response: Response, data: TableExport
 
 
 @router.get("/fetch/grnstatus", tags=['Approval list'])
-def endpoint_to_fetch_grn_status(response: Response, user_name: Optional[str]=None, invoice_no: Optional[str]=None, do_no: Optional[str]=None):
+def endpoint_to_fetch_grn_status(response: Response, user_name: Optional[str]=None, invoice_no: Optional[str]=None, do_no: Optional[str]=None, mode: Optional[str]=None, rr_no: Optional[str]=None):
     try:
         try:
-            fetchGrnStatus = Grn.objects.get(invoice_no = invoice_no, do_no = do_no)
+            if mode == "rail":
+                fetchGrnStatus = Grn.objects.get(do_no = rr_no)
+                # dataCheck = grn_instance.approvals
+                # fetchGrnStatus = Grn.objects.get(invoice_no = invoice_no, do_no = rr_no)
+                fetchRailData = RailData.objects.get(rr_no=rr_no)
+            else:
+                fetchGrnStatus = Grn.objects.get(invoice_no = invoice_no, do_no = do_no)
+                # dataCheck = grn_instance.approvals
             header_data = {
                 "do_no": fetchGrnStatus.do_no,
                 "invoice_no": fetchGrnStatus.invoice_no,
@@ -42883,21 +43659,40 @@ def endpoint_to_fetch_grn_status(response: Response, user_name: Optional[str]=No
                 "mine": fetchGrnStatus.mine,
                 "do_qty": fetchGrnStatus.do_qty,
             }
-            billing_data = {
-                "basic_price": fetchGrnStatus.basic_price,
-                "sizing_charges": fetchGrnStatus.sizing_charges,
-                "stc_charges": fetchGrnStatus.stc_charges,
-                "evac_facility_charge": fetchGrnStatus.evac_facility_charge,
-                "royalty_charges": fetchGrnStatus.royalty_charges,
-                "nmet_charges": fetchGrnStatus.nmet_charges,
-                "imf": fetchGrnStatus.imf,
-                "cgst": fetchGrnStatus.cgst,
-                "sgst": fetchGrnStatus.sgst,
-                "gst_comp_cess": fetchGrnStatus.gst_comp_cess,
-                "gross_bill_value": fetchGrnStatus.gross_bill_value,
-                "net_value": fetchGrnStatus.net_value,
-                "total_amount": fetchGrnStatus.total_amount,
-            }
+            if mode == "road":
+                billing_data = {
+                    "basic_price": fetchGrnStatus.basic_price,
+                    "sizing_charges": fetchGrnStatus.sizing_charges,
+                    "stc_charges": fetchGrnStatus.stc_charges,
+                    "evac_facility_charge": fetchGrnStatus.evac_facility_charge,
+                    "royalty_charges": fetchGrnStatus.royalty_charges,
+                    "nmet_charges": fetchGrnStatus.nmet_charges,
+                    "imf": fetchGrnStatus.imf,
+                    "cgst": fetchGrnStatus.cgst,
+                    "sgst": fetchGrnStatus.sgst,
+                    "gst_comp_cess": fetchGrnStatus.gst_comp_cess,
+                    "gross_bill_value": fetchGrnStatus.gross_bill_value,
+                    "net_value": fetchGrnStatus.net_value,
+                    "total_amount": fetchGrnStatus.total_amount,
+                }
+            elif mode == "rail":
+                billing_data = {
+                    "sizing_charges_amount": fetchGrnStatus.sizing_charges_amount,
+                    "evac_facility_charge_amount": fetchGrnStatus.evac_facility_charge_amount,
+                    "royalty_charges_amount": fetchGrnStatus.royalty_charges_amount,
+                    "nmet_amount": fetchGrnStatus.nmet_amount,
+                    "dmf_amount": fetchGrnStatus.dmf_amount,
+                    "adho_sanrachna_vikas_amount": fetchGrnStatus.adho_sanrachna_vikas_amount,
+                    "pariyavaran_upkar_amount": fetchGrnStatus.pariyavaran_upkar_amount,
+                    "assessable_value_amount": fetchGrnStatus.assessable_value_amount,
+                    "igst_amount": fetchGrnStatus.igst_amount,
+                    "gst_comp_cess_amount": fetchGrnStatus.gst_comp_cess_amount,
+                    "gross_bill_value_amount": fetchGrnStatus.gross_bill_value_amount,
+                    "less_underloading_charges_amount": fetchGrnStatus.less_underloading_charges_amount,
+                    # "total_gwel_net": fetchGrnStatus.total_gwel_net,
+                    "net_value_amtotal_amountount": fetchGrnStatus.total_amount
+                }
+
 
             fetchMultiapproval = MultiApproval.objects.get(approval_name="grn_approval")
             mPayload = fetchMultiapproval.payload()
@@ -42906,45 +43701,199 @@ def endpoint_to_fetch_grn_status(response: Response, user_name: Optional[str]=No
                 (index for index, group in enumerate(mPayload.get("levels")) if any(user['username'] == user_name for user in group['user'])),
                 None
             )
+            console_logger.debug(mPayload.get("bypass_level"))
             # when bypass_level is true i am copying user_level value to grn_level
             if mPayload.get("bypass_level"):
-                final_grn_index = key_index_multiapproval
+                checkUser = next((item for item in mPayload.get("levels")[-1].get('user') if item["username"] == user_name), False)
+                if checkUser:
+                    # empty
+                    final_grn_index = key_index_multiapproval
+                else:
+                    final_grn_index = None
             else:
+                console_logger.debug("inside else")
                 key_index_grn = next((single_data_val for single_data_val in fetchGrnStatus.approvals for single_under_data in fetchGrnStatus.approvals[single_data_val]), None)
+                console_logger.debug(key_index_grn)
                 if key_index_grn == None:
-                    final_grn_index = key_index_grn
+                    final_grn_index = 0
                 else:
                     final_grn_index = int(key_index_grn) + 1
-            # is_user_multiapproval_present = any(
-            #     any(user['username'] == user_name for user in group['user'])
-            #     for group in mPayload.get("levels")
-            # )
-            # if is_user_multiapproval_present:
-            #     button_check = True
-                # # check if user is present or not
-                # is_user_present = any(
-                #     any(entry['username'] == user_name for entry in group)
-                #     for group in fetchGrnStatus.approvals.values()
-                # )
+                    
+            if mode == "road":
+                original_list_data = []
+                for single_original_data in fetchGrnStatus.original_data:
+                    if single_original_data.get("actual_net_qty"):
+                        transist_loss = float(single_original_data.get("net_weight")) - float(single_original_data.get("actual_net_qty"))
+                    else:
+                        transist_loss = float(single_original_data.get("net_weight")) - 0
+                    original_data = {
+                        "object_id": single_original_data.get("object_id"),
+                        "sales_doc_no": single_original_data.get("sales_doc_no"),
+                        "dispatch_date_time": single_original_data.get("dispatch_date_time"),
+                        "challan_number": single_original_data.get("challan_number"),
+                        "grade_size": single_original_data.get("grade_size"),
+                        "truck_number": single_original_data.get("truck_number"),
+                        "challan_gross_weight": single_original_data.get("gross_weight"),
+                        "challan_tare_weight": single_original_data.get("tare_weight"),
+                        "challan_net_weight": single_original_data.get("net_weight"),
+                        "gwel_gross_weight": single_original_data.get("actual_gross_qty"),
+                        "gwel_tare_weight": single_original_data.get("actual_tare_qty"),
+                        "gwel_net_weight": single_original_data.get("actual_net_qty"),
+                        "transist_loss": round(transist_loss, 2),
+                    }
+                    original_list_data.append(original_data)
+                
+                new_list_data = []
+                for single_new_data in fetchGrnStatus.new_data:
+                    newDictData = {
+                        'challan_number': single_new_data.get('challan_number'), 
+                        'delivery_doc_no': single_new_data.get('delivery_doc_no'), 
+                        'dispatch_date_time': single_new_data.get('dispatch_date_time'), 
+                        'grade_size': single_new_data.get('grade_size'), 
+                        'challan_tare_weight': single_new_data.get('tare_weight'), 
+                        'challan_gross_weight': single_new_data.get('gross_weight'), 
+                        'challan_net_weight': single_new_data.get('net_weight'), 
+                        'sales_doc_no': single_new_data.get('sales_doc_no'), 
+                        'ship_to_party': single_new_data.get('ship_to_party'), 
+                        'truck_number': single_new_data.get('truck_number'),
+                        'object_id': single_new_data.get('object_id')
+                    }
+                    new_list_data.append(newDictData)
 
-                # console_logger.debug(is_user_present)
-            # if is_user_present:
+                # if dataCheck.get(str(payload.get("level_no")))[0].get("status") == "approve":
+                    
 
-            return {
-                "header_data": header_data,
-                "billing_data": billing_data,
-                "original_data": fetchGrnStatus.original_data,
-                "new_data": fetchGrnStatus.new_data,
-                "user_level": key_index_multiapproval,
-                "grn_level": final_grn_index    ,
-            }
+                return {
+                    "header_data": header_data,
+                    "billing_data": billing_data,
+                    "original_data": original_list_data,
+                    "new_data": new_list_data,
+                    "user_level": key_index_multiapproval,
+                    "grn_level": final_grn_index,
+                }
+            elif mode == "rail":
+                new_list_data = []
+                for single_new_data in fetchGrnStatus.new_data:
+                    newDictData = {
+                        'indexing': single_new_data.get('indexing'), 
+                        'wagon_owner': single_new_data.get('wagon_owner'), 
+                        'wagon_type': single_new_data.get('wagon_type'), 
+                        'wagon_no': single_new_data.get('wagon_no'), 
+                        'coal_grade': single_new_data.get('coal_grade'), 
+                        'mode': single_new_data.get('mode'), 
+                        'po_number': single_new_data.get('po_number'), 
+                        'rake_id': single_new_data.get('rake_id'), 
+                        'rake_no': single_new_data.get('rake_no'), 
+                        'ser_no': single_new_data.get('ser_no'),
+                        'tip_enddate': single_new_data.get('tip_enddate'),
+                        'tip_endtime': single_new_data.get('tip_endtime'),
+                        'tip_startdate': single_new_data.get('tip_startdate'),
+                        'tip_starttime': single_new_data.get('tip_starttime'),
+                        'tipple_time': single_new_data.get('tipple_time'),
+                        'wagon_cc': single_new_data.get('wagon_cc'),
+                        'wagon_id': single_new_data.get('wagon_id'),
+                        'wagon_no_avery': single_new_data.get('wagon_no_avery'),
+                        'wagon_type_avery': single_new_data.get('wagon_type_avery'),
+                        'gwel_gross_wt': single_new_data.get('gwel_gross_wt'),
+                        'gwel_net_wt': single_new_data.get('gwel_net_wt'),
+                        'gwel_tare_wt': single_new_data.get('gwel_tare_wt'),
+                    }
+                    secl_data_mapping = {data.wagon_no: data for data in fetchRailData.secl_rly_data}
+                    wagon_no = single_new_data.get("wagon_no")
+                    secl_data = secl_data_mapping.get(wagon_no)
+                    if single_new_data.get("gwel_net_wt") is not None and secl_data.secl_net_wt is not None:
+                        secl_net_wt = secl_data.secl_net_wt.encode('ascii', 'ignore') if secl_data.secl_net_wt else b"0"
+                        gwel_net_wt = single_new_data.get("gwel_net_wt").encode('ascii', 'ignore') if single_new_data.get("gwel_net_wt") else b"0"
+                        weight_diff = round(float(secl_net_wt) - float(gwel_net_wt), 2)
+                    else:
+                        secl_net_wt = secl_data.secl_net_wt.encode('ascii', 'ignore') if secl_data.secl_net_wt else b"0"
+                        weight_diff = float(secl_net_wt)
+                    newDictData["gwel_gross_wt"] = single_new_data.get("gwel_gross_wt")
+                    newDictData["gwel_tare_wt"] = single_new_data.get("gwel_tare_wt")
+                    newDictData["gwel_net_wt"] = single_new_data.get("gwel_net_wt")
+                    newDictData["transist_loss"] = weight_diff
+                    new_list_data.append(newDictData)
+
+                seclList = []
+                for single_secl_data in fetchRailData.secl_rly_data:
+                    newSeclDict = {
+                        'indexing': single_secl_data.indexing, 
+                        'wagon_owner': single_secl_data.wagon_owner, 
+                        'wagon_type': single_secl_data.wagon_type, 
+                        'wagon_no': single_secl_data.wagon_no, 
+                        'secl_cc_wt': single_secl_data.secl_cc_wt, 
+                        'secl_gross_wt': single_secl_data.secl_gross_wt, 
+                        'secl_tare_wt': single_secl_data.secl_tare_wt, 
+                        'secl_net_wt': single_secl_data.secl_net_wt, 
+                        'secl_ol_wt': single_secl_data.secl_ol_wt, 
+                        'secl_ul_wt': single_secl_data.secl_ul_wt,
+                        'secl_chargable_wt': single_secl_data.secl_chargable_wt,
+                        'rly_cc_wt': single_secl_data.rly_cc_wt,
+                        'rly_gross_wt': single_secl_data.rly_gross_wt,
+                        'rly_tare_wt': single_secl_data.rly_tare_wt,
+                        'rly_net_wt': single_secl_data.rly_net_wt,
+                        'rly_permissible_cc_wt': single_secl_data.rly_permissible_cc_wt,
+                        'rly_ol_wt': single_secl_data.rly_ol_wt,
+                        'rly_norm_rate': single_secl_data.rly_norm_rate,
+                        'rly_pun_rate': single_secl_data.rly_pun_rate,
+                        'rly_chargable_wt': single_secl_data.rly_chargable_wt,
+                        'rly_sliding_adjustment': single_secl_data.rly_sliding_adjustment,
+                    }
+                    seclList.append(newSeclDict)
+                
+                return {
+                    "header_data": header_data,
+                    "billing_data": billing_data,
+                    "new_data": new_list_data,
+                    "secl_data": seclList,
+                    "user_level": key_index_multiapproval,
+                    "grn_level": final_grn_index,
+                    "po_date": fetchRailData.po_date,
+                    "line_item": fetchRailData.line_item,
+                    "source": fetchRailData.source,
+                    "placement_date": fetchRailData.placement_date,
+                    "completion_date": fetchRailData.completion_date,
+                    "avery_placement_date": fetchRailData.avery_placement_date,
+                    "avery_completion_date": fetchRailData.avery_completion_date,
+                    "drawn_date": fetchRailData.drawn_date,
+                    "total_ul_wt": fetchRailData.total_ul_wt,
+                    "boxes_supplied": fetchRailData.boxes_supplied,
+                    "total_secl_gross_wt": fetchRailData.total_secl_gross_wt,
+                    "total_secl_tare_wt": fetchRailData.total_secl_tare_wt,
+                    "total_secl_net_wt": fetchRailData.total_secl_net_wt,
+                    "total_secl_ol_wt": fetchRailData.total_secl_ol_wt,
+                    "boxes_loaded": fetchRailData.boxes_loaded,
+                    "total_rly_gross_wt": fetchRailData.total_rly_gross_wt,
+                    "total_rly_tare_wt": fetchRailData.total_rly_tare_wt,
+                    "total_rly_net_wt": fetchRailData.total_rly_net_wt,
+                    "total_rly_ol_wt": fetchRailData.total_rly_ol_wt,
+                    "total_secl_chargable_wt": fetchRailData.total_secl_chargable_wt,
+                    "total_rly_chargable_wt": fetchRailData.total_rly_chargable_wt,
+                    "freight": fetchRailData.freight,
+                    "gst": fetchRailData.gst,
+                    "pola": fetchRailData.pola,
+                    "total_freight": fetchRailData.total_freight,
+                    "source_type": fetchRailData.source_type,
+                    "month": fetchRailData.month,
+                    "rr_date": fetchRailData.rr_date,
+                    "siding": fetchRailData.siding,
+                    "mine": fetchRailData.mine,
+                    "grade": fetchRailData.grade,
+                    "po_amount": fetchRailData.po_amount,
+                    "rake_no": fetchRailData.rake_no,
+                    "GWEL_received_wagons": fetchRailData.GWEL_received_wagons,
+                    "GWEL_pending_wagons": fetchRailData.GWEL_pending_wagons,
+                    "GWEL_Total_gwel_gross": fetchRailData.Total_gwel_gross,
+                    "GWEL_Total_gwel_tare": fetchRailData.Total_gwel_tare,
+                    "GWEL_Total_gwel_net": fetchRailData.Total_gwel_net,
+                }
         except DoesNotExist as e:
             pass
         response.status_code = 404
         return {"details": "No Data Found"}
     except Exception as e:
         response.status_code = 400
-        console_logger.debug("----- Table Subject Excel Error -----",e)
+        console_logger.debug("----- GRN Status Update Excel Error -----",e)
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
@@ -42971,6 +43920,12 @@ def endpoint_to_update_grn_status_update(response: Response, data: grnupdateStat
         }
         if not dataCheck.get(str(payload.get("level_no"))):
             if payload.get("status") == "approve":
+                # making rejected false if it is rejected previous start
+                if grn_instance.rejected:
+                    grn_instance.update(
+                        rejected=False
+                    )
+                # making rejected false if it is rejected previous end
                 if str(payload.get("level_no")) in dataCheck:
                     console_logger.debug("data there")
                     response.status_code = 202
@@ -42986,49 +43941,99 @@ def endpoint_to_update_grn_status_update(response: Response, data: grnupdateStat
                         params = {
                             'invoice_no': grn_instance.invoice_no,
                         }
-                        json_data = {
-                            "do_no": grn_instance.do_no,
-                            "dc_date": grn_instance.dispatch_date,
-                            "invoice_date": grn_instance.invoice_date,
-                            "invoice_no": grn_instance.invoice_no,
-                            "sale_date": grn_instance.sale_date,
-                            "grade": grn_instance.grade,
-                            "dispatch_date": grn_instance.dispatch_date,
-                            "mine": grn_instance.mine,
-                            "do_qty": grn_instance.do_qty,
-                            "table_data": grn_instance.new_data,
-                            }
-                        headers = {
-                            'accept': 'application/json',
-                            'Content-Type': 'application/json',
-                        }
+                        if payload.get("mode") == "road":
+                            listGrnTable = []
+                            for single_data_grn in grn_instance.new_data:
+                                dictDataGrn = {
+                                    "sales_doc_no": single_data_grn.get("sales_doc_no"),
+                                    "dispatch_date_time": single_data_grn.get("dispatch_date_time"),
+                                    "challan_number": single_data_grn.get("challan_number"),
+                                    "grade_size": single_data_grn.get("grade_size"),
+                                    "truck_number": str(single_data_grn.get("truck_number")),
+                                    "tare_weight": str(single_data_grn.get("tare_weight")),
+                                    "gross_weight": str(single_data_grn.get("gross_weight")),
+                                    "net_weight": str(single_data_grn.get("net_weight"))
+                                }
+                                listGrnTable.append(dictDataGrn)
 
-                        response = requests.post(f'http://{ip}:7704/creategrnfile', params=params, headers=headers, json=json_data)
-                        # console_logger.debug(response.text)
-                        for single_struct in grn_instance.new_data:
-                            # console_logger.debug(single_struct.get("object_id"))
-                            Gmrdata.objects.get(id=ObjectId(single_struct.get("object_id"))).update(
-                                delivery_challan_number=str(single_struct.get("challan_number")),
-                                delivery_challan_date=str(single_struct.get("dispatch_date_time")),
-                                grade=str(single_struct.get("grade_size")),
-                                gross_qty=str(single_struct.get("gross_weight")),
-                                net_qty=str(single_struct.get("net_weight")),
-                                tare_qty=str(single_struct.get("tare_weight")),
-                                vehicle_number=str(single_struct.get("truck_number")),
-                                arv_cum_do_number=str(single_struct.get("sales_doc_no"))
+                            json_data = {
+                                "do_no": grn_instance.do_no,
+                                "dc_date": grn_instance.dispatch_date,
+                                "invoice_date": grn_instance.invoice_date,
+                                "invoice_no": grn_instance.invoice_no,
+                                "sale_date": grn_instance.sale_date,
+                                "grade": grn_instance.grade,
+                                "dispatch_date": grn_instance.dispatch_date,
+                                "mine": grn_instance.mine,
+                                "do_qty": grn_instance.do_qty,
+                                "table_data": listGrnTable,
+                                }
+                            headers = {
+                                'accept': 'application/json',
+                                'Content-Type': 'application/json',
+                            }
+                            response = requests.post(f'http://{ip}:7704/creategrnfile', params=params, headers=headers, json=json_data)
+                            console_logger.debug(response)
+                            for single_struct in grn_instance.new_data:
+                                if single_struct.get("object_id") != None:
+                                    Gmrdata.objects.get(id=ObjectId(single_struct.get("object_id"))).update(
+                                        delivery_challan_number=str(single_struct.get("challan_number")),
+                                        delivery_challan_date=str(single_struct.get("dispatch_date_time")),
+                                        grade=str(single_struct.get("grade_size")),
+                                        gross_qty=str(single_struct.get("gross_weight")),
+                                        net_qty=str(single_struct.get("net_weight")),
+                                        tare_qty=str(single_struct.get("tare_weight")),
+                                        vehicle_number=str(single_struct.get("truck_number")),
+                                        arv_cum_do_number=str(single_struct.get("sales_doc_no"))
+                                    )
+                        elif payload.get("mode") == "rail":
+                            json_data = {
+                                "do_no": grn_instance.do_no,
+                                "dc_date": grn_instance.dispatch_date,
+                                "invoice_date": grn_instance.invoice_date,
+                                "invoice_no": grn_instance.invoice_no,
+                                "sale_date": grn_instance.sale_date,
+                                "grade": grn_instance.grade,
+                                "dispatch_date": grn_instance.dispatch_date,
+                                "mine": grn_instance.mine,
+                                "do_qty": grn_instance.do_qty,
+                                "table_data": grn_instance.new_data,
+                            }
+                            headers = {
+                                'accept': 'application/json',
+                                'Content-Type': 'application/json',
+                            }
+                            response = requests.post(f'http://{ip}:7704/creategrnfilerail', params=params, headers=headers, json=json_data)
+                            RailData.objects.get(rr_no=grn_instance.do_no).update(
+                                avery_rly_data=grn_instance.new_data,
+                                grade=grn_instance.grade,
+                                mine=grn_instance.mine,
+                                rr_qty=grn_instance.do_qty,
+                                avery_placement_date=grn_instance.dispatch_date,
                             )
                     return {"details": "Grn Flow Accepted"}
             elif payload.get("status") == "decline":
-                if str(payload.get("level_no")) in dataCheck:
-                    console_logger.debug("data there")
-                    response.status_code = 403
-                    return {"details": "This level is already accepted"}
-                else:
-                    console_logger.debug("data not there")
-                    finalData = [{"username": payload.get("user_name"), "comment": payload.get("comment"), "created_at": datetime.datetime.now(), "status": payload.get("status")}]
-                    grn_instance.approvals[str(payload.get("level_no"))] = finalData
-                    grn_instance.save()
-                    return {"details": "Grn Flow has been disabled"}
+                # added just to remove approvals while rejected start
+                grn_instance.update(
+                    approvals={},
+                    rejected=True
+                )
+                return {"details": "Grn Flow Rejected"}
+                # grn_instance.approvals = {}
+                # grn_instance.rejected = True
+                # grn_instance.save()
+                # added just to remove approvals while rejected end
+                
+                # if str(payload.get("level_no")) in dataCheck:
+                #     console_logger.debug("data there")
+                #     response.status_code = 403
+                #     return {"details": "This level is already accepted"}
+                # else:
+                #     console_logger.debug("data not there")
+                #     finalData = [{"username": payload.get("user_name"), "comment": payload.get("comment"), "created_at": datetime.datetime.now(), "status": payload.get("status")}]
+                #     grn_instance.approvals[str(payload.get("level_no"))] = finalData
+                #     grn_instance.save()
+                #     return {"details": "Grn Flow has been disabled"}
         elif dataCheck.get(str(payload.get("level_no")))[0].get("status") == "approve":
             response.status_code = 403
             return {"details": "Grn is already accepted!"}
@@ -43144,6 +44149,1112 @@ def endpoint_to_insert_cmpl_data(response: Response, data: cmplInput):
         console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
         console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
         return e
+
+
+@router.get("/fetch/railsinglegrn", tags=['Rail Map'])
+def endpoint_to_fetch_rail_single_data_to_fetch_for_grn(response: Response, rr_no: str):
+    try:
+        DataExecutionsHandler = DataExecutions()
+        fetchDataRail = DataExecutionsHandler.findSingleRailDataThroughRRNo(rr_no=rr_no, response=response)
+        return fetchDataRail
+    except Exception as e:
+        success = False
+        response.status_code = 400
+        console_logger.debug("----- Rail Single Grn Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e
+
+
+@router.post("/update/rail/grn", tags={'Grn Status'})
+def endpoint_to_update_rail_data_on_grn_db(response: Response, data: railGrnPost):
+    try:
+        mpayload = data.dict()
+        try:
+            checkGrn = Grn.objects.get(do_no=mpayload.get("rr_no"), invoice_no=mpayload.get("invoice_no"))
+            response.status_code = 409
+            return {"details": "GRN already booked"}
+        except DoesNotExist as e:
+            Grn(
+                do_no=mpayload.get("rr_no"),
+                invoice_date= mpayload.get("invoice_date"),
+                invoice_no=mpayload.get("invoice_no"),
+                sale_date = mpayload.get("sale_date"),
+                grade = mpayload.get("grade"),
+                dispatch_date = mpayload.get("avery_placement_date"),
+                mine = mpayload.get("mine"),
+                do_qty = mpayload.get("rr_qty"),
+                # header_data=mpayload.get("header_data"),
+                # original_data=mpayload.get("original_data"),
+                new_data=mpayload.get("new_data"),
+                approvals=mpayload.get("approvals"),
+                changed_by=mpayload.get("changed_by"),
+                sizing_charges_amount=mpayload.get("sizing_charges"),
+                evac_facility_charge_amount=mpayload.get("evac_facility_charge"),
+                royalty_charges_amount=mpayload.get("royality_charges"),
+                nmet_amount=mpayload.get("nmet_charges"),
+                dmf_amount=mpayload.get("dmf"),
+                adho_sanrachna_vikas_amount=mpayload.get("adho_sanrachna_vikas"),
+                pariyavaran_upkar_amount=mpayload.get("pariyavaran_upkar"),
+                assessable_value_amount=mpayload.get("assessable_value"),
+                igst_amount=mpayload.get("igst"),
+                gst_comp_cess_amount=mpayload.get("gst_comp_cess"),
+                gross_bill_value_amount=mpayload.get("gross_bill_value"),
+                less_underloading_charges_amount=mpayload.get("less_underloading_charges"),
+                net_value_amount=mpayload.get("net_value"),
+                total_amount=mpayload.get("total_amount"),
+                mode="rail",
+                source_type=mpayload.get("source_type"),
+            ).save()
+
+        level_count = 0
+        fetchMultilevelApproval = MultiApproval.objects.get(approval_name="grn_approval")
+        if not fetchMultilevelApproval.bypass_level:
+            for user_data in fetchMultilevelApproval.levels[level_count].user:
+                header_data = {
+                    "do_no":mpayload.get("rr_no"),
+                    "invoice_date":mpayload.get("invoice_date"),
+                    "invoice_no":mpayload.get("invoice_no"),
+                    "sale_date":mpayload.get("sale_date"),
+                    "grade":mpayload.get("grade"),
+                    "dispatch_date":mpayload.get("avery_placement_date"),
+                    "mine":mpayload.get("mine"),
+                    "do_qty":mpayload.get("rr_qty"),
+                }
+                fetchtabledata = endpoint_to_generate_email_template(new_data=mpayload.get("new_data"), original_data="", user_data=user_data, do_no=mpayload.get("rr_no"), level_name="grn_approval", level_count=level_count, header_data=header_data, edited_by=mpayload.get("changed_by"), status="Approve", mode="rail")
+                response_code, fetch_email = fetch_email_data()
+                subject = "GRN Flow"
+                to_data = user_data.get("email")
+                body = fetchtabledata
+
+                sender_email = fetch_email.get("Smtp_user")
+                password = fetch_email.get("Smtp_password") 
+                smtp_host = fetch_email.get("Smtp_host")
+                smtp_port = fetch_email.get("Smtp_port")
+                checkEmailDevelopment = EmailDevelopmentCheck.objects()
+                if checkEmailDevelopment[0].development == "local":
+                    send_multiapproval_mail(subject, to_data, body, sender_email, password, smtp_host, smtp_port)
+                elif checkEmailDevelopment[0].development == "prod":
+                    params = {
+                        'subject': "GRN Flow",
+                        'to_data': user_data.get("emzil"),
+                        'body': fetchtabledata,
+                        'sender_email': fetch_email.get("Smtp_user"),
+                        'smtp_host': fetch_email.get("Smtp_host"),
+                        'smtp_port': fetch_email.get("Smtp_port"),
+                    }
+                    send_multiapproval_email_struct(params=params)
+                    
+        else:
+            console_logger.debug("bypass level true")
+            level = len(fetchMultilevelApproval.levels)
+            console_logger.debug(level-1)
+            level_count_data = level-1
+            for user_data in fetchMultilevelApproval.levels[-1].user:
+                console_logger.debug(user_data)
+                # user_data = endpoint_to_fetch_single_user_data_using_email(email=email)
+                header_data = {
+                    "do_no":mpayload.get("rr_no"),
+                    "invoice_date":mpayload.get("invoice_date"),
+                    "invoice_no":mpayload.get("invoice_no"),
+                    "sale_date":mpayload.get("sale_date"),
+                    "grade":mpayload.get("grade"),
+                    "dispatch_date":mpayload.get("avery_placement_date"),
+                    "mine":mpayload.get("mine"),
+                    "do_qty":mpayload.get("rr_qty"),
+                }
+                fetchtabledata = endpoint_to_generate_email_template(new_data=mpayload.get("new_data"), original_data="", user_data=user_data, do_no=mpayload.get("rr_no"), level_name="grn_approval", level_count=level_count_data, header_data=header_data, edited_by=mpayload.get("changed_by"), status="Approve", mode="rail")
+                response_code, fetch_email = fetch_email_data()
+                subject = "GRN Flow"
+                to_data = user_data.get("email")
+                body = fetchtabledata
+
+                sender_email = fetch_email.get("Smtp_user")
+                password = fetch_email.get("Smtp_password") 
+                smtp_host = fetch_email.get("Smtp_host")
+                smtp_port = fetch_email.get("Smtp_port")
+                checkEmailDevelopment = EmailDevelopmentCheck.objects()
+                if checkEmailDevelopment[0].development == "local":
+                    send_multiapproval_mail(subject, to_data, body, sender_email, password, smtp_host, smtp_port)
+                elif checkEmailDevelopment[0].development == "prod":
+                    params = {
+                        'subject': "GRN Flow",
+                        'to_data': user_data.get("email"),
+                        'body': fetchtabledata,
+                        'sender_email': fetch_email.get("Smtp_user"),
+                        'smtp_host': fetch_email.get("Smtp_host"),
+                        'smtp_port': fetch_email.get("Smtp_port"),
+                    }
+                    send_multiapproval_email_struct(params=params)
+        return {"details": "success"}
+    except Exception as e:
+        success = False
+        response.status_code = 400
+        console_logger.debug("----- Rail Single Grn Error -----", e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e
+
+    
+@router.get("/fetch/rail/grn", tags=["Rail Map"])
+def endpoint_to_fetch_railway_grn_data(response: Response, currentPage: Optional[int] = None, perPage: Optional[int] = None, search_text: Optional[str] = None, start_timestamp: Optional[str] = None, end_timestamp: Optional[str] = None, month_date: Optional[str] = None, type: Optional[str] = "display", status: Optional[str] = None):
+    try:
+        result = {        
+                "labels": [],
+                "datasets": [],
+                "total" : 0,
+                "page_size": 15
+        }
+        if type and type == "display":
+            page_no = 1
+            page_len = result["page_size"]
+
+            if currentPage:
+                page_no = currentPage
+
+            if perPage:
+                page_len = perPage
+                result["page_size"] = perPage
+
+            data = Q()
+
+            # based on condition for timestamp playing with & and | 
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(avery_placement_date__gte = f"{start_date}")
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata")
+                data &= Q(avery_placement_date__lte = f"{end_date}")
+
+            if search_text:
+                if search_text.isdigit():
+                    data &= Q(rr_no__icontains=search_text) | Q(po_no__icontains=search_text)
+                else:
+                    data &= (Q(source__icontains=search_text))
+
+            if month_date:
+                # data &= Q(avery_placement_date__icontains=month_date)
+                start_date = f'{month_date}-01'
+                startd_date=datetime.datetime.strptime(f"{start_date}T00:00","%Y-%m-%dT%H:%M")
+                end_date = (datetime.datetime.strptime(start_date, "%Y-%m-%d") + relativedelta(day=31)).strftime("%Y-%m-%d")
+                data &= Q(avery_placement_date__gte = startd_date.strftime("%Y-%m-%dT%H:%M"))
+                data &= Q(avery_placement_date__lte = f"{end_date}T23:59")
+
+
+            offset = (page_no - 1) * page_len
+            filtered_total_count = 0
+            logs = (
+                    RailData.objects(data, avery_placement_date__ne=None)
+                    .order_by("-avery_placement_date")
+                ) 
+            if status == "pending":
+                listData = []
+                if any(logs):
+                    for log in logs:
+                        mPayload = log.simplepayload()
+                        try:
+                            checkGrnData = Grn.objects.get(do_no=mPayload.get("rr_no"))
+                        except DoesNotExist:
+                            try:
+                                if mPayload.get("po_date"):
+                                    if 10 < len(mPayload.get("po_date")) <= 13:
+                                        mPayload["po_date"] = str(datetime.datetime.fromtimestamp(int(mPayload["po_date"]) / 1000).strftime("%Y-%m-%d"))
+                                # if len(mPayload.get("po_date")) > 10:
+                                #     mPayload["po_date"] = str(datetime.datetime.fromtimestamp(int(mPayload["po_date"]) / 1000).strftime("%Y-%m-%d"))
+                                checkSapRecordsdata = sapRecordsRail.objects.get(rr_no=mPayload.get("rr_no"))
+                                if checkSapRecordsdata.invoice_no is not None:
+                                    result["labels"] = list(mPayload.keys())
+                                    listData.append(mPayload)
+                            except DoesNotExist:
+                                pass
+
+                    start_idx = (page_no - 1) * page_len
+                    end_idx = start_idx + page_len
+                    paginated_data = listData[start_idx:end_idx]
+                    result["datasets"] = paginated_data
+                    result["total"] = len(listData)
+            elif status == "completed":
+                listData = []
+                if any(logs):
+                    for log in logs:
+                        mPayload = log.simplepayload()
+                        try:
+                            checkGrnData = Grn.objects.get(do_no=mPayload.get("rr_no"))
+                            try:
+                                if mPayload.get("po_date"):
+                                    if 10 < len(mPayload.get("po_date")) <= 13:
+                                        mPayload["po_date"] = str(datetime.datetime.fromtimestamp(int(mPayload["po_date"]) / 1000).strftime("%Y-%m-%d"))
+                                # if len(mPayload.get("po_date")) > 10:
+                                #     mPayload["po_date"] = str(datetime.datetime.fromtimestamp(int(mPayload["po_date"]) / 1000).strftime("%Y-%m-%d"))
+                                checkSapRecordsdata = sapRecordsRail.objects.get(rr_no=mPayload.get("rr_no"))
+                                if checkSapRecordsdata.invoice_no is not None:
+                                    result["labels"] = list(mPayload.keys())
+                                    listData.append(mPayload)
+                            except DoesNotExist:
+                                pass
+                        except DoesNotExist as e:
+                            pass
+                        
+
+                    start_idx = (page_no - 1) * page_len
+                    end_idx = start_idx + page_len
+                    paginated_data = listData[start_idx:end_idx]
+                    result["datasets"] = paginated_data
+                    result["total"] = len(listData)
+            return result
+        elif type and type == "download":
+            del type
+
+            file = str(datetime.datetime.now().strftime("%d-%m-%Y"))
+            target_directory = f"static_server/gmr_ai/{file}"
+            os.umask(0)
+            os.makedirs(target_directory, exist_ok=True, mode=0o777)
+
+            # Constructing the base for query
+            data = Q()
+
+            if start_timestamp:
+                start_date = convert_to_utc_format(start_timestamp, "%Y-%m-%dT%H:%M")
+                data &= Q(avery_placement_date__gte = f"{start_date}")
+
+            if end_timestamp:
+                end_date = convert_to_utc_format(end_timestamp, "%Y-%m-%dT%H:%M","Asia/Kolkata",False)
+                data &= Q(avery_placement_date__lte = f"{end_date}")
+            
+            if search_text:
+                if search_text.isdigit():
+                    data &= Q(arv_cum_do_number__icontains = search_text) | Q(delivery_challan_number__icontains = search_text)
+                else:
+                    data &= Q(vehicle_number__icontains = search_text)
+
+            usecase_data = RailData.objects(data, avery_placement_date__ne=None).order_by("-created_at")
+            count = len(usecase_data)
+            path = None
+            logo_path = f"{os.path.join(os.getcwd(), 'static_server/receipt/report_logo.png')}"
+            if usecase_data:
+                try:
+                    path = os.path.join(
+                        "static_server",
+                        "gmr_ai",
+                        file,
+                        "Rail_Report_{}.xlsx".format(
+                            datetime.datetime.now().strftime("%Y-%m-%d:%H:%M:%S"),
+                        ),
+                    )
+                    filename = os.path.join(os.getcwd(), path)
+                    workbook = xlsxwriter.Workbook(filename)
+                    workbook.use_zip64()
+                    cell_format2 = workbook.add_format()
+                    cell_format2.set_bold()
+                    cell_format2.set_font_size(10)
+                    cell_format2.set_align("center")
+                    cell_format2.set_align("vcenter")
+                    cell_format2.set_text_wrap(True)
+                    cell_format2.set_border(1)
+
+                    header_format = workbook.add_format({'bold': True, 'font_size': 40, 'align': 'center'})
+                    date_format = workbook.add_format({'align': 'center', 'font_size': 12, "bold": True})
+                    report_name_format = workbook.add_format({'align': 'center', 'font_size': 15, "bold": True})
+
+                    header_format.set_align("vcenter")
+                    date_format.set_align("vcenter")
+                    report_name_format.set_align("vcenter")
+                    header_format.set_border(1)
+                    date_format.set_border(1)
+                    report_name_format.set_border(1)
+
+                    worksheet = workbook.add_worksheet()
+                    worksheet.set_column("A:AZ", 20)
+                    worksheet.set_default_row(50)
+                    cell_format = workbook.add_format()
+                    cell_format.set_font_size(10)
+                    cell_format.set_align("center")
+                    cell_format.set_align("vcenter")
+                    cell_format.set_text_wrap(True)
+                    cell_format.set_border(1)
+
+                    worksheet.insert_image('A1', logo_path, {'x_scale': 0.3, 'y_scale': 0.3})
+                    
+                    # Merge cells for the main header and place it in the center
+                    main_header = "GMR Warora Energy Limited"  # Set your main header text here
+                    worksheet.merge_range("A1:AC1", main_header, header_format)  # Merge cells A1 to H1 for the header
+                    
+                    # Write the current date on the left side (A2)
+                    worksheet.write("A2", f"Date: {datetime.datetime.now().strftime('%d-%m-%Y')}", date_format)
+                    worksheet.merge_range("C2:AC2", f"Rail Coal Journey", report_name_format)
+
+                    headers = [
+                        "Sr.No",
+                        "RR No",
+                        "RR Qty",
+                        "Po No",
+                        "Po Date",
+                        "Line Item",
+                        "Source",
+                        "Placement Date",
+                        "Completion Date",
+                        "Drawn Date",
+                        "Total ul wt",
+                        "Boxes Supplied",
+                        "Total Secl Gross Wt",
+                        "Total Secl Tare Wt",
+                        "Total Secl Net Wt",
+                        "Total Secl Ol Wt",
+                        "Boxes Loaded",
+                        "Total Rly Gross Wt",
+                        "Total Rly_Tare Wt",
+                        "Total Rly Net Wt",
+                        "Total Rly Ol Wt",
+                        "Total Secl Chargable Wt",
+                        "Total Rly Chargable Wt",
+                        "Freight",
+                        "Gst",
+                        "Pola",
+                        "Total Freight",
+                        "Source Type",
+                        "Created At"
+                    ]
+                   
+                    for index, header in enumerate(headers):
+                        worksheet.write(2, index, header, cell_format2)
+
+                    for row, query in enumerate(usecase_data, start=3):
+                        result = query.simplepayload()
+                        try:
+                            if result.get("po_date"):
+                                if 10 < len(result.get("po_date")) <= 13:
+                                    result["po_date"] = str(datetime.datetime.fromtimestamp(int(result["po_date"]) / 1000).strftime("%Y-%m-%d"))
+                            checkSapRecordsdata = sapRecordsRail.objects.get(rr_no=result["rr_no"])
+                            if checkSapRecordsdata.invoice_no is not None:
+                                worksheet.write(row, 0, count, cell_format)     
+                                worksheet.write(row, 1, str(result["rr_no"]), cell_format)                      
+                                worksheet.write(row, 2, str(result["rr_qty"]), cell_format)                      
+                                worksheet.write(row, 3, str(result["po_no"]), cell_format)                      
+                                worksheet.write(row, 4, str(result["po_date"]), cell_format)                      
+                                worksheet.write(row, 5, str(result["line_item"]), cell_format)                      
+                                worksheet.write(row, 6, str(result["source"]), cell_format)                      
+                                worksheet.write(row, 7, str(result["placement_date"]), cell_format)                      
+                                worksheet.write(row, 8, str(result["completion_date"]), cell_format)                      
+                                worksheet.write(row, 9, str(result["drawn_date"]), cell_format)                      
+                                worksheet.write(row, 10, float(result["total_ul_wt"]), cell_format)                      
+                                worksheet.write(row, 11, str(result["boxes_supplied"]), cell_format)                      
+                                worksheet.write(row, 12, float(result["total_secl_gross_wt"]), cell_format)                      
+                                worksheet.write(row, 13, float(result["total_secl_tare_wt"]), cell_format)                      
+                                worksheet.write(row, 14, float(result["total_secl_net_wt"]), cell_format)                      
+                                worksheet.write(row, 15, float(result["total_secl_ol_wt"]), cell_format)                      
+                                worksheet.write(row, 16, str(result["boxes_loaded"]), cell_format)                      
+                                worksheet.write(row, 17, float(result["total_rly_gross_wt"]), cell_format)                      
+                                worksheet.write(row, 18, float(result["total_rly_tare_wt"]), cell_format)                      
+                                worksheet.write(row, 19, float(result["total_rly_net_wt"]), cell_format)                      
+                                worksheet.write(row, 20, float(result["total_rly_ol_wt"]), cell_format)                      
+                                worksheet.write(row, 21, float(result["total_secl_chargable_wt"]), cell_format)                      
+                                worksheet.write(row, 22, float(result["total_rly_chargable_wt"]), cell_format)                      
+                                worksheet.write(row, 23, float(result["freight"]), cell_format)                      
+                                worksheet.write(row, 24, float(result["gst"]), cell_format)
+                                if result.get("pola") == "Not found":                    
+                                    worksheet.write(row, 25, str(result["pola"]), cell_format)
+                                elif result.get("pola") == "":
+                                    worksheet.write(row, 25, "N/A", cell_format)
+                                else:
+                                    worksheet.write(row, 25, float(result["pola"]), cell_format)             
+                                worksheet.write(row, 26, float(result["total_freight"]), cell_format)                      
+                                worksheet.write(row, 27, str(result["source_type"]), cell_format)                      
+                                worksheet.write(row, 28, str(result["created_at"]), cell_format)                   
+                            
+                                count-=1
+                        except DoesNotExist as e:
+                            pass
+                        
+                    workbook.close()
+                    console_logger.debug("Successfully {} report generated".format(service_id))
+                    console_logger.debug("sent data {}".format(path))
+
+                    return {
+                            "Type": "gmr_rail_journey_download_event",
+                            "Datatype": "Report",
+                            "File_Path": path,
+                            }
+                except Exception as e:
+                    console_logger.debug(e)
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+                    console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            else:
+                console_logger.error("No data found")
+                return {
+                        "Type": "gmr_rail_journey_download_event",
+                        "Datatype": "Report",
+                        "File_Path": path,
+                        }
+    except Exception as e:
+        console_logger.debug("----- Fetch Report Name Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
+
+
+@router.get("/form15automation", tags=['Form 15'])
+def endpoint_to_automate_form15_data(month: Optional[str] = None):
+    try:
+        start_date = f"{month}-01"
+        format_date = "%Y-%m-%d"
+        startd_date = datetime.datetime.strptime(start_date, format_date)
+        end_date = startd_date + relativedelta( day=31)
+        endd_date = end_date.replace(hour=23, minute=59, second=59)
+        fetchMultyGrn = Grn.objects(created_at__gte=startd_date, created_at__lte=endd_date)
+        linkage_total_amt = 0
+        spl_eauction = 0
+        shakti_b3 = 0
+        shakti_b8 = 0
+        for single_data_grn in fetchMultyGrn:
+            mPayload = single_data_grn.payload()
+            console_logger.debug(mPayload.get("mode"))
+            if mPayload.get("mode") == "road":
+                console_logger.debug(mPayload.get("type_consumer"))
+                if mPayload.get("type_consumer") == "WCL FSA Coal":
+                    console_logger.debug("WCL FSA Coal")
+                    if mPayload.get("total_amount"):
+                        linkage_total_amt += mPayload.get("total_amount")
+                elif any(item in mPayload.get("type_consumer") for item in ["WCL E Auction Coal", "WCL Shakti B(viii) Coal"]):
+                    console_logger.debug("WCL")
+                    if mPayload.get("total_amount"):
+                        spl_eauction += mPayload.get("total_amount")
+                elif mPayload.get("type_consumer").startswith("WCL Shakti B(iii)"):
+                    console_logger.debug("inside wcl shakti b3")
+                    console_logger.debug(mPayload.get("total_amount"))
+                    if mPayload.get("total_amount"):
+                        shakti_b3 += mPayload.get("total_amount")
+                elif mPayload.get("type_consumer").startswith("WCL Shakti B(viii)"):
+                    console_logger.debug("inside wcl shakti b8")
+                    if mPayload.get("total_amount"):
+                        shakti_b8 += mPayload.get("total_amount")
+            elif mPayload.get("mode") == "rail":
+                if mPayload.get("source_type") == "SECL Linkage(U1)":
+                    if mPayload.get("net_value_amount"):
+                        linkage_total_amt += mPayload.get("net_value_amount")
+                elif mPayload.get("source_type") == "WCL E-Auction Linkage(U1)":
+                    if mPayload.get("net_value_amount"):
+                        spl_eauction += mPayload.get("net_value_amount")
+                elif mPayload.get("source_type").startswith("WCL Shakti B(iii)"):
+                    if mPayload.get("net_value_amount"):
+                        shakti_b3 += mPayload.get("net_value_amount")
+                elif mPayload.get("source_type").startswith("WCL Shakti B(viii)"):
+                    if mPayload.get("net_value_amount"):
+                        shakti_b8 += mPayload.get("net_value_amount")    
+
+        console_logger.debug(linkage_total_amt)
+        console_logger.debug(spl_eauction)
+        console_logger.debug(shakti_b3)
+        console_logger.debug(shakti_b8)
+        try:
+            checkForm15Data = Form15Data.objects.get(month__gte=startd_date, month__lte=endd_date)
+            if checkForm15Data:
+                qty_supplied_dict = {
+                    "remark": "GRN Quantity",
+                    "uom": "MT",
+                    "mou_coal": 0,
+                    "linkage": linkage_total_amt,
+                    "aiwib_washery": 0,
+                    "open_mkt": 0,
+                    "spot_eauction": 0,
+                    "spl_for_eauction": spl_eauction,
+                    "imported": 0,
+                    "total": linkage_total_amt+spl_eauction,
+                    "shakti_b": shakti_b3,
+                    "shakti_b3": shakti_b8,
+                    "particular": "Quantity of Coal/Lignite supplied by Coal/Lignite Company",
+                }
+                checkForm15Data.update(
+                    qty_supplied=qty_supplied_dict
+                )
+            checkForm15Data.reload()
+            # coal supplied update start
+            if checkForm15Data.adj_qty and checkForm15Data.qty_supplied:
+                # coal_supplied_dict = {
+                #     "remark": "",
+                #     "uom": "MT",
+                #     "mou_coal": checkForm15Data.adj_qty.mou_coal-checkForm15Data.qty_supplied.mou_coal,
+                #     "linkage": checkForm15Data.adj_qty.linkage-checkForm15Data.qty_supplied.linkage,
+                #     "aiwib_washery": checkForm15Data.adj_qty.aiwib_washery-checkForm15Data.qty_supplied.aiwib_washery,
+                #     "open_mkt": checkForm15Data.adj_qty.open_mkt-checkForm15Data.qty_supplied.open_mkt,
+                #     "spot_eauction": checkForm15Data.adj_qty.spot_eauction-checkForm15Data.qty_supplied.spot_eauction,
+                #     "spl_for_eauction": checkForm15Data.adj_qty.spl_for_eauction-checkForm15Data.qty_supplied.spl_for_eauction,
+                #     "imported": checkForm15Data.adj_qty.imported-checkForm15Data.qty_supplied.imported,
+                #     "total": checkForm15Data.adj_qty.total-checkForm15Data.qty_supplied.total,
+                #     "shakti_b": checkForm15Data.adj_qty.shakti_b-checkForm15Data.qty_supplied.shakti_b,
+                #     "shakti_b3": checkForm15Data.adj_qty.shakti_b3-checkForm15Data.qty_supplied.shakti_b3,
+                #     "particular": "Coal Supplied by Coal Lignite company (3+4)",
+                # }
+                coal_supplied_dict = {
+                    "remark": "",
+                    "uom": "MT",
+                    "mou_coal": checkForm15Data.adj_qty.mou_coal - checkForm15Data.qty_supplied.mou_coal if checkForm15Data.qty_supplied.mou_coal >= 0 else checkForm15Data.adj_qty.mou_coal + abs(checkForm15Data.qty_supplied.mou_coal),
+                    "linkage": checkForm15Data.adj_qty.linkage - checkForm15Data.qty_supplied.linkage if checkForm15Data.qty_supplied.linkage >= 0 else checkForm15Data.adj_qty.linkage + abs(checkForm15Data.qty_supplied.linkage),
+                    "aiwib_washery": checkForm15Data.adj_qty.aiwib_washery - checkForm15Data.qty_supplied.aiwib_washery if checkForm15Data.qty_supplied.aiwib_washery >= 0 else checkForm15Data.adj_qty.aiwib_washery + abs(checkForm15Data.qty_supplied.aiwib_washery),
+                    "open_mkt": checkForm15Data.adj_qty.open_mkt - checkForm15Data.qty_supplied.open_mkt if checkForm15Data.qty_supplied.open_mkt >= 0 else checkForm15Data.adj_qty.open_mkt + abs(checkForm15Data.qty_supplied.open_mkt),
+                    "spot_eauction": checkForm15Data.adj_qty.spot_eauction - checkForm15Data.qty_supplied.spot_eauction if checkForm15Data.qty_supplied.spot_eauction >= 0 else checkForm15Data.adj_qty.spot_eauction + abs(checkForm15Data.qty_supplied.spot_eauction),
+                    "spl_for_eauction": checkForm15Data.adj_qty.spl_for_eauction - checkForm15Data.qty_supplied.spl_for_eauction if checkForm15Data.qty_supplied.spl_for_eauction >= 0 else checkForm15Data.adj_qty.spl_for_eauction + abs(checkForm15Data.qty_supplied.spl_for_eauction),
+                    "imported": checkForm15Data.adj_qty.imported - checkForm15Data.qty_supplied.imported if checkForm15Data.qty_supplied.imported >= 0 else checkForm15Data.adj_qty.imported + abs(checkForm15Data.qty_supplied.imported),
+                    "total": checkForm15Data.adj_qty.total - checkForm15Data.qty_supplied.total if checkForm15Data.qty_supplied.total >= 0 else checkForm15Data.adj_qty.total + abs(checkForm15Data.qty_supplied.total),
+                    "shakti_b": checkForm15Data.adj_qty.shakti_b - checkForm15Data.qty_supplied.shakti_b if checkForm15Data.qty_supplied.shakti_b >= 0 else checkForm15Data.adj_qty.shakti_b + abs(checkForm15Data.qty_supplied.shakti_b),
+                    "shakti_b3": checkForm15Data.adj_qty.shakti_b3 - checkForm15Data.qty_supplied.shakti_b3 if checkForm15Data.qty_supplied.shakti_b3 >= 0 else checkForm15Data.adj_qty.shakti_b3 + abs(checkForm15Data.qty_supplied.shakti_b3),
+                    "particular": "Coal Supplied by Coal Lignite company (3+4)",
+                }
+                checkForm15Data.update(
+                    coal_supplied=coal_supplied_dict
+                )
+            checkForm15Data.reload()
+            # coal supplied update end
+            if checkForm15Data.coal_supplied and checkForm15Data.norm_transit_loss:
+                console_logger.debug("inside net supplied")
+                net_supplied_dict = {
+                    "remark": "",
+                    "uom": "MT",
+                    "mou_coal": checkForm15Data.coal_supplied.mou_coal - checkForm15Data.norm_transit_loss.mou_coal if checkForm15Data.norm_transit_loss.mou_coal >= 0 else checkForm15Data.coal_supplied.mou_coal + abs(checkForm15Data.norm_transit_loss.mou_coal),
+                    "linkage": checkForm15Data.coal_supplied.linkage - checkForm15Data.norm_transit_loss.linkage if checkForm15Data.norm_transit_loss.linkage >= 0 else checkForm15Data.coal_supplied.linkage + abs(checkForm15Data.norm_transit_loss.linkage),
+                    "aiwib_washery": checkForm15Data.coal_supplied.aiwib_washery - checkForm15Data.norm_transit_loss.aiwib_washery if checkForm15Data.norm_transit_loss.aiwib_washery >= 0 else checkForm15Data.coal_supplied.aiwib_washery + abs(checkForm15Data.norm_transit_loss.aiwib_washery),
+                    "open_mkt": checkForm15Data.coal_supplied.open_mkt - checkForm15Data.norm_transit_loss.open_mkt if checkForm15Data.norm_transit_loss.open_mkt >= 0 else checkForm15Data.coal_supplied.open_mkt + abs(checkForm15Data.norm_transit_loss.open_mkt),
+                    "spot_eauction": checkForm15Data.coal_supplied.spot_eauction - checkForm15Data.norm_transit_loss.spot_eauction if checkForm15Data.norm_transit_loss.spot_eauction >= 0 else checkForm15Data.coal_supplied.spot_eauction + abs(checkForm15Data.norm_transit_loss.spot_eauction),
+                    "spl_for_eauction": checkForm15Data.coal_supplied.spl_for_eauction - checkForm15Data.norm_transit_loss.spl_for_eauction if checkForm15Data.norm_transit_loss.spl_for_eauction >= 0 else checkForm15Data.coal_supplied.spl_for_eauction + abs(checkForm15Data.norm_transit_loss.spl_for_eauction),
+                    "imported": checkForm15Data.coal_supplied.imported - checkForm15Data.norm_transit_loss.imported if checkForm15Data.norm_transit_loss.imported >= 0 else checkForm15Data.coal_supplied.imported + abs(checkForm15Data.norm_transit_loss.imported),
+                    "total": checkForm15Data.coal_supplied.total - checkForm15Data.norm_transit_loss.total if checkForm15Data.norm_transit_loss.total >= 0 else checkForm15Data.coal_supplied.total + abs(checkForm15Data.norm_transit_loss.total),
+                    "shakti_b": checkForm15Data.coal_supplied.shakti_b - checkForm15Data.norm_transit_loss.shakti_b if checkForm15Data.norm_transit_loss.shakti_b >= 0 else checkForm15Data.coal_supplied.shakti_b + abs(checkForm15Data.norm_transit_loss.shakti_b),
+                    "shakti_b3": checkForm15Data.coal_supplied.shakti_b3 - checkForm15Data.norm_transit_loss.shakti_b3 if checkForm15Data.norm_transit_loss.shakti_b3 >= 0 else checkForm15Data.coal_supplied.shakti_b3 + abs(checkForm15Data.norm_transit_loss.shakti_b3),
+                    "particular": "Net Coal/Lignite Supplied (5-6)",
+                }
+                checkForm15Data.update(
+                    net_supplied=net_supplied_dict
+                )
+
+            checkForm15Data.reload()
+            if checkForm15Data.amt_charged and checkForm15Data.adj_amt and checkForm15Data.unloading_charges:
+                # - then +
+                total_amt_charged_dict = {
+                    "remark": "",
+                    "uom": "MT",
+                    "mou_coal": checkForm15Data.amt_charged.mou_coal - checkForm15Data.adj_amt.mou_coal + checkForm15Data.unloading_charges.mou_coal if checkForm15Data.adj_amt.mou_coal >= 0 else checkForm15Data.coal_supplied.mou_coal + abs(checkForm15Data.adj_amt.mou_coal),
+                    "linkage": checkForm15Data.amt_charged.linkage - checkForm15Data.adj_amt.linkage + checkForm15Data.unloading_charges.linkage if checkForm15Data.adj_amt.linkage >= 0 else checkForm15Data.amt_charged.linkage + abs(checkForm15Data.adj_amt.linkage),
+                    "aiwib_washery": checkForm15Data.amt_charged.aiwib_washery - checkForm15Data.adj_amt.aiwib_washery + checkForm15Data.unloading_charges.aiwib_washery if checkForm15Data.adj_amt.aiwib_washery >= 0 else checkForm15Data.amt_charged.aiwib_washery + abs(checkForm15Data.adj_amt.aiwib_washery),
+                    "open_mkt": checkForm15Data.amt_charged.open_mkt - checkForm15Data.adj_amt.open_mkt + checkForm15Data.unloading_charges.open_mkt if checkForm15Data.adj_amt.open_mkt >= 0 else checkForm15Data.amt_charged.open_mkt + abs(checkForm15Data.adj_amt.open_mkt),
+                    "spot_eauction": checkForm15Data.amt_charged.spot_eauction - checkForm15Data.adj_amt.spot_eauction + checkForm15Data.unloading_charges.spot_eauction if checkForm15Data.adj_amt.spot_eauction >= 0 else checkForm15Data.amt_charged.spot_eauction + abs(checkForm15Data.adj_amt.spot_eauction),
+                    "spl_for_eauction": checkForm15Data.amt_charged.spl_for_eauction - checkForm15Data.adj_amt.spl_for_eauction + checkForm15Data.unloading_charges.spl_for_eauction if checkForm15Data.adj_amt.spl_for_eauction >= 0 else checkForm15Data.amt_charged.spl_for_eauction + abs(checkForm15Data.adj_amt.spl_for_eauction),
+                    "imported": checkForm15Data.amt_charged.imported - checkForm15Data.adj_amt.imported + checkForm15Data.unloading_charges.imported if checkForm15Data.adj_amt.imported >= 0 else checkForm15Data.amt_charged.imported + abs(checkForm15Data.adj_amt.imported),
+                    "total": checkForm15Data.amt_charged.total - checkForm15Data.adj_amt.total + checkForm15Data.unloading_charges.total if checkForm15Data.adj_amt.total >= 0 else checkForm15Data.amt_charged.total + abs(checkForm15Data.adj_amt.total),
+                    "shakti_b": checkForm15Data.amt_charged.shakti_b - checkForm15Data.adj_amt.shakti_b + checkForm15Data.unloading_charges.shakti_b if checkForm15Data.adj_amt.shakti_b >= 0 else checkForm15Data.amt_charged.shakti_b + abs(checkForm15Data.adj_amt.shakti_b),
+                    "shakti_b3": checkForm15Data.amt_charged.shakti_b3 - checkForm15Data.adj_amt.shakti_b3 + checkForm15Data.unloading_charges.shakti_b3 if checkForm15Data.adj_amt.shakti_b3 >= 0 else checkForm15Data.amt_charged.shakti_b3 + abs(checkForm15Data.adj_amt.shakti_b3),
+                    "particular": "Total amount Charged (8+9+10)",
+                }
+
+                # total_amt_charged_dict = {
+                #     "remark": "",
+                #     "uom": "MT",
+                #     "mou_coal": checkForm15Data.amt_charged.mou_coal + checkForm15Data.adj_amt.mou_coal + checkForm15Data.unloading_charges.mou_coal,
+                #     "linkage": checkForm15Data.amt_charged.linkage + checkForm15Data.adj_amt.linkage + checkForm15Data.unloading_charges.linkage,
+                #     "aiwib_washery": checkForm15Data.amt_charged.aiwib_washery + checkForm15Data.adj_amt.aiwib_washery + checkForm15Data.unloading_charges.aiwib_washery,
+                #     "open_mkt": checkForm15Data.amt_charged.open_mkt + checkForm15Data.adj_amt.open_mkt + checkForm15Data.unloading_charges.open_mkt,
+                #     "spot_eauction": checkForm15Data.amt_charged.spot_eauction + checkForm15Data.adj_amt.spot_eauction + checkForm15Data.unloading_charges.spot_eauction,
+                #     "spl_for_eauction": checkForm15Data.amt_charged.spl_for_eauction + checkForm15Data.adj_amt.spl_for_eauction + checkForm15Data.unloading_charges.spl_for_eauction,
+                #     "imported": checkForm15Data.amt_charged.imported + checkForm15Data.adj_amt.imported + checkForm15Data.unloading_charges.imported,
+                #     "total": checkForm15Data.amt_charged.total + checkForm15Data.adj_amt.total + checkForm15Data.unloading_charges.total,
+                #     "shakti_b": checkForm15Data.amt_charged.shakti_b + checkForm15Data.adj_amt.shakti_b + checkForm15Data.unloading_charges.shakti_b,
+                #     "shakti_b3": checkForm15Data.amt_charged.shakti_b3 + checkForm15Data.adj_amt.shakti_b3 + checkForm15Data.unloading_charges.shakti_b3,
+                #     "particular": "Total amount Charged (8+9+10)",
+                # }
+                checkForm15Data.update(
+                    total_amt_charged=total_amt_charged_dict
+                )
+
+            checkForm15Data.reload()
+            if checkForm15Data.trans_charges and checkForm15Data.adj_trans_charges and checkForm15Data.demurrage and checkForm15Data.diesel_cost:
+                total_trans_charges_dict = {
+                    "remark": "",
+                    "uom": "(Rs.)",
+                    "mou_coal": checkForm15Data.trans_charges.mou_coal - checkForm15Data.adj_trans_charges.mou_coal + checkForm15Data.demurrage.mou_coal + checkForm15Data.diesel_cost.mou_coal if checkForm15Data.adj_trans_charges.mou_coal >= 0 else checkForm15Data.coal_supplied.mou_coal + abs(checkForm15Data.adj_trans_charges.mou_coal),
+                    "linkage": checkForm15Data.trans_charges.linkage - checkForm15Data.adj_trans_charges.linkage + checkForm15Data.demurrage.linkage + checkForm15Data.diesel_cost.linkage if checkForm15Data.adj_trans_charges.linkage >= 0 else checkForm15Data.trans_charges.linkage + abs(checkForm15Data.adj_trans_charges.linkage),
+                    "aiwib_washery": checkForm15Data.trans_charges.aiwib_washery - checkForm15Data.adj_trans_charges.aiwib_washery + checkForm15Data.demurrage.aiwib_washery + checkForm15Data.diesel_cost.aiwib_washery if checkForm15Data.adj_trans_charges.aiwib_washery >= 0 else checkForm15Data.trans_charges.aiwib_washery + abs(checkForm15Data.adj_trans_charges.aiwib_washery),
+                    "open_mkt": checkForm15Data.trans_charges.open_mkt - checkForm15Data.adj_trans_charges.open_mkt + checkForm15Data.demurrage.open_mkt + checkForm15Data.diesel_cost.open_mkt if checkForm15Data.adj_trans_charges.open_mkt >= 0 else checkForm15Data.trans_charges.open_mkt + abs(checkForm15Data.adj_trans_charges.open_mkt),
+                    "spot_eauction": checkForm15Data.trans_charges.spot_eauction - checkForm15Data.adj_trans_charges.spot_eauction + checkForm15Data.demurrage.spot_eauction + checkForm15Data.diesel_cost.spot_eauction if checkForm15Data.adj_trans_charges.spot_eauction >= 0 else checkForm15Data.trans_charges.spot_eauction + abs(checkForm15Data.adj_trans_charges.spot_eauction),
+                    "spl_for_eauction": checkForm15Data.trans_charges.spl_for_eauction - checkForm15Data.adj_trans_charges.spl_for_eauction + checkForm15Data.demurrage.spl_for_eauction + checkForm15Data.diesel_cost.spl_for_eauction if checkForm15Data.adj_trans_charges.spl_for_eauction >= 0 else checkForm15Data.trans_charges.spl_for_eauction + abs(checkForm15Data.adj_trans_charges.spl_for_eauction),
+                    "imported": checkForm15Data.trans_charges.imported - checkForm15Data.adj_trans_charges.imported + checkForm15Data.demurrage.imported + checkForm15Data.diesel_cost.imported if checkForm15Data.adj_trans_charges.imported >= 0 else checkForm15Data.trans_charges.imported + abs(checkForm15Data.adj_trans_charges.imported),
+                    "total": checkForm15Data.trans_charges.total - checkForm15Data.adj_trans_charges.total + checkForm15Data.demurrage.total + checkForm15Data.diesel_cost.total if checkForm15Data.adj_trans_charges.total >= 0 else checkForm15Data.trans_charges.total + abs(checkForm15Data.adj_trans_charges.total),
+                    "shakti_b": checkForm15Data.trans_charges.shakti_b - checkForm15Data.adj_trans_charges.shakti_b + checkForm15Data.demurrage.shakti_b + checkForm15Data.diesel_cost.shakti_b if checkForm15Data.adj_trans_charges.shakti_b >= 0 else checkForm15Data.trans_charges.shakti_b + abs(checkForm15Data.adj_trans_charges.shakti_b),
+                    "shakti_b3": checkForm15Data.trans_charges.shakti_b3 - checkForm15Data.adj_trans_charges.shakti_b3 + checkForm15Data.demurrage.shakti_b3 + checkForm15Data.diesel_cost.shakti_b3 if checkForm15Data.adj_trans_charges.shakti_b3 >= 0 else checkForm15Data.trans_charges.shakti_b3 + abs(checkForm15Data.adj_trans_charges.shakti_b3),
+                    "particular": "Total transportation charges (12+/-13+14+15)",
+                }
+                checkForm15Data.update(
+                    total_trans_charges=total_trans_charges_dict
+                )
+            checkForm15Data.reload()
+            if checkForm15Data.total_amt_charged and checkForm15Data.total_trans_charges:
+                total_amt_incl_trans = {
+                    "remark": "",
+                    "uom": "(Rs.)",
+                    "mou_coal": checkForm15Data.total_amt_charged.mou_coal - checkForm15Data.total_trans_charges.mou_coal if checkForm15Data.total_trans_charges.mou_coal >= 0 else checkForm15Data.total_amt_charged.mou_coal + abs(checkForm15Data.total_trans_charges.mou_coal),
+                    "linkage": checkForm15Data.total_amt_charged.linkage - checkForm15Data.total_trans_charges.linkage if checkForm15Data.total_trans_charges.linkage >= 0 else checkForm15Data.total_amt_charged.linkage + abs(checkForm15Data.total_trans_charges.linkage),
+                    "aiwib_washery": checkForm15Data.total_amt_charged.aiwib_washery - checkForm15Data.total_trans_charges.aiwib_washery if checkForm15Data.total_trans_charges.aiwib_washery >= 0 else checkForm15Data.total_amt_charged.aiwib_washery + abs(checkForm15Data.total_trans_charges.aiwib_washery),
+                    "open_mkt": checkForm15Data.total_amt_charged.open_mkt - checkForm15Data.total_trans_charges.open_mkt if checkForm15Data.total_trans_charges.open_mkt >= 0 else checkForm15Data.total_amt_charged.open_mkt + abs(checkForm15Data.total_trans_charges.open_mkt),
+                    "spot_eauction": checkForm15Data.total_amt_charged.spot_eauction - checkForm15Data.total_trans_charges.spot_eauction if checkForm15Data.total_trans_charges.spot_eauction >= 0 else checkForm15Data.total_amt_charged.spot_eauction + abs(checkForm15Data.total_trans_charges.spot_eauction),
+                    "spl_for_eauction": checkForm15Data.total_amt_charged.spl_for_eauction - checkForm15Data.total_trans_charges.spl_for_eauction if checkForm15Data.total_trans_charges.spl_for_eauction >= 0 else checkForm15Data.total_amt_charged.spl_for_eauction + abs(checkForm15Data.total_trans_charges.spl_for_eauction),
+                    "imported": checkForm15Data.total_amt_charged.imported - checkForm15Data.total_trans_charges.imported if checkForm15Data.total_trans_charges.imported >= 0 else checkForm15Data.total_amt_charged.imported + abs(checkForm15Data.total_trans_charges.imported),
+                    "total": checkForm15Data.total_amt_charged.total - checkForm15Data.total_trans_charges.total if checkForm15Data.total_trans_charges.total >= 0 else checkForm15Data.total_amt_charged.total + abs(checkForm15Data.total_trans_charges.total),
+                    "shakti_b": checkForm15Data.total_amt_charged.shakti_b - checkForm15Data.total_trans_charges.shakti_b if checkForm15Data.total_trans_charges.shakti_b >= 0 else checkForm15Data.total_amt_charged.shakti_b + abs(checkForm15Data.total_trans_charges.shakti_b),
+                    "shakti_b3": checkForm15Data.total_amt_charged.shakti_b3 - checkForm15Data.total_trans_charges.shakti_b3 if checkForm15Data.total_trans_charges.shakti_b3 >= 0 else checkForm15Data.total_amt_charged.shakti_b3 + abs(checkForm15Data.total_trans_charges.shakti_b3),
+                    "particular": "Total amount charged for Coal/lignite supplied including transportation (11+16)",
+                }
+
+                checkForm15Data.update(
+                    total_amt_incl_trans=total_amt_incl_trans
+                )
+            checkForm15Data.reload()
+            if checkForm15Data.osd_month and checkForm15Data.net_supplied:
+                total_qty_at_station_dict = {
+                    "remark": "",
+                    "uom": "(Rs.)",
+                    "mou_coal": checkForm15Data.osd_month.mou_coal - checkForm15Data.net_supplied.mou_coal if checkForm15Data.net_supplied.mou_coal >= 0 else checkForm15Data.osd_month.mou_coal + abs(checkForm15Data.net_supplied.mou_coal),
+                    "linkage": checkForm15Data.osd_month.linkage - checkForm15Data.net_supplied.linkage if checkForm15Data.net_supplied.linkage >= 0 else checkForm15Data.osd_month.linkage + abs(checkForm15Data.net_supplied.linkage),
+                    "aiwib_washery": checkForm15Data.osd_month.aiwib_washery - checkForm15Data.net_supplied.aiwib_washery if checkForm15Data.net_supplied.aiwib_washery >= 0 else checkForm15Data.osd_month.aiwib_washery + abs(checkForm15Data.net_supplied.aiwib_washery),
+                    "open_mkt": checkForm15Data.osd_month.open_mkt - checkForm15Data.net_supplied.open_mkt if checkForm15Data.net_supplied.open_mkt >= 0 else checkForm15Data.osd_month.open_mkt + abs(checkForm15Data.net_supplied.open_mkt),
+                    "spot_eauction": checkForm15Data.osd_month.spot_eauction - checkForm15Data.net_supplied.spot_eauction if checkForm15Data.net_supplied.spot_eauction >= 0 else checkForm15Data.osd_month.spot_eauction + abs(checkForm15Data.net_supplied.spot_eauction),
+                    "spl_for_eauction": checkForm15Data.osd_month.spl_for_eauction - checkForm15Data.net_supplied.spl_for_eauction if checkForm15Data.net_supplied.spl_for_eauction >= 0 else checkForm15Data.osd_month.spl_for_eauction + abs(checkForm15Data.net_supplied.spl_for_eauction),
+                    "imported": checkForm15Data.osd_month.imported - checkForm15Data.net_supplied.imported if checkForm15Data.net_supplied.imported >= 0 else checkForm15Data.osd_month.imported + abs(checkForm15Data.net_supplied.imported),
+                    "total": checkForm15Data.osd_month.total - checkForm15Data.net_supplied.total if checkForm15Data.net_supplied.total >= 0 else checkForm15Data.osd_month.total + abs(checkForm15Data.net_supplied.total),
+                    "shakti_b": checkForm15Data.osd_month.shakti_b - checkForm15Data.net_supplied.shakti_b if checkForm15Data.net_supplied.shakti_b >= 0 else checkForm15Data.osd_month.shakti_b + abs(checkForm15Data.net_supplied.shakti_b),
+                    "shakti_b3": checkForm15Data.osd_month.shakti_b3 - checkForm15Data.net_supplied.shakti_b3 if checkForm15Data.net_supplied.shakti_b3 >= 0 else checkForm15Data.osd_month.shakti_b3 + abs(checkForm15Data.net_supplied.shakti_b3),
+                    "particular": "Quantity of coal at station for the month (1+7)",
+                }
+
+                checkForm15Data.update(
+                    qty_at_station=total_qty_at_station_dict
+                )
+            checkForm15Data.reload()
+            # vos_month
+            try:
+                previous_month_start = startd_date - relativedelta(months=1)
+                prev_startd_date = previous_month_start
+                prev_endd_date = prev_startd_date + relativedelta(day=31)
+                prev_endd_date = prev_endd_date.replace(hour=23, minute=59, second=59)
+
+                checkForm15Data_vos = Form15Data.objects.get(month__gte=prev_startd_date, month__lte=prev_endd_date)
+                if checkForm15Data_vos.closing_coal_stock_value:
+                    vos_month_dict = {
+                        "remark": "",
+                        "uom": "(Rs.)",
+                        "mou_coal": checkForm15Data_vos.closing_coal_stock_value.mou_coal,
+                        "linkage": checkForm15Data_vos.closing_coal_stock_value.linkage,
+                        "aiwib_washery": checkForm15Data_vos.closing_coal_stock_value.aiwib_washery,
+                        "open_mkt": checkForm15Data_vos.closing_coal_stock_value.open_mkt,
+                        "spot_eauction": checkForm15Data_vos.closing_coal_stock_value.spot_eauction,
+                        "spl_for_eauction": checkForm15Data_vos.closing_coal_stock_value.spl_for_eauction,
+                        "imported": checkForm15Data_vos.closing_coal_stock_value.imported,
+                        "total": checkForm15Data_vos.closing_coal_stock_value.total,
+                        "shakti_b": checkForm15Data_vos.closing_coal_stock_value.shakti_b,
+                        "shakti_b3": checkForm15Data_vos.closing_coal_stock_value.shakti_b3,
+                        "particular": "Value of opening stock as on 1st Day of the Month",
+                    }
+
+                    checkForm15Data.update(
+                        vos_month=vos_month_dict
+                    )
+            except DoesNotExist as e:
+                vos_month_dict = {
+                    "remark": "",
+                    "uom": "(Rs.)",
+                    "mou_coal": 0,
+                    "linkage": 0,
+                    "aiwib_washery": 0,
+                    "open_mkt": 0,
+                    "spot_eauction": 0,
+                    "spl_for_eauction": 0,
+                    "imported": 0,
+                    "total": 0,
+                    "shakti_b": 0,
+                    "shakti_b3": 0,
+                    "particular": "Value of opening stock as on 1st Day of the Month",
+                }
+                checkForm15Data.update(
+                    vos_month=vos_month_dict
+                )
+            
+            checkForm15Data.reload()
+            if checkForm15Data.vos_month and checkForm15Data.total_amt_incl_trans:
+                total_amt_for_coal_dict = {
+                    "remark": "",
+                    "uom": "(Rs.)",
+                    "mou_coal": checkForm15Data.vos_month.mou_coal - checkForm15Data.total_amt_incl_trans.mou_coal if checkForm15Data.total_amt_incl_trans.mou_coal >= 0 else checkForm15Data.vos_month.mou_coal + abs(checkForm15Data.total_amt_incl_trans.mou_coal),
+                    "linkage": checkForm15Data.vos_month.linkage - checkForm15Data.total_amt_incl_trans.linkage if checkForm15Data.total_amt_incl_trans.linkage >= 0 else checkForm15Data.vos_month.linkage + abs(checkForm15Data.total_amt_incl_trans.linkage),
+                    "aiwib_washery": checkForm15Data.vos_month.aiwib_washery - checkForm15Data.total_amt_incl_trans.aiwib_washery if checkForm15Data.total_amt_incl_trans.aiwib_washery >= 0 else checkForm15Data.vos_month.aiwib_washery + abs(checkForm15Data.total_amt_incl_trans.aiwib_washery),
+                    "open_mkt": checkForm15Data.vos_month.open_mkt - checkForm15Data.total_amt_incl_trans.open_mkt if checkForm15Data.total_amt_incl_trans.open_mkt >= 0 else checkForm15Data.vos_month.open_mkt + abs(checkForm15Data.total_amt_incl_trans.open_mkt),
+                    "spot_eauction": checkForm15Data.vos_month.spot_eauction - checkForm15Data.total_amt_incl_trans.spot_eauction if checkForm15Data.total_amt_incl_trans.spot_eauction >= 0 else checkForm15Data.vos_month.spot_eauction + abs(checkForm15Data.total_amt_incl_trans.spot_eauction),
+                    "spl_for_eauction": checkForm15Data.vos_month.spl_for_eauction - checkForm15Data.total_amt_incl_trans.spl_for_eauction if checkForm15Data.total_amt_incl_trans.spl_for_eauction >= 0 else checkForm15Data.vos_month.spl_for_eauction + abs(checkForm15Data.total_amt_incl_trans.spl_for_eauction),
+                    "imported": checkForm15Data.vos_month.imported - checkForm15Data.total_amt_incl_trans.imported if checkForm15Data.total_amt_incl_trans.imported >= 0 else checkForm15Data.vos_month.imported + abs(checkForm15Data.total_amt_incl_trans.imported),
+                    "total": checkForm15Data.vos_month.total - checkForm15Data.total_amt_incl_trans.total if checkForm15Data.total_amt_incl_trans.total >= 0 else checkForm15Data.vos_month.total + abs(checkForm15Data.total_amt_incl_trans.total),
+                    "shakti_b": checkForm15Data.vos_month.shakti_b - checkForm15Data.total_amt_incl_trans.shakti_b if checkForm15Data.total_amt_incl_trans.shakti_b >= 0 else checkForm15Data.vos_month.shakti_b + abs(checkForm15Data.total_amt_incl_trans.shakti_b),
+                    "shakti_b3": checkForm15Data.vos_month.shakti_b3 - checkForm15Data.total_amt_incl_trans.shakti_b3 if checkForm15Data.total_amt_incl_trans.shakti_b3 >= 0 else checkForm15Data.vos_month.shakti_b3 + abs(checkForm15Data.total_amt_incl_trans.shakti_b3),
+                    "particular": "Total amount charged for coal (2+17)",
+                }
+
+                checkForm15Data.update(
+                    total_amt_for_coal=total_amt_for_coal_dict
+                )
+            checkForm15Data.reload()
+            if checkForm15Data.total_amt_for_coal and checkForm15Data.qty_at_station:
+                landed_cost_dict = {
+                    "remark": "",
+                    "uom": "Rs/MT",
+                    "mou_coal": safe_divide(checkForm15Data.qty_at_station.mou_coal, checkForm15Data.total_amt_for_coal.mou_coal),
+                    "linkage": safe_divide(checkForm15Data.qty_at_station.linkage, checkForm15Data.total_amt_for_coal.linkage),
+                    "aiwib_washery": safe_divide(checkForm15Data.qty_at_station.aiwib_washery, checkForm15Data.total_amt_for_coal.aiwib_washery),
+                    "open_mkt": safe_divide(checkForm15Data.qty_at_station.open_mkt, checkForm15Data.total_amt_for_coal.open_mkt),
+                    "spot_eauction": safe_divide(checkForm15Data.qty_at_station.spot_eauction, checkForm15Data.total_amt_for_coal.spot_eauction),
+                    "spl_for_eauction": safe_divide(checkForm15Data.qty_at_station.spl_for_eauction, checkForm15Data.total_amt_for_coal.spl_for_eauction),
+                    "imported": safe_divide(checkForm15Data.qty_at_station.imported, checkForm15Data.total_amt_for_coal.imported),
+                    "total": safe_divide(checkForm15Data.qty_at_station.total, checkForm15Data.total_amt_for_coal.total),
+                    "shakti_b": safe_divide(checkForm15Data.qty_at_station.shakti_b, checkForm15Data.total_amt_for_coal.shakti_b),
+                    "shakti_b3": safe_divide(checkForm15Data.qty_at_station.shakti_b3, checkForm15Data.total_amt_for_coal.shakti_b3),
+                    "particular": "Landed cost of coal (19/18)",
+                }
+
+                checkForm15Data.update(
+                    landed_cost=landed_cost_dict
+                )
+            checkForm15Data.reload()
+            if checkForm15Data.qty_consumed and checkForm15Data.landed_cost:
+                value_consumed_dict = {
+                    "remark": "",
+                    "uom": "Rs",
+                    "mou_coal": checkForm15Data.landed_cost.mou_coal * checkForm15Data.qty_consumed.mou_coal,
+                    "linkage": checkForm15Data.landed_cost.linkage * checkForm15Data.qty_consumed.linkage,
+                    "aiwib_washery": checkForm15Data.landed_cost.aiwib_washery * checkForm15Data.qty_consumed.aiwib_washery,
+                    "open_mkt": checkForm15Data.landed_cost.open_mkt * checkForm15Data.qty_consumed.open_mkt,
+                    "spot_eauction": checkForm15Data.landed_cost.spot_eauction * checkForm15Data.qty_consumed.spot_eauction,
+                    "spl_for_eauction": checkForm15Data.landed_cost.spl_for_eauction * checkForm15Data.qty_consumed.spl_for_eauction,
+                    "imported": checkForm15Data.landed_cost.imported * checkForm15Data.qty_consumed.imported,
+                    "total": checkForm15Data.landed_cost.total * checkForm15Data.qty_consumed.total,
+                    "shakti_b": checkForm15Data.landed_cost.shakti_b * checkForm15Data.qty_consumed.shakti_b,
+                    "shakti_b3": checkForm15Data.landed_cost.shakti_b3 * checkForm15Data.qty_consumed.shakti_b3,
+                    "particular": "Value of coal Consumed (20*21)",
+                }
+                checkForm15Data.update(
+                    value_consumed=value_consumed_dict
+                )
+            checkForm15Data.reload()
+            if checkForm15Data.osd_month and checkForm15Data.net_supplied and checkForm15Data.qty_consumed:
+                closing_coal_stock_dict = {
+                    "remark": "",
+                    "uom": "",
+                    "mou_coal": checkForm15Data.osd_month.mou_coal + checkForm15Data.net_supplied.mou_coal - checkForm15Data.qty_consumed.mou_coal,
+                    "linkage": checkForm15Data.osd_month.linkage + checkForm15Data.net_supplied.linkage - checkForm15Data.qty_consumed.linkage,
+                    "aiwib_washery": checkForm15Data.osd_month.aiwib_washery + checkForm15Data.net_supplied.aiwib_washery - checkForm15Data.qty_consumed.aiwib_washery,
+                    "open_mkt": checkForm15Data.osd_month.open_mkt + checkForm15Data.net_supplied.open_mkt - checkForm15Data.qty_consumed.open_mkt,
+                    "spot_eauction": checkForm15Data.osd_month.spot_eauction + checkForm15Data.net_supplied.spot_eauction - checkForm15Data.qty_consumed.spot_eauction,
+                    "spl_for_eauction": checkForm15Data.osd_month.spl_for_eauction + checkForm15Data.net_supplied.spl_for_eauction - checkForm15Data.qty_consumed.spl_for_eauction,
+                    "imported": checkForm15Data.osd_month.imported + checkForm15Data.net_supplied.imported - checkForm15Data.qty_consumed.imported,
+                    "total": checkForm15Data.osd_month.total + checkForm15Data.net_supplied.total - checkForm15Data.qty_consumed.total,
+                    "shakti_b": checkForm15Data.osd_month.shakti_b + checkForm15Data.net_supplied.shakti_b - checkForm15Data.qty_consumed.shakti_b,
+                    "shakti_b3": checkForm15Data.osd_month.shakti_b3 + checkForm15Data.net_supplied.shakti_b3 - checkForm15Data.qty_consumed.shakti_b3,
+                    "particular": "Closing stock of coal as on last Day of the Month",
+                }
+                checkForm15Data.update(
+                    closing_coal_stock=closing_coal_stock_dict
+                )
+            checkForm15Data.reload()
+            if checkForm15Data.closing_coal_stock and checkForm15Data.landed_cost:
+                closing_coal_stock_value_dict = {
+                    "remark": "",
+                    "uom": "",
+                    "mou_coal": checkForm15Data.closing_coal_stock.mou_coal * checkForm15Data.landed_cost.mou_coal,
+                    "linkage": checkForm15Data.closing_coal_stock.linkage * checkForm15Data.landed_cost.linkage,
+                    "aiwib_washery": checkForm15Data.closing_coal_stock.aiwib_washery * checkForm15Data.landed_cost.aiwib_washery,
+                    "open_mkt": checkForm15Data.closing_coal_stock.open_mkt * checkForm15Data.landed_cost.open_mkt,
+                    "spot_eauction": checkForm15Data.closing_coal_stock.spot_eauction * checkForm15Data.landed_cost.spot_eauction,
+                    "spl_for_eauction": checkForm15Data.closing_coal_stock.spl_for_eauction * checkForm15Data.landed_cost.spl_for_eauction,
+                    "imported": checkForm15Data.closing_coal_stock.imported * checkForm15Data.landed_cost.imported,
+                    "total": checkForm15Data.closing_coal_stock.total * checkForm15Data.landed_cost.total,
+                    "shakti_b": checkForm15Data.closing_coal_stock.shakti_b * checkForm15Data.landed_cost.shakti_b,
+                    "shakti_b3": checkForm15Data.closing_coal_stock.shakti_b3 * checkForm15Data.landed_cost.shakti_b3,
+                    "particular": "Closing stock of coal as on last Day of the Month",
+                }
+                checkForm15Data.update(
+                    closing_coal_stock_value=closing_coal_stock_value_dict
+                )
+            checkForm15Data.reload()
+            return {"details": "success"}
+        except DoesNotExist as e:
+            return JSONResponse(content={"details":"No Data Found"}, status_code=404)
+    except Exception as e:
+        success = False
+        # response.status_code = 400
+        console_logger.debug("----- Form 15 Automation Error -----", e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e
+
+
+@router.post("/insert/sappo/excel", tags=["Sap PO"])
+async def endpoint_to_insert_sapop_data(response: Response):
+    try:
+        # directory = "/home/diycam/sap_ftp/PO"
+        folder_path=os.path.join(os.getcwd(),"sap_ftp","PO")
+        files=os.listdir(folder_path)
+        for filename in files:
+            # f_name = UploadedFile.filename
+            file_path = os.path.join(folder_path, filename)
+            excel_data = pd.read_excel(file_path)
+            data_excel_fetch = json.loads(excel_data.to_json(orient="records"))
+            
+            for single_data_excel in data_excel_fetch:
+                data_excel_fetch_final = {x.replace(' ', ''): v for x, v in single_data_excel.items()}
+                if str(data_excel_fetch_final.get("DoNumber")).strip():
+                    try:
+                        fetchPoData = POdata.objects.get(do_number=str(data_excel_fetch_final.get("DoNumber")).strip())
+                        fetchPoData.update(
+                            po_number=data_excel_fetch_final.get("PoNumber"),
+                            line_item=data_excel_fetch_final.get("PoLineItem"),
+                            transport_code=data_excel_fetch_final.get("TransportationCode"),
+                            transporter_name=data_excel_fetch_final.get("TransporterName").strip(),
+                            material_code=data_excel_fetch_final.get("MaterialCode"),
+                            material_description=data_excel_fetch_final.get("MaterialDescription").strip(),
+                            plant_code=data_excel_fetch_final.get("PlantCode"),
+                            storage_location=data_excel_fetch_final.get("StorageLocation").strip(),
+                            valuation_type=data_excel_fetch_final.get("ValuationType").strip(),
+                            po_open_quantity=data_excel_fetch_final.get("POOpenQty"),
+                            uom=data_excel_fetch_final.get("UOM").strip()
+                        )
+                    except DoesNotExist as e:
+                        POdata(
+                            po_number=data_excel_fetch_final.get("PoNumber"),
+                            line_item=data_excel_fetch_final.get("PoLineItem"),
+                            do_number=str(data_excel_fetch_final.get("DoNumber")).strip(),
+                            transport_code=data_excel_fetch_final.get("TransportationCode"),
+                            transporter_name=data_excel_fetch_final.get("TransporterName").strip(),
+                            material_code=data_excel_fetch_final.get("MaterialCode"),
+                            material_description=data_excel_fetch_final.get("MaterialDescription").strip(),
+                            plant_code=data_excel_fetch_final.get("PlantCode"),
+                            storage_location=data_excel_fetch_final.get("StorageLocation").strip(),
+                            valuation_type=data_excel_fetch_final.get("ValuationType").strip(),
+                            po_open_quantity=data_excel_fetch_final.get("POOpenQty"),
+                            uom=data_excel_fetch_final.get("UOM").strip()
+                        ).save()
+                    
+                    try:
+                        fetchSapRecordsdata = SapRecords.objects.get(do_no=str(data_excel_fetch_final.get("DoNumber")).strip())
+                        fetchSapRecordsdata.update(
+                            sap_po=str(data_excel_fetch_final.get("PoNumber")),
+                            line_item=str(data_excel_fetch_final.get("PoLineItem")),
+                            transport_code=str(data_excel_fetch_final.get("TransportationCode")),
+                            transport_name=str(data_excel_fetch_final.get("TransporterName")).strip(),
+                            material_code=str(data_excel_fetch_final.get("MaterialCode")),
+                            material_description=str(data_excel_fetch_final.get("MaterialDescription")).strip(),
+                            plant_code=str(data_excel_fetch_final.get("PlantCode")),
+                            storage_location=str(data_excel_fetch_final.get("StorageLocation")).strip(),
+                            valuation_type=str(data_excel_fetch_final.get("ValuationType")).strip(),
+                            po_open_quantity=str(data_excel_fetch_final.get("POOpenQty")),
+                            uom=str(data_excel_fetch_final.get("UOM")).strip()
+                        )
+                    except DoesNotExist as e:
+                        pass
+                    
+                    try:
+                        fetchSapRecordsdata = sapRecordsRail.objects.get(rr_no=str(data_excel_fetch_final.get("DoNumber")).strip())
+                        fetchSapRecordsdata.update(
+                            sap_po=str(data_excel_fetch_final.get("PoNumber")),
+                            line_item=str(data_excel_fetch_final.get("PoLineItem")),
+                            transport_code=str(data_excel_fetch_final.get("TransportationCode")),
+                            transport_name=str(data_excel_fetch_final.get("TransporterName")).strip(),
+                            material_code=str(data_excel_fetch_final.get("MaterialCode")),
+                            material_description=str(data_excel_fetch_final.get("MaterialDescription")).strip(),
+                            plant_code=str(data_excel_fetch_final.get("PlantCode")),
+                            storage_location=str(data_excel_fetch_final.get("StorageLocation")).strip(),
+                            valuation_type=str(data_excel_fetch_final.get("ValuationType")).strip(),
+                            po_open_quantity=str(data_excel_fetch_final.get("POOpenQty")),
+                            uom=str(data_excel_fetch_final.get("UOM")).strip()
+                        )
+                    except DoesNotExist as e:
+                        pass
+
+                    try:
+                        fetchSapRecordsRoaddata = SapRecordsRcrRoad.objects.get(do_no=str(data_excel_fetch_final.get("DoNumber")).strip())
+                        fetchSapRecordsdata.update(
+                            sap_po=str(data_excel_fetch_final.get("PoNumber")),
+                            line_item=str(data_excel_fetch_final.get("PoLineItem")),
+                            transport_code=str(data_excel_fetch_final.get("TransportationCode")),
+                            transport_name=str(data_excel_fetch_final.get("TransporterName")).strip(),
+                            material_code=str(data_excel_fetch_final.get("MaterialCode")),
+                            material_description=str(data_excel_fetch_final.get("MaterialDescription")).strip(),
+                            plant_code=str(data_excel_fetch_final.get("PlantCode")),
+                            storage_location=str(data_excel_fetch_final.get("StorageLocation")).strip(),
+                            valuation_type=str(data_excel_fetch_final.get("ValuationType")).strip(),
+                            po_open_quantity=str(data_excel_fetch_final.get("POOpenQty")),
+                            uom=str(data_excel_fetch_final.get("UOM")).strip()
+                        )
+                    except DoesNotExist as e:
+                        pass
+        return {"detail": "success"}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="Key Error")
+    except Exception as e:
+        response.status_code = 400
+        console_logger.debug("----- IGI Excel Error -----", e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return {"error": str(e)}
+
+
+@router.get("/findupdatereciptcoalquality", tags=["Coal Testing"])
+def find_update_receipt_coal_quality(do_rr_no: Optional[str] = None):
+    try:
+        if not do_rr_no:
+            return {"error": "do_rr_no is required"}
+        found_data = {}
+        # found_data = None
+        try:
+            check_sap_records = SapRecords.objects.get(do_no=do_rr_no)
+            console_logger.debug(check_sap_records.consumer_type)
+            found_data['consumer_type'] = check_sap_records.consumer_type
+            found_data['mine'] = check_sap_records.mine_name
+            console_logger.debug("found in sap records road")
+            # return {"message": "Record found in SapRecords", "data": check_sap_records}
+        except DoesNotExist as e:
+            pass
+
+        try:
+            check_rail_data = RailData.objects.get(rr_no=do_rr_no)
+            console_logger.debug(check_rail_data.source_type)
+            found_data["consumer_type"] = check_rail_data.source
+            found_data["mine"] = check_rail_data.source_type
+            console_logger.debug("found in rail")
+        except DoesNotExist as e:
+            pass
+
+        try:
+            check_sap_records_rcr_road = SapRecordsRcrRoad.objects.get(do_no=do_rr_no)
+            console_logger.debug(check_sap_records_rcr_road.consumer_type)
+            # found_data = check_sap_records_rcr_road.consumer_type
+            found_data['consumer_type'] = check_sap_records.consumer_type
+            found_data['mine'] = check_sap_records.mine_name
+            console_logger.debug("found in sap records rcr road")
+        except DoesNotExist as e:
+            pass
+
+        try:
+            check_rcr_rail_data = RcrData.objects.get(rr_no=do_rr_no)
+            console_logger.debug(check_rcr_rail_data.source_type)
+            found_data["consumer_type"] = check_rcr_rail_data.source
+            found_data["mine"] = check_rcr_rail_data.source_type
+            console_logger.debug("found in sap records rcr rail")
+        except DoesNotExist as e:
+            pass
+        console_logger.debug(found_data)
+        if found_data:
+            return found_data
+        # else:
+        #     response.status_code = 404
+        #     return {"error": "No records found for the given do_rr_no"}
+
+    except Exception as e:
+        console_logger.debug("----- IGI Excel Error -----", exc_info=True)
+        return {"error": str(e)}
+
+
+@router.get("/gmr/removeduplicate", tags=["Duplicate"])
+def endpoint_to_remove_duplicate_from_gmrdb_using_challan_no(response: Response):
+    try:
+        fetchGmrData = Gmrdata.objects()
+        fetchGmrHistoricData = gmrdataHistoric.objects()
+
+        for single_gmr_data in fetchGmrData:
+            for single_historic_gmr_data in fetchGmrHistoricData:
+                if single_gmr_data.delivery_challan_number==single_historic_gmr_data.delivery_challan_number:
+                    console_logger.debug(f"Matched Challan Number: {single_gmr_data.arv_cum_do_number}")
+        return {"detail": "success"}
+    except Exception as e:
+        success = False
+        console_logger.debug("----- Gmr Duplicate Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e
+
+
+@router.post("/insert/aopstatic", tags=["Aop"])
+def endpoint_to_insert_aop_static_data(response: Response, data: aopStatic):
+    try:
+        payload = data.dict()
+        Aop(
+            percentage=payload.get("percentage"),
+            gcv_crushing=payload.get("gcv_crushing"),
+            qty_saving=payload.get("qty_saving"),
+            month=payload.get("month")
+        ).save()
+    except Exception as e:
+        success = False
+        console_logger.debug("----- Gmr Duplicate Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e
+
+def endpoint_to_get_all_months_in_between(coal_plant, years):
+    try:
+        dates = [years.get("start_date"), years.get("end_date")]
+        start, end = [datetime.datetime.strptime(_, "%Y-%m-%d") for _ in dates]
+        Datafetch = OrderedDict(((start + timedelta(_)).strftime(r"%b_%y"), None) for _ in range((end - start).days)).keys()
+
+        typeConsumer = {}
+        for single_list_data in list(Datafetch):
+            if coal_plant in typeConsumer:
+                typeConsumer['coal_plant'] = coal_plant
+                typeConsumer[single_list_data] = {"target": 0, "achieved": 0}
+        return typeConsumer
+
+    except Exception as e:
+        success = False
+        console_logger.debug("----- Gmr Duplicate Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e    
+
+@router.get("/fetch/aop", tags=["Aop"])
+def endpoint_to_fetch_aop_data(response: Response):
+    try:
+        financial_year = get_financial_year(datetime.date.today().strftime("%Y-%m-%d"))
+        console_logger.debug(financial_year)
+        fetchGmrData = Gmrdata.objects(GWEL_Tare_Time__gte=financial_year.get("start_date"), GWEL_Tare_Time__lte=financial_year.get("end_date"))
+        dictData = {"type": "", "reports": []}
+        listData = []
+        typeConsumer = {}
+
+        
+
+        for single_data_gmr in fetchGmrData:
+            coal_plant = single_data_gmr.type_consumer
+            fetchMonthData = endpoint_to_get_all_months_in_between(coal_plant, financial_year)
+            console_logger.debug(fetchMonthData)  
+        
+    except Exception as e:
+        success = False
+        console_logger.debug("----- Gmr Duplicate Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        success = e
 
 
 #  x------------------------------    Scheduler To Tigger Coal API's    ------------------------------------x

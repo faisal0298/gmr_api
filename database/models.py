@@ -1214,6 +1214,18 @@ class SapRecordsRcrRoad(Document):
     gst_comp_cess = FloatField(null=True)
     requisite_payment = FloatField(null=True)
     # particulars end
+
+    # sap data start
+    transport_code = StringField(null=True)
+    transport_name = StringField(null=True)
+    material_code = StringField(null=True)
+    material_description = StringField(null=True)
+    plant_code = StringField(null=True)
+    storage_location = StringField(null=True)
+    valuation_type = StringField(null=True)
+    po_open_quantity = StringField(null=True)
+    uom = StringField(null=True)
+    # sap data end
     created_at = DateTimeField(default=datetime.datetime.utcnow())
 
     meta = {"db_alias": "gmrDB-alias", "collection": "SapRecordsRcrRoad"}
@@ -1468,6 +1480,9 @@ class RailData(Document):
     penal_ul = StringField(null=True)                      # modified by faisal
     freight_pmt = StringField(null=True)                   # modified by faisal              
 
+    grn_status = BooleanField(default=False)
+    mine_invoice = StringField(null=True)
+
     secl_rly_data = EmbeddedDocumentListField(SeclRailData)
     avery_rly_data = EmbeddedDocumentListField(AveryRailData)
     created_at = DateTimeField(default=datetime.datetime.utcnow)
@@ -1544,6 +1559,8 @@ class RailData(Document):
             "source": self.source,
             "placement_date": self.placement_date,
             "completion_date": self.completion_date,
+            "avery_placement_date": self.avery_placement_date,
+            "avery_completion_date": self.avery_completion_date,
             "drawn_date": self.drawn_date,
             "total_ul_wt": self.total_ul_wt,
             "boxes_supplied": self.boxes_supplied,
@@ -1598,6 +1615,11 @@ class RailData(Document):
             # "total_gwel_gross_wt"
             # "total_gwel_tare_wt"
             # "total_gwel_net_wt"
+            "freight": self.freight,
+            "gst": self.gst,
+            "pola": self.pola,
+            "total_freight": self.total_freight,
+            "sd": self.sd,
             "total_secl_gross_wt": self.total_secl_gross_wt,
             "total_secl_tare_wt": self.total_secl_tare_wt,
             "total_secl_net_wt": self.total_secl_net_wt,
@@ -1804,6 +1826,7 @@ class RcrData(Document):
             "freight": self.freight,
             "gst": self.gst,
             "pola": self.pola,
+            "sd": self.sd,
             "total_freight": self.total_freight,
             "source_type": self.source_type,
             "month": self.month,
@@ -1841,6 +1864,11 @@ class RcrData(Document):
             # "total_gwel_gross_wt"
             # "total_gwel_tare_wt"
             # "total_gwel_net_wt"
+            "freight": self.freight,
+            "gst": self.gst,
+            "pola": self.pola,
+            "total_freight": self.total_freight,
+            "sd": self.sd,
             "total_secl_gross_wt": self.total_secl_gross_wt,
             "total_secl_tare_wt": self.total_secl_tare_wt,
             "total_secl_net_wt": self.total_secl_net_wt,
@@ -2276,6 +2304,18 @@ class sapRecordsRCR(Document):
     secl_igst = FloatField(null=True)
     secl_gst_comp_cess = FloatField(null=True)
     sap_po = StringField(null=True)
+
+    # sap data start
+    transport_code = StringField(null=True)
+    transport_name = StringField(null=True)
+    material_code = StringField(null=True)
+    material_description = StringField(null=True)
+    plant_code = StringField(null=True)
+    storage_location = StringField(null=True)
+    valuation_type = StringField(null=True)
+    po_open_quantity = StringField(null=True)
+    uom = StringField(null=True)
+    # sap data end
     created_at = DateTimeField(default=datetime.datetime.utcnow)
     # id = IntField(min_value=1)
 
@@ -2314,6 +2354,9 @@ class sapRecordsRail(Document):
     sap_po = StringField(null=True)
     do_date = StringField(null=True) #sap po date
     line_item = StringField(null=True)
+    invoice_date = DateField(null=True)
+    invoice_no = StringField(null=True)
+    sale_date = DateField(null=True)
 
     #particulars start
 
@@ -2334,6 +2377,17 @@ class sapRecordsRail(Document):
 
     #particulars end
 
+    # sap data start
+    transport_code = StringField(null=True)
+    transport_name = StringField(null=True)
+    material_code = StringField(null=True)
+    material_description = StringField(null=True)
+    plant_code = StringField(null=True)
+    storage_location = StringField(null=True)
+    valuation_type = StringField(null=True)
+    po_open_quantity = StringField(null=True)
+    uom = StringField(null=True)
+    # sap data end
 
     created_at = DateTimeField(default=datetime.datetime.utcnow)
 
@@ -2355,6 +2409,47 @@ class sapRecordsRail(Document):
             "created_at": datetime.datetime.fromisoformat(
                     self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
                     ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+        }
+
+    def anotherPayload(self):
+        return {
+            "month": self.month,
+            "rr_no": self.rr_no,
+            "rr_date": self.rr_date,
+            "siding": self.siding,
+            "mine": self.mine,
+            "grade": self.grade,
+            "rr_qty": self.rr_qty,
+            "po_amount": self.po_amount,
+            "sap_po": self.sap_po,
+            "do_date": self.do_date,
+            "line_item": self.line_item,
+            "invoice_date": self.invoice_date,
+            "invoice_no": self.invoice_no,
+            "sale_date": self.sale_date,
+            "sizing_charges": self.sizing_charges,
+            "evac_facility_charge": self.evac_facility_charge,
+            "royality_charges": self.royality_charges,
+            "nmet_charges": self.nmet_charges,
+            "dmf": self.dmf,
+            "adho_sanrachna_vikas": self.adho_sanrachna_vikas,
+            "pariyavaran_upkar": self.pariyavaran_upkar,
+            "assessable_value": self.assessable_value,
+            "igst": self.igst,
+            "gst_comp_cess": self.gst_comp_cess,
+            "gross_bill_value": self.gross_bill_value,
+            "less_underloading_charges": self.less_underloading_charges,
+            "net_value": self.net_value,
+            "total_amount": self.total_amount,
+            "transport_code": self.transport_code,
+            "transport_name": self.transport_name,
+            "material_code": self.material_code,
+            "material_description": self.material_description,
+            "plant_code": self.plant_code,
+            "storage_location": self.storage_location,
+            "valuation_type": self.valuation_type,
+            "po_open_quantity": self.po_open_quantity,
+            "uom": self.uom,
         }
     
 
@@ -2829,7 +2924,8 @@ class grnData(Document):
 
 class CategoryData(EmbeddedDocument):
     remark = StringField()
-    uom = FloatField()
+    # uom = FloatField()
+    uom = StringField()
     mou_coal = FloatField()
     linkage = FloatField()
     aiwib_washery = FloatField()
@@ -2841,6 +2937,23 @@ class CategoryData(EmbeddedDocument):
     shakti_b = FloatField()
     shakti_b3 = FloatField()
     particular = StringField()
+
+    def payload(self):
+        return {
+            "remark": self.remark,
+            "uom": self.uom,
+            "mou_coal": self.mou_coal,
+            "linkage": self.linkage,
+            "aiwib_washery": self.aiwib_washery,
+            "open_mkt": self.open_mkt,
+            "spot_eauction": self.spot_eauction,
+            "spl_for_eauction": self.spl_for_eauction,
+            "imported": self.spl_for_eauction,
+            "total": self.total,
+            "shakti_b": self.shakti_b,
+            "shakti_b3": self.shakti_b3,
+            "particular": self.particular
+        }
 
 class Form15Data(Document):
     osd_month = EmbeddedDocumentField(CategoryData)                                # Opening stock of coal as on 1st Day of the Month
@@ -2875,6 +2988,39 @@ class Form15Data(Document):
     created_at = DateTimeField(default=datetime.datetime.now(datetime.timezone.utc))
     
     meta = {"db_alias": "gmrDB-alias", "collection": "form_15"}
+
+    def payload(self):
+        return {
+            "osd_month": self.osd_month.payload(),  
+            "vos_month": self.vos_month.payload(),  
+            "qty_supplied": self.qty_supplied.payload(),  
+            "adj_qty": self.adj_qty.payload(),  
+            "coal_supplied": self.coal_supplied.payload(),  
+            "norm_transit_loss": self.norm_transit_loss.payload(),  
+            "net_supplied": self.net_supplied.payload(),  
+            "amt_charged": self.amt_charged.payload(),  
+            "adj_amt": self.adj_amt.payload(),  
+            "unloading_charges": self.unloading_charges.payload(),  
+            "total_amt_charged": self.total_amt_charged.payload(),  
+            "trans_charges": self.trans_charges.payload(),  
+            "adj_trans_charges": self.adj_trans_charges.payload(),  
+            "demurrage": self.demurrage.payload(),  
+            "diesel_cost": self.diesel_cost.payload(),  
+            "total_trans_charges": self.total_trans_charges.payload(),  
+            "total_amt_incl_trans": self.total_amt_incl_trans.payload(),  
+            "qty_at_station": self.qty_at_station.payload(),  
+            "total_amt_for_coal": self.total_amt_for_coal.payload(),  
+            "landed_cost": self.landed_cost.payload(),  
+            "qty_consumed": self.qty_consumed.payload(),  
+            "value_consumed": self.value_consumed.payload(),  
+            "wtd_avg_gcv_prev": self.wtd_avg_gcv_prev.payload(),  
+            "wtd_avg_gcv_recv": self.wtd_avg_gcv_recv.payload(),  
+            "wtd_avg_gcv_less_85": self.wtd_avg_gcv_less_85.payload(),  
+            "closing_coal_stock": self.closing_coal_stock.payload(),  
+            "closing_coal_stock_value": self.closing_coal_stock_value.payload(),  
+            "month": self.month,  
+            "created_at": self.created_at,  
+        }
 
 class UserDataPermission(EmbeddedDocument):
     user = ListField(DictField())  # Correctly define the ListField
@@ -2926,6 +3072,7 @@ class Grn(Document):
     # approvals = ListField(DictField())
     approvals = DictField()
     changed_by = StringField(null=True)
+    #raod data start
     #particulars start
     basic_price = FloatField(null=True)
     sizing_charges = FloatField(null=True)
@@ -2941,7 +3088,43 @@ class Grn(Document):
     net_value = FloatField(null=True)
     total_amount = FloatField(null=True)
     #particulars end
+    #raod data end
+    mode = StringField(null=True)
+    source_type = StringField(null=True) #rail
+    type_consumer = StringField(null=True) #road
+    rejected = BooleanField(default = False)
     created_at = DateTimeField(default=datetime.datetime.utcnow())
+
+    #rail data start
+    # sizing_charges_rate=FloatField(null=True)
+    sizing_charges_amount=FloatField(null=True)
+    # evac_facility_charge_rate=FloatField(null=True)
+    evac_facility_charge_amount=FloatField(null=True)
+    # royalty_charges_rate=FloatField(null=True)
+    royalty_charges_amount= FloatField(null=True)
+    # nmet_rate=FloatField(null=True)
+    nmet_amount=FloatField(null=True)
+    # dmf_rate=FloatField(null=True)
+    dmf_amount=FloatField(null=True)
+    # adho_sanrachna_vikas_rate=FloatField(null=True)
+    adho_sanrachna_vikas_amount=FloatField(null=True)
+    # pariyavaran_upkar_rate=FloatField(null=True)
+    pariyavaran_upkar_amount=FloatField(null=True)
+    # assessable_value_rate=FloatField(null=True)
+    assessable_value_amount=FloatField(null=True)
+    # igst_rate=FloatField(null=True)
+    igst_amount=FloatField(null=True)
+    # gst_comp_cess_rate=FloatField(null=True)
+    gst_comp_cess_amount=FloatField(null=True)
+    # gross_bill_value_rate=FloatField(null=True)
+    gross_bill_value_amount=FloatField(null=True)
+    # less_underloading_charges_rate=FloatField(null=True)
+    less_underloading_charges_amount=FloatField(null=True)
+    # net_value_rate=FloatField(null=True)
+    net_value_amount=FloatField(null=True)
+
+    # total_gwel_net=FloatField(null=True)  #use for form15
+    #rail data end
 
     meta = {"db_alias": "gmrDB-alias", "collection": "Grn"}
 
@@ -2959,6 +3142,11 @@ class Grn(Document):
             "new_data": self.new_data,
             "approvals": self.approvals,
             "changed_by": self.changed_by,
+            "mode": self.mode,
+            "source_type": self.source_type, #rail
+            "type_consumer": self.type_consumer, #road
+            "net_value": self.net_value, #rail
+            "total_amount": self.total_amount, #road
             # "basic_price": self.basic_price,
             # "sizing_charges": self.sizing_charges,
             # "stc_charges": self.stc_charges,
@@ -2976,8 +3164,12 @@ class Grn(Document):
         }
     
     def frpayload(self):
+        if self.mode == "road":
+            do_rr_no = "do_no"
+        elif self.mode == "rail":
+            do_rr_no ="rr_no"
         return {
-            "do_no": self.do_no,
+            do_rr_no: self.do_no,
             "invoice_date": self.invoice_date,
             "invoice_no": self.invoice_no,
             "sale_date": self.sale_date,
@@ -3178,4 +3370,50 @@ class cmplData(Document):
             "balance_qty": self.balance_qty,
             "do_qty": self.do_qty,
             "delivery_order_tno": self.delivery_order_tno
+        }
+    
+
+class POdata(Document):
+    po_number = IntField(null=True)
+    line_item = IntField(null=True)
+    do_number = StringField(null=True)
+    transport_code = IntField(null=True)
+    transporter_name = StringField(null=True)
+    material_code = IntField(null=True)
+    material_description = StringField(null=True)
+    plant_code = IntField(null=True)
+    storage_location = StringField(null=True)
+    valuation_type = StringField(null=True)
+    po_open_quantity = IntField(null=True)
+    uom = StringField(null=True)
+    created_at = DateTimeField(default=datetime.datetime.utcnow())
+    po_type = StringField(null=True)
+    mine_name = StringField(null=True)
+    do_qty = StringField(null=True)
+    do_date = DateTimeField()
+    grade = StringField(null=True)
+    consumer_type = StringField(null=True)
+    start_date = StringField(null=True)
+    end_date = StringField(null=True)
+    source = StringField(null=True)
+    rr_no = IntField(null=True)
+    rr_qty = FloatField(null=True)
+    siding = StringField(null=True)
+    rr_date = DateTimeField()
+    month = StringField(null=True)
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "POdata"}
+
+class Aop(Document):
+    percentage = FloatField(null=True)
+    gcv_crushing = FloatField(null=True)
+    qty_saving = FloatField(null=True)
+
+    meta = {"db_alias": "gmrDB-alias", "collection": "Aop"}
+
+    def payload(self):
+        return {
+            "percentage": self.percentage,
+            "gcv_crushing": self.gcv_crushing,
+            "qty_saving": self.qty_saving,
         }

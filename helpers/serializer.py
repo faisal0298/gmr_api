@@ -144,6 +144,33 @@ class RailwayDataDetails(BaseModel):
     rly_chargable_wt: str
     rly_sliding_adjustment: str
 
+class rcraveryUserData(BaseModel):
+    indexing : Optional[str] = None
+    wagon_owner : Optional[str] = None
+    wagon_type : Optional[str] = None
+    wagon_no : Optional[str] = None
+    ser_no : Optional[str] = None
+    rake_no : Optional[str] = None
+    rake_id : Optional[str] = None
+    wagon_no_avery : Optional[str] = None
+    wagon_id : Optional[str] = None
+    wagon_type : Optional[str] = None
+    wagon_cc : Optional[str] = None
+    mode : Optional[str] = None
+    tip_startdate : Optional[str] = None
+    tip_starttime : Optional[str] = None
+    tip_enddate : Optional[str] = None
+    tip_endtime : Optional[str] = None
+    tipple_time : Optional[str] = None
+    status : Optional[str] = None
+    gwel_gross_wt : Optional[str] = None
+    gwel_tare_wt : Optional[str] = None
+    gwel_net_wt : Optional[str] = None
+    time_in_tipp : Optional[str] = None
+    po_number : Optional[str] = None
+    coal_grade : Optional[str] = None
+    data_from: Optional[str] = None
+
 class RailwayData(BaseModel):
     rr_no: Optional[str] = None
     rr_qty: Optional[str] = None
@@ -175,11 +202,19 @@ class RailwayData(BaseModel):
     source_type: Optional[str] = None
     secl_rly_data: List[dict]
     month: Optional[str] = None
+    GWEL_pending_wagons: Optional[str] = None
+    GWEL_received_wagons: Optional[str] = None
+    total_gwel_gross_wt: Optional[str] = None
+    total_gwel_net_wt: Optional[str] = None
+    total_gwel_tare_wt: Optional[str] = None
+    avery_completion_date: Optional[str] = None
+    avery_placement_date: Optional[str] = None
+    avery_rly_data : List[rcraveryUserData] = None
 
 
 class EmailRequest(BaseModel):
     sender_email: EmailStr
-    subject: Optional[str]
+    subject: Optional[str] = None
     password: str
     smtp_host: str
     smtp_port: int
@@ -216,13 +251,13 @@ class geofenceEmailTrigger(BaseModel):
 
 
 class ShiftSchedule(BaseModel):
-    shift_name: Optional[str]
-    start_shift_time: Optional[str]
-    end_shift_time: Optional[str]
-    schedule: Optional[str]
-    time: Optional[str]
-    filter: Optional[str]
-    duration: Optional[str]
+    shift_name: Optional[str] = None
+    start_shift_time: Optional[str] = None
+    end_shift_time: Optional[str] = None
+    schedule: Optional[str] = None
+    time: Optional[str] = None
+    filter: Optional[str] = None
+    duration: Optional[str] = None
 
 
 class ShiftMainData(BaseModel):
@@ -235,52 +270,52 @@ class geoFence(BaseModel):
 
 
 class rakeQuotaManual(BaseModel):
-    month: Optional[str]
-    year: Optional[str]
-    valid_upto: Optional[str]
-    coal_field: Optional[str]
-    rake_alloted: Optional[str]
-    rake_received: Optional[str]
-    due: Optional[str]
-    grade: Optional[str]
+    month: Optional[str] = None
+    year: Optional[str] = None
+    valid_upto: Optional[str] = None
+    coal_field: Optional[str] = None
+    rake_alloted: Optional[str] = None
+    rake_received: Optional[str] = None
+    due: Optional[str] = None
+    grade: Optional[str] = None
 
 
 class rakeQuotaUpdate(BaseModel):
-    month: Optional[str]
-    source_type: Optional[str]
-    rakes_planned_for_month: Optional[int]
+    month: Optional[str] = None
+    source_type: Optional[str] = None
+    rakes_planned_for_month: Optional[int] = None
     expected_rakes: Optional[dict]
-    cancelled_rakes: Optional[str]
-    remarks: Optional[str]
+    cancelled_rakes: Optional[str] = None
+    remarks: Optional[str] = None
 
 
 
 class averyUserData(BaseModel):
-    indexing : Optional[str]
-    wagon_owner : Optional[str]
-    wagon_type : Optional[str]
-    wagon_no : Optional[str]
-    ser_no : Optional[str]
-    rake_no : Optional[str]
-    rake_id : Optional[str]
-    wagon_no_avery : Optional[str]
-    wagon_id : Optional[str]
-    wagon_type : Optional[str]
-    wagon_cc : Optional[str]
-    mode : Optional[str]
-    tip_startdate : Optional[str]
-    tip_starttime : Optional[str]
-    tip_enddate : Optional[str]
-    tip_endtime : Optional[str]
-    tipple_time : Optional[str]
-    status : Optional[str]
-    gwel_gross_wt : Optional[str]
-    gwel_tare_wt : Optional[str]
-    gwel_net_wt : Optional[str]
-    time_in_tipp : Optional[str]
-    po_number : Optional[str]
-    coal_grade : Optional[str]
-    data_from: Optional[str]
+    indexing : Optional[str] = None
+    wagon_owner : Optional[str] = None
+    wagon_type : Optional[str] = None
+    wagon_no : Optional[str] = None
+    ser_no : Optional[str] = None
+    rake_no : Optional[str] = None
+    rake_id : Optional[str] = None
+    wagon_no_avery : Optional[str] = None
+    wagon_id : Optional[str] = None
+    wagon_type : Optional[str] = None
+    wagon_cc : Optional[str] = None
+    mode : Optional[str] = None
+    tip_startdate : Optional[str] = None
+    tip_starttime : Optional[str] = None
+    tip_enddate : Optional[str] = None
+    tip_endtime : Optional[str] = None
+    tipple_time : Optional[str] = None
+    status : Optional[str] = None
+    gwel_gross_wt : Optional[str] = None
+    gwel_tare_wt : Optional[str] = None
+    gwel_net_wt : Optional[str] = None
+    time_in_tipp : Optional[str] = None
+    po_number : Optional[str] = None
+    coal_grade : Optional[str] = None
+    data_from: Optional[str] = None
 
 
 class mainAveryData(BaseModel):
@@ -288,32 +323,32 @@ class mainAveryData(BaseModel):
 
 
 class taxInvoiceGmr(BaseModel):
-    id: Optional[str]
-    do_no: Optional[str]
-    dc_date: Optional[str]
-    challan_no: Optional[str]
-    grade: Optional[str]
-    truck_no: Optional[str]
-    tare: Optional[str]
-    gross: Optional[str]
-    net: Optional[str]
-    invoice_no: Optional[str]
+    id: Optional[str] = None
+    do_no: Optional[str] = None
+    dc_date: Optional[str] = None
+    challan_no: Optional[str] = None
+    grade: Optional[str]  = None
+    truck_no: Optional[str] = None
+    tare: Optional[str] = None
+    gross: Optional[str] = None
+    net: Optional[str] = None
+    invoice_no: Optional[str] = None
 
 class mineNameUpdate(BaseModel):
-    id: Optional[str]
-    mine_code: Optional[str]
-    mine_mode: Optional[str]
-    source_type: Optional[str]
+    id: Optional[str] = None
+    mine_code: Optional[str] = None
+    mine_mode: Optional[str] = None
+    source_type: Optional[str] = None
 
 class rakequotaUpload(BaseModel):
     # date: Optional[str]
-    month: Optional[str]
-    year: Optional[str]
-    valid: Optional[str]
-    coal_field: Optional[str]
-    rake_alloted: Optional[str]
-    grade: Optional[str]
-    source_type: Optional[str]
+    month: Optional[str] = None
+    year: Optional[str] = None
+    valid: Optional[str] = None
+    coal_field: Optional[str] = None
+    rake_alloted: Optional[str] = None
+    grade: Optional[str] = None
+    source_type: Optional[str] = None
 
 
 class roadSapUpload(BaseModel):
@@ -332,92 +367,92 @@ class roadSapUpload(BaseModel):
 
 
 class grnStatus(BaseModel):
-    invoice_date: Optional[str]
-    invoice_no: Optional[str]
-    sale_date: Optional[str]
-    grade: Optional[str]
-    dispatch_date: Optional[str]
-    mine: Optional[str]
-    do_qty: Optional[str]
+    invoice_date: Optional[str] = None
+    invoice_no: Optional[str] = None
+    sale_date: Optional[str] = None
+    grade: Optional[str] = None
+    dispatch_date: Optional[str] = None
+    mine: Optional[str] = None
+    do_qty: Optional[str] = None
 
 
 class grnPdf(BaseModel):
     # delivery_doc_no: Optional[str]
     # ship_to_party: Optional[str]
-    sales_doc_no: Optional[str]
-    dispatch_date_time: Optional[str]
-    challan_number: Optional[str]
-    grade_size: Optional[str]
-    truck_number: Optional[str]
-    tare_weight: Optional[str]
-    gross_weight: Optional[str]
-    net_weight: Optional[str]
+    sales_doc_no: Optional[str] = None
+    dispatch_date_time: Optional[str] = None
+    challan_number: Optional[str] = None
+    grade_size: Optional[str] = None
+    truck_number: Optional[str] = None
+    tare_weight: Optional[str] = None
+    gross_weight: Optional[str] = None
+    net_weight: Optional[str] = None
 
 
 class GrnFileData(BaseModel):
-    do_no: Optional[str]
-    dc_date: Optional[str]
-    invoice_date: Optional[str]
-    invoice_no: Optional[str]
-    sale_date: Optional[str]
-    grade: Optional[str]
-    dispatch_date: Optional[str]
-    mine: Optional[str]
-    do_qty: Optional[str]
+    do_no: Optional[str] = None
+    dc_date: Optional[str] = None
+    invoice_date: Optional[str] = None
+    invoice_no: Optional[str] = None
+    sale_date: Optional[str] = None
+    grade: Optional[str] = None
+    dispatch_date: Optional[str] = None
+    mine: Optional[str] = None
+    do_qty: Optional[str] = None
     table_data: Optional[List[grnPdf]]
 
 class grnpdfRail(BaseModel):
-    indexing: Optional[str]
-    wagon_owner: Optional[str]
-    wagon_type: Optional[str]
-    wagon_no: Optional[str]
-    ser_no: Optional[str]
-    rake_no: Optional[str]
-    rake_id: Optional[str]
-    wagon_no_avery: Optional[str]
-    wagon_id: Optional[str]
-    wagon_cc: Optional[str]
-    mode: Optional[str]
-    tip_startdate: Optional[str]
-    tip_starttime: Optional[str]
-    tip_enddate: Optional[str]
-    tip_endtime: Optional[str]
-    tipple_time: Optional[str]
-    gwel_gross_wt: Optional[str]
-    gwel_tare_wt: Optional[str]
-    gwel_net_wt: Optional[str]
+    indexing: Optional[str] = None
+    wagon_owner: Optional[str] = None
+    wagon_type: Optional[str] = None
+    wagon_no: Optional[str] = None
+    ser_no: Optional[str] = None
+    rake_no: Optional[str] = None
+    rake_id: Optional[str] = None
+    wagon_no_avery: Optional[str] = None
+    wagon_id: Optional[str] = None
+    wagon_cc: Optional[str] = None
+    mode: Optional[str] = None
+    tip_startdate: Optional[str] = None
+    tip_starttime: Optional[str] = None
+    tip_enddate: Optional[str] = None
+    tip_endtime: Optional[str] = None
+    tipple_time: Optional[str] = None
+    gwel_gross_wt: Optional[str] = None
+    gwel_tare_wt: Optional[str] = None
+    gwel_net_wt: Optional[str] = None
     # time_in_tipp: Optional[str]
-    po_number: Optional[str]
-    coal_grade: Optional[str]
+    po_number: Optional[str] = None
+    coal_grade: Optional[str] = None
 
 class GrnFileDataRail(BaseModel):
-    do_no: Optional[str]
-    dc_date: Optional[str]
-    invoice_date: Optional[str]
-    invoice_no: Optional[str]
-    sale_date: Optional[str]
-    grade: Optional[str]
-    dispatch_date: Optional[str]
-    mine: Optional[str]
-    do_qty: Optional[str]
+    do_no: Optional[str] = None
+    dc_date: Optional[str] = None
+    invoice_date: Optional[str] = None
+    invoice_no: Optional[str] = None
+    sale_date: Optional[str] = None
+    grade: Optional[str] = None
+    dispatch_date: Optional[str] = None
+    mine: Optional[str] = None
+    do_qty: Optional[str] = None
     # table_data: Optional[List[grnpdfRail]]
     table_data: Optional[List]
 
 
 class CategoryDataModel(BaseModel):
     remark: Optional[str] = None
-    uom: Optional[str]
-    mou_coal: Optional[float]
-    linkage: Optional[float]
-    aiwib_washery: Optional[float]
-    open_mkt: Optional[float]
-    spot_eauction: Optional[float]
-    spl_for_eauction: Optional[float]
-    imported: Optional[float]
-    total: Optional[float]
-    shakti_b: Optional[float]
-    shakti_b3: Optional[float]
-    particular: Optional[str]
+    uom: Optional[str] = None
+    mou_coal: Optional[float] = None
+    linkage: Optional[float] = None
+    aiwib_washery: Optional[float] = None
+    open_mkt: Optional[float] = None
+    spot_eauction: Optional[float] = None
+    spl_for_eauction: Optional[float] = None
+    imported: Optional[float] = None
+    total: Optional[float] = None
+    shakti_b: Optional[float] = None
+    shakti_b3: Optional[float] = None
+    particular: Optional[str] = None
 
 class CoalDataModel(BaseModel):
     osd_month: CategoryDataModel
@@ -469,33 +504,55 @@ class CoalDataModelManual(BaseModel):
 
 class UserListName(BaseModel):
     email: List[List[dict]]
-    approval_name: Optional[str]
+    approval_name: Optional[str] = None
     bypass_level: Optional[bool] = False
     disabled: Optional[bool] = False
 
 
 class grnUpdateTax(BaseModel):
-    do_no: Optional[str]
-    invoice_date: Optional[str]
-    invoice_no: Optional[str]
-    sale_date: Optional[str]
-    grade: Optional[str]
-    dispatch_date: Optional[str]
-    mine: Optional[str]
-    do_qty: Optional[str]
+    do_no: Optional[str] = None
+    invoice_date: Optional[str] = None
+    invoice_no: Optional[str] = None
+    sale_date: Optional[str] = None
+    grade: Optional[str] = None
+    dispatch_date: Optional[str] = None
+    mine: Optional[str] = None
+    do_qty: Optional[str] = None
     original_data: List[dict]
     new_data: List[dict]
     particulars: Optional[dict]
     # approvals: Optional[dict]
-    changed_by: Optional[str]
-    type_consumer: Optional[str]
+    posting_date: Optional[str] = None
+    changed_by: Optional[str] = None
+    type_consumer: Optional[str] = None
+
+class manualgrnUpdateTax(BaseModel):
+    do_no: Optional[str] = None
+    invoice_date: Optional[str] = None
+    invoice_no: Optional[str] = None
+    # sale_date: Optional[str]
+    grade: Optional[str] = None
+    dispatch_date: Optional[str] = None
+    mine: Optional[str] = None
+    do_qty: Optional[str] = None
+    original_data: List[dict]
+    new_data: List[dict]
+    # particulars: Optional[dict]
+    # approvals: Optional[dict]
+    posting_date: Optional[str] = None
+    changed_by: Optional[str] = None
+    type_consumer: Optional[str] = None
+
+class finalManualGrnUpdateTax(BaseModel):
+    grnData: List[manualgrnUpdateTax]
 
 class roadConsumertype(BaseModel):
     roadConsumertype: List[str]
+    mode: Optional[str] = None
 
 class TableSubjectData(BaseModel):
-    table_name: Optional[str]
-    table_subject: Optional[str]
+    table_name: Optional[str] = None
+    table_subject: Optional[str] = None
 
 class TableExportData(BaseModel):
     start_date: str
@@ -506,93 +563,169 @@ class TableExportData(BaseModel):
     bcc: List[str]
     message: str
     table_name: str
-    filter_type: Optional[str]
+    filter_type: Optional[str] = None
     filter_data: Optional[list]
 
 class grnupdateStatusData(BaseModel):
-    user_name: Optional[str]
-    status: Optional[str]
-    do_no: Optional[str]
-    comment: Optional[str]
-    level_name: Optional[str]
-    level_no: Optional[str]
-    invoice_no: Optional[str]
+    user_name: Optional[str] = None
+    status: Optional[str] = None
+    do_no: Optional[str] = None
+    comment: Optional[str] = None
+    level_name: Optional[str] = None
+    level_no: Optional[str] = None
+    invoice_no: Optional[str] = None
     mode: Optional[str] = "road"
     # edited_by: Optional[str]
 
 class cmplInput(BaseModel):
-    tno: Optional[int]
-    companycode: Optional[str]
-    financialyearcode: Optional[str]
-    locationcode: Optional[str]
-    lrno: Optional[str]
-    lrdate: Optional[str]
-    partycode: Optional[str]
-    source_location_tno : Optional[str]
-    consignor_code : Optional[str]
-    destination_location_tno : Optional[str]
-    consigneecode : Optional[str]
-    vehicle_no : Optional[str]
-    freightamount : Optional[int]
-    item_code : Optional[str]
-    nos : Optional[int]
-    quantity1 : Optional[int] 
-    quantity2 : Optional[int]
-    invoice_no : Optional[str]
-    invoice_date : Optional[str]
-    consignor_name : Optional[str]
-    consignor_address : Optional[str]
-    consignor_citycode : Optional[str]
-    consignor_statecode : Optional[str]
-    consignor_phoneno : Optional[str]
-    consignee_name : Optional[str]
-    consignee_address : Optional[str]
-    consignee_citycode : Optional[str]
-    consignee_statecode : Optional[str]
-    consignee_phoneno : Optional[str]
-    invoice_amount : Optional[int]
-    challon_no : Optional[str]
-    challan_date : Optional[str]
-    driver_name : Optional[str]
-    driver_licenseno : Optional[str]
-    eway_billno : Optional[str]
-    eway_billdate : Optional[str]
-    balance_qty : Optional[int]
-    do_qty : Optional[int]
-    delivery_order_tno : Optional[int]
+    tno: Optional[int] = None
+    companycode: Optional[str] = None
+    financialyearcode: Optional[str] = None
+    locationcode: Optional[str] = None
+    lrno: Optional[str] = None
+    lrdate: Optional[str] = None
+    partycode: Optional[str] = None
+    source_location_tno : Optional[str] = None
+    consignor_code : Optional[str] = None
+    destination_location_tno : Optional[str] = None
+    consigneecode : Optional[str] = None
+    vehicle_no : Optional[str] = None
+    freightamount : Optional[int] = None
+    item_code : Optional[str] = None
+    nos : Optional[int] = None
+    quantity1 : Optional[int] = None
+    quantity2 : Optional[int] = None
+    invoice_no : Optional[str] = None
+    invoice_date : Optional[str] = None
+    consignor_name : Optional[str] = None
+    consignor_address : Optional[str] = None
+    consignor_citycode : Optional[str] = None
+    consignor_statecode : Optional[str] = None
+    consignor_phoneno : Optional[str] = None
+    consignee_name : Optional[str] = None
+    consignee_address : Optional[str] = None
+    consignee_citycode : Optional[str] = None
+    consignee_statecode : Optional[str] = None
+    consignee_phoneno : Optional[str] = None
+    invoice_amount : Optional[int] = None
+    challon_no : Optional[str] = None
+    challan_date : Optional[str] = None
+    driver_name : Optional[str] = None
+    driver_licenseno : Optional[str] = None
+    eway_billno : Optional[str] = None
+    eway_billdate : Optional[str] = None
+    balance_qty : Optional[int] = None
+    do_qty : Optional[int] = None
+    delivery_order_tno : Optional[int] = None
 
 
 class railGrnPost(BaseModel):
-    rr_no: Optional[str] #do_no
-    rr_qty: Optional[str] #do_qty
-    mine: Optional[str] #source
-    grade: Optional[str]
-    invoice_date: Optional[str]
-    invoice_no: Optional[str]
-    sale_date: Optional[str]
-    avery_placement_date: Optional[str] #dispatch_date as per road
+    rr_no: Optional[str] = None #do_no
+    rr_qty: Optional[str] = None #do_qty
+    mine: Optional[str] = None #source
+    grade: Optional[str] = None
+    invoice_date: Optional[str] = None
+    invoice_no: Optional[str] = None
+    sale_date: Optional[str] = None
+    avery_placement_date: Optional[str] = None #dispatch_date as per road
     new_data: Optional[List[dict]] #avery_data
     # total_gwel_net: Optional[float] # for form15 value under grn 
-    sizing_charges: Optional[float]
-    evac_facility_charge: Optional[float]
-    royality_charges: Optional[float]
-    nmet_charges: Optional[float]
-    dmf: Optional[float]
-    adho_sanrachna_vikas: Optional[float]
-    pariyavaran_upkar: Optional[float]
-    assessable_value: Optional[float]
-    igst: Optional[float]
-    gst_comp_cess: Optional[float]
-    gross_bill_value: Optional[float]
-    less_underloading_charges: Optional[float]
-    net_value: Optional[float]
-    total_amount: Optional[float]
-    changed_by: Optional[str]
-    source_type: Optional[str]
+    sizing_charges: Optional[float] = None
+    evac_facility_charge: Optional[float] = None
+    royality_charges: Optional[float] = None
+    nmet_charges: Optional[float] = None
+    dmf: Optional[float] = None
+    adho_sanrachna_vikas: Optional[float] = None
+    pariyavaran_upkar: Optional[float] = None
+    assessable_value: Optional[float] = None
+    igst: Optional[float] = None
+    gst_comp_cess: Optional[float] = None
+    gross_bill_value: Optional[float] = None
+    less_underloading_charges: Optional[float] = None
+    net_value: Optional[float] = None
+    total_amount: Optional[float] = None
+    changed_by: Optional[str] = None
+    source_type: Optional[str] = None
+    posting_date: Optional[str] = None
 
 
 class aopStatic(BaseModel):
-    percentage: Optional[str]
-    gcv_crushing: Optional[str]
-    qty_saving: Optional[str]
-    month: Optional[str]
+    percentage: Optional[str] = None
+    gcv_crushing: Optional[str] = None
+    qty_saving: Optional[str] = None
+    month: Optional[str] = None
+
+
+class reEditGrnData(BaseModel):
+    do_no: Optional[str] = None
+    invoice_no: Optional[str] = None
+    mode: Optional[str] = None
+
+class updateGrnData(BaseModel):
+    do_no: Optional[str] = None
+    invoice_date: Optional[str] = None
+    invoice_no: Optional[str] = None
+    sale_date: Optional[str] = None
+    grade: Optional[str] = None
+    dispatch_date: Optional[str] = None
+    mine: Optional[str] = None
+    do_qty: Optional[str] = None
+    new_data: Optional[List[dict]]
+    original_data: Optional[List[dict]]
+    changed_by: Optional[str] = None
+    posting_date: Optional[str] = None
+
+class updateGrnDataRail(BaseModel):
+    rr_no: Optional[str] = None
+    invoice_date: Optional[str] = None
+    invoice_no: Optional[str] = None
+    sale_date: Optional[str] = None
+    grade: Optional[str] = None
+    dispatch_date: Optional[str] = None
+    mine: Optional[str] = None
+    rr_qty: Optional[str] = None
+    new_data: Optional[List[dict]]
+    avery_placement_date: Optional[str] = None
+    changed_by: Optional[str] = None
+    posting_date: Optional[str] = None
+
+class rakequoataAnnexure(BaseModel):
+    month: Optional[str] = None
+    year: Optional[str] = None
+    coal_field: Optional[str] = None
+    rake_alloted: Optional[str] = None
+    validity: Optional[str] = None
+    source_type: Optional[str] = None
+
+class sapRecordsCheck(BaseModel):
+    do_no: Optional[List[str]] = None
+
+
+class weightBridgeReport(BaseModel):
+    record_id: Optional[str] = None
+    delivery_challan_number: Optional[str] = None
+    arv_cum_do_number: Optional[str] = None
+    mine: Optional[str] = None
+    vehicle_number: Optional[str] = None
+    po_no: Optional[str] = None
+    gross_qty: Optional[str] = None
+    tare_qty: Optional[str] = None
+    net_qty: Optional[str] = None
+    actual_gross_qty: Optional[str] = None
+    actual_tare_qty: Optional[str] = None
+    actual_tare_qty: Optional[str] = None
+    actual_net_qty: Optional[str] = None
+
+
+class rcrRoadUpdate(BaseModel):
+    truck_no: Optional[str] = None
+    do_no: Optional[str] = None
+    mine_name: Optional[str] = None
+    weightment_serial_no: Optional[str] = None
+    gross_weight: Optional[str] = None
+    tare_weight: Optional[str] = None
+    net_weight: Optional[str] = None
+    # do_date: Optional[str] = None
+    grade: Optional[str] = None
+    gross_date_time: Optional[str] = None
+    tare_date_time: Optional[str] = None

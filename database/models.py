@@ -665,6 +665,7 @@ class Gmrdata(Document):
             tat = ", ".join(components)
 
         return {"record_id":self.record_id,
+                "_id": str(self.id),
                 "Sr.No.":self.ID,
                 "Mines_Name":self.mine,
                 "PO_No":self.po_no,
@@ -715,6 +716,111 @@ class Gmrdata(Document):
                 "start_date": self.start_date,
                 "end_date": self.end_date,
                 "do_date": self.do_date,
+                "po_amount": self.po_amount,
+                "slno": self.slno,
+                "grn_status": self.grn_status,
+                "Line_Item" : self.line_item if self.line_item else None,
+
+                "GWEL_Gross_Time" : datetime.datetime.fromisoformat(
+                                    self.GWEL_Gross_Time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.GWEL_Gross_Time else None,
+
+                "GWEL_Tare_Time" : datetime.datetime.fromisoformat(
+                                    self.GWEL_Tare_Time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.GWEL_Tare_Time else None,
+
+                "Scanned_Time" : datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+
+                "mine_date" : datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+
+                "TAT_difference": tat,
+                }
+
+    def newpayload(self):
+
+        Loss = None
+        transit_loss=None
+        tat=None
+
+        if self.net_qty is not None and self.actual_net_qty is not None:
+            Loss = float(self.actual_net_qty) - float(self.net_qty)
+            transit_loss = round(Loss,5)
+            
+        if self.vehicle_in_time is not None and self.GWEL_Tare_Time is not None:
+            diff = self.GWEL_Tare_Time - self.vehicle_in_time
+            days = diff.days
+            seconds = diff.seconds
+            hours = seconds // 3600
+            minutes = (seconds % 3600) // 60
+            seconds = seconds % 60
+            components = []
+            if days > 0:
+                components.append(f"{days} days")
+            if hours > 0:
+                components.append(f"{hours} hours")
+            if minutes > 0:
+                components.append(f"{minutes} minutes")
+            if seconds > 0:
+                components.append(f"{seconds} seconds")
+            
+            tat = ", ".join(components)
+
+        return {"record_id":self.record_id,
+                "_id": str(self.id),
+                "Sr.No.":self.ID,
+                "Mines_Name":self.mine,
+                "PO_No":self.po_no,
+                "PO_Date":self.po_date,
+                "DO_Qty":self.po_qty, 
+                "Delivery_Challan_No":self.delivery_challan_number,
+                "DO_No":self.arv_cum_do_number,
+                "Grade":self.grade,
+                "Type_of_consumer":self.type_consumer,
+                "DC_Date":self.delivery_challan_date,
+                "vehicle_number":self.vehicle_number,
+                "Vehicle_Chassis_No":self.vehicle_chassis_number,
+                "Fitness_Expiry":self.certificate_expiry,
+                "Total_net_amount":self.total_net_amount,
+                # "In gate": self.camera_name if self.camera_name else None,
+                "Weightment_Date" : self.weightment_date,
+                "Weightment_Time" : self.weightment_time,
+                # "Out gate": self.out_camera_name if self.out_camera_name else None,
+                "Challan_Gross_Wt(MT)" : self.gross_qty,
+                "Challan_Tare_Wt(MT)" : self.tare_qty,
+                "Challan_Net_Wt(MT)" : self.net_qty,
+                "GWEL_Gross_Wt(MT)" : self.actual_gross_qty,
+                "GWEL_Tare_Wt(MT)" : self.actual_tare_qty,
+                "GWEL_Net_Wt(MT)" : self.actual_net_qty,
+                # "Wastage" : self.wastage,
+                "Driver_Name" : self.driver_name,
+                "Gate_Pass_No" : self .gate_pass_no,
+                "Transporter_LR_No": self.transporter_lr_no,
+                "Transporter_LR_Date": self.transporter_lr_date,
+                "Eway_bill_No": self.e_way_bill_no,
+                # "Gate_verified_time" : datetime.datetime.fromisoformat(
+                #                     self.gate_verified_time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                #                     ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.gate_verified_time else None,
+
+                "Vehicle_in_time" : datetime.datetime.fromisoformat(
+                                    self.vehicle_in_time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.vehicle_in_time else None,
+
+                "Vehicle_out_time" : datetime.datetime.fromisoformat(
+                                    self.vehicle_out_time.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.vehicle_out_time else None,
+                
+                "Challan_image" : self.challan_file if self.challan_file else None,
+                "Fitness_image": self.fitness_file if self.fitness_file else None,
+                "Face_image": self.fr_file if self.fr_file else None,
+                "Transit_Loss": transit_loss if transit_loss else 0,
+                "LOT":self.lot,
+                "start_date": self.start_date,
+                "end_date": self.end_date,
+                # "do_date": self.do_date,
                 "po_amount": self.po_amount,
                 "slno": self.slno,
                 "grn_status": self.grn_status,
@@ -1058,6 +1164,7 @@ class SapRecords(Document):
     valuation_type = StringField(null=True)
     po_open_quantity = StringField(null=True)
     uom = StringField(null=True)
+    po_date = StringField(null=True)
 
     #particulars start 
     basic_price = FloatField(null=True)
@@ -1198,6 +1305,8 @@ class SapRecordsRcrRoad(Document):
     do_date = StringField(null=True)
     consumer_type = StringField(null=True)
     po_amount = StringField(null=True)
+    po_date = StringField(null=True)
+
     # particulars start
     basic_charges = FloatField(null=True)
     sizing_charges = FloatField(null=True)
@@ -1676,6 +1785,11 @@ class RailData(Document):
             "siding": self.siding,
             "mine": self.mine,
             "grade": self.grade,
+            "GWEL_received_wagons": self.GWEL_received_wagons,
+            "GWEL_pending_wagons": self.GWEL_pending_wagons,
+            "GWEL_Total_gwel_gross": self.Total_gwel_gross,
+            "GWEL_Total_gwel_tare": self.Total_gwel_tare,
+            "GWEL_Total_gwel_net": self.Total_gwel_net,
             "po_amount": self.po_amount,
             "rake_no": self.rake_no,
             "created_at": datetime.datetime.fromisoformat(
@@ -1773,6 +1887,9 @@ class RcrData(Document):
             "total_rly_ol_wt": self.total_rly_ol_wt,
             "total_secl_chargable_wt": self.total_secl_chargable_wt,
             "total_rly_chargable_wt": self.total_rly_chargable_wt,
+            "total_gwel_gross": self.Total_gwel_gross,
+            "total_gwel_tare": self.Total_gwel_tare,
+            "total_gwel_net": self.Total_gwel_net,
             "freight": self.freight,
             "gst": self.gst,
             "pola": self.pola,
@@ -1809,6 +1926,8 @@ class RcrData(Document):
             "source": self.source,
             "placement_date": self.placement_date,
             "completion_date": self.completion_date,
+            "avery_placement_date": self.avery_placement_date,
+            "avery_completion_date": self.avery_completion_date,
             "drawn_date": self.drawn_date,
             "total_ul_wt": self.total_ul_wt,
             "boxes_supplied": self.boxes_supplied,
@@ -2287,6 +2406,7 @@ class sapRecordsRCR(Document):
     line_item = StringField(null=True)
     rr_qty = StringField(null=True)
     po_amount = StringField(null=True)
+    po_date = StringField(null=True)
     
     secl_mode_transport = StringField(null=True)
     area = StringField(null=True)
@@ -2357,7 +2477,7 @@ class sapRecordsRail(Document):
     invoice_date = DateField(null=True)
     invoice_no = StringField(null=True)
     sale_date = DateField(null=True)
-
+    po_date = StringField(null=True)
     #particulars start
 
     sizing_charges = FloatField(null=True)
@@ -2388,6 +2508,75 @@ class sapRecordsRail(Document):
     po_open_quantity = StringField(null=True)
     uom = StringField(null=True)
     # sap data end
+
+
+    # wclrailinvoice start
+    area_code = StringField(null=True)
+    area_description = StringField(null=True)
+    contract_reference = IntField(null=True)
+    contract_type = StringField(null=True)
+    sales_order = IntField(null=True)
+    # sales_order_date added on sale_date
+    delivery_number = IntField(null=True)
+    mode_of_dispatch = StringField(null=True)
+    net_weight = FloatField(null=True)
+    dnote_no = IntField(null=True)
+    dnote_date = DateField(null=True)
+    loading_date = DateField(null=True)
+    rake_sq_no = IntField(null=True)
+    sanction_no = StringField(null=True)
+    # bill start
+    del_no = IntField(null=True)
+    plant = StringField(null=True)
+    # material = IntField(null=True) # added in material code
+    gcv = StringField(null=True)
+    hsn_code = IntField(null=True)
+    stc_charges = FloatField(null=True)
+    basic_rate = FloatField(null=True)
+    billed_quantity = FloatField(null=True)
+    # bill end
+
+    # particulars start
+    basic_price_rate = FloatField(null=True)
+    basic_price_amount = FloatField(null=True)
+    sizing_charges_rate = FloatField(null=True)
+    sizing_charges_amount = FloatField(null=True)
+    stc_charges_rate = FloatField(null=True)
+    stc_charges_amount = FloatField(null=True)
+    evac_facility_charge_rate = FloatField(null=True)
+    evac_facility_charge_amount = FloatField(null=True)
+    gst_comp_cess_rate = FloatField(null=True)
+    gst_comp_cess_amount = FloatField(null=True)
+    gross_bill_value_rate = FloatField(null=True)
+    gross_bill_value_amount = FloatField(null=True)
+    less_underloading_charges_rate = FloatField(null=True)
+    less_underloading_charges_amount = FloatField(null=True)
+    net_value_rate = FloatField(null=True)
+    net_value_amount = FloatField(null=True)
+    royalty_rate = FloatField(null=True)
+    royalty_amount = FloatField(null=True)
+    nmet_rate = FloatField(null=True)
+    nmet_amount = FloatField(null=True)
+    dmf_rate  = FloatField(null=True)
+    dmf_amount = FloatField(null=True)
+    cgst_rate = FloatField(null=True)
+    cgst_amount = FloatField(null=True)
+    sgst_rate = FloatField(null=True)
+    sgst_amount = FloatField(null=True)
+    # particulars end
+
+    #total start
+
+    total_tare_wt = FloatField(null=True)
+    total_gross_wt = FloatField(null=True)
+    total_net_wt = FloatField(null=True)
+    total_ul_wt = FloatField(null=True) #underload
+    total_ol_wt = FloatField(null=True) #overload
+
+
+    #total end
+
+    # wclrailinvoice end
 
     created_at = DateTimeField(default=datetime.datetime.utcnow)
 
@@ -2622,7 +2811,8 @@ class BunkerQualitySummary(Document):
 
     def simplepayload(self):
         if self.date.month < 4:  # Months: Jan(1), Feb(2), Mar(3)
-            financial_year = f"FY {self.date.year - 1}-{str(self.date.year+1)[2:]}"
+            # financial_year = f"FY {self.date.year - 1}-{str(self.date.year+1)[2:]}"
+            financial_year = f"FY {self.date.year - 1}-{str(self.date.year)[2:]}"
         else:  # Months: Apr(4), May(5), ..., Dec(12)
             financial_year = f"FY {self.date.year}-{str(self.date.year+1)[2:]}"
         return {
@@ -2631,12 +2821,12 @@ class BunkerQualitySummary(Document):
             "month": self.date.strftime("%Y-%m-%d"),
             # "cum_total_qty": self.cum_total_qty,
             # "cum_weighted_domestic_gcv": self.cum_weighted_domestic_gcv,
-            "cb_domestic_qty_mtd": round(self.domestic_qty, 2),
-            "cb_imported_qty_mtd": round(self.imported_qty, 2), 
+            "cb_domestic_qty_mtd": round(self.domestic_qty, 2) if self.domestic_qty else 0,
+            "cb_imported_qty_mtd": round(self.imported_qty, 2) if self.imported_qty else 0, 
             # "total_qty": self.total_qty,
             # "weighted_domestic_gcv": self.weighted_domestic_gcv,
-            "cb_weighted_gcv_ytd": round(self.weighted_gcv, 2),
-            "cb_weighted_gcv_mtd": round(self.wt_gcv, 2), 
+            "cb_weighted_gcv_ytd": round(self.weighted_gcv, 2) if self.weighted_gcv else 0,
+            "cb_weighted_gcv_mtd": round(self.wt_gcv, 2) if self.wt_gcv else 0, 
             "cr_domestic_gcv_mtd": self.cr_domestic_gcv_mtd if self.cr_domestic_gcv_mtd else 0,
             "cr_weighted_gcv_ytd": self.cr_weighted_gcv_ytd if self.cr_weighted_gcv_ytd else 0,
             "cr_domestic_qty_mtd": self.cr_domestic_qty_mtd if self.cr_domestic_qty_mtd else 0,
@@ -2751,11 +2941,16 @@ class RecieptCoalQualityAnalysis(Document):
     meta = {"db_alias": "gmrDB-alias", "collection": "RecieptCoalQualityAnalysis"}
 
     def payload(self):
+        if self.mode == "Road":
+            do_rr_no = "do_no"
+        elif self.mode == "Rail":
+            do_rr_no ="rr_no"
         return {
+            "id": str(self.id),
             "plant_certificate_id": self.plant_certificate_id,
-            "plant_certificate_id": self.plant_sample_id,
+            "plant_sample_id": self.plant_sample_id,
             "sample_no": self.sample_no,
-            "do_no": self.sample_id,
+            do_rr_no: self.sample_id,
             "GWEL_sample_date": self.plant_sample_date,
             "GWEL_preparation_date": self.plant_preperation_date,
             "GWEL_analysis_date": self.plant_analysis_date,
@@ -2774,7 +2969,8 @@ class RecieptCoalQualityAnalysis(Document):
             "GWEL_ADB_IM": self.plant_adb_im,
             "GWEL_ADB_VM": self.plant_adb_vm,
             "GWEL_ADB_ASH": self.plant_adb_ash,
-            "GWEL_ADB_FC": self.plant_adb_fc,
+            # "GWEL_ADB_FC": self.plant_adb_fc,
+            "GWEL_ADB_FC": round(100-(self.plant_adb_im+self.plant_adb_ash+self.plant_adb_vm), 2),
             "GWEL_ADB_GCV": self.plant_adb_gcv,
             "GWEL_ULR_ID": self.plant_ulr_id,
             "GWEL_GCV_GRADE": self.plant_gcv_grade,
@@ -2886,8 +3082,8 @@ class SapRecordsFinal(Document):
 
 
 class roadjourneyconsumertype(Document):
-    # consumer_type = StringField(null=True)
     consumer_type = ListField()
+    mode = StringField(null=True)
     created_at = DateTimeField(default=datetime.datetime.utcnow())
 
     meta = {"db_alias": "gmrDB-alias", "collection": "roadjourneyconsumertype"}
@@ -2896,6 +3092,7 @@ class roadjourneyconsumertype(Document):
         return {
             "id": str(self.id),
             "consumer_type": self.consumer_type,
+            "mode": self.mode,
             "created_at": self.created_at,
         }
     
@@ -3093,6 +3290,7 @@ class Grn(Document):
     source_type = StringField(null=True) #rail
     type_consumer = StringField(null=True) #road
     rejected = BooleanField(default = False)
+    posting_date = DateField()
     created_at = DateTimeField(default=datetime.datetime.utcnow())
 
     #rail data start
@@ -3126,6 +3324,9 @@ class Grn(Document):
     # total_gwel_net=FloatField(null=True)  #use for form15
     #rail data end
 
+    grn_completed = BooleanField(default = False)
+    extraction = StringField(null=True)
+
     meta = {"db_alias": "gmrDB-alias", "collection": "Grn"}
 
     def payload(self):
@@ -3147,6 +3348,7 @@ class Grn(Document):
             "type_consumer": self.type_consumer, #road
             "net_value": self.net_value, #rail
             "total_amount": self.total_amount, #road
+            "grn_type": self.extraction,
             # "basic_price": self.basic_price,
             # "sizing_charges": self.sizing_charges,
             # "stc_charges": self.stc_charges,
@@ -3160,7 +3362,9 @@ class Grn(Document):
             # "gross_bill_value": self.gross_bill_value,
             # "net_value": self.net_value,
             # "total_amount": self.total_amount,
-            "created_at": self.created_at,
+            "created_at": datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
         }
     
     def frpayload(self):
@@ -3178,8 +3382,73 @@ class Grn(Document):
             "mine": self.mine,    
             "do_qty": self.do_qty,
             "new_data": self.new_data,
-            "created_at": self.created_at,
+            "grn_completed": self.grn_completed,
+            "grn_type": self.extraction,
+            "posting_date": self.posting_date,
+            "created_at": datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
         }
+
+    def finalPayload(self):
+        if self.mode == "road":
+            do_rr_no = "do_no"
+        elif self.mode == "rail":
+            do_rr_no ="rr_no"
+        return {
+            do_rr_no: self.do_no,
+            "invoice_date": self.invoice_date,
+            "invoice_no": self.invoice_no,
+            "sale_date": self.sale_date,
+            "grade": self.grade,
+            "dispatch_date": self.dispatch_date,
+            "mine": self.mine,    
+            "do_qty": self.do_qty,
+            "original_data": self.original_data,
+            "new_data": self.new_data,
+            "approvals": self.approvals,
+            "changed_by": self.changed_by,
+            "mode": self.mode,
+            "source_type": self.source_type, #rail
+            "type_consumer": self.type_consumer, #road
+            "net_value": self.net_value, #rail
+            "total_amount": self.total_amount, #road
+            "basic_price": self.basic_price,
+            "sizing_charges": self.sizing_charges,
+            "stc_charges": self.stc_charges,
+            "evac_facility_charge": self.evac_facility_charge,
+            "royalty_charges": self.royalty_charges,
+            "nmet_charges": self.nmet_charges,
+            "imf": self.imf,
+            "cgst": self.cgst,
+            "sgst": self.sgst,
+            "gst_comp_cess": self.gst_comp_cess,
+            "gross_bill_value": self.gross_bill_value,
+            "net_value": self.net_value,
+            "total_amount": self.total_amount,
+            "created_at": datetime.datetime.fromisoformat(
+                    self.created_at.strftime("%Y-%m-%d %H:%M:%S.%fZ")[:-1] + "+00:00"
+                    ).astimezone(tz=to_zone).strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+            "mode": self.mode,
+            "source_type": self.source_type, #rail
+            "type_consumer": self.type_consumer, #road
+            "rejected": self.rejected,
+            "sizing_charges_amount": self.sizing_charges_amount,
+            "evac_facility_charge_amount": self.evac_facility_charge_amount,
+            "royalty_charges_amount": self.royalty_charges_amount,
+            "nmet_amount": self.nmet_amount,
+            "dmf_amount": self.dmf_amount,
+            "adho_sanrachna_vikas_amount": self.adho_sanrachna_vikas_amount,
+            "pariyavaran_upkar_amount": self.pariyavaran_upkar_amount,
+            "assessable_value_amount": self.assessable_value_amount,
+            "igst_amount": self.igst_amount,
+            "gst_comp_cess_amount": self.gst_comp_cess_amount,
+            "gross_bill_value_amount": self.gross_bill_value_amount,
+            "less_underloading_charges_amount": self.less_underloading_charges_amount,
+            "net_value_amount": self.net_value_amount,
+            "grn_type": self.extraction,
+            "posting_date": self.posting_date,
+        } 
     
 
 class minesamplequalityanalysis(Document):
@@ -3189,7 +3458,7 @@ class minesamplequalityanalysis(Document):
     sample_collection_date = DateTimeField(null=True)
     sample_preparation_date = DateTimeField(null=True)
     sample_received_date = DateTimeField(null=True)
-    sample_analysis_date = DateTimeField()
+    sample_analysis_date = DateTimeField(null=True)
     rr_qty = FloatField(null=True)
     rr_no = IntField(null=True)
     rr_date = StringField(null=True)
@@ -3206,6 +3475,9 @@ class minesamplequalityanalysis(Document):
     plant_arb_ash = FloatField(null=True)
     plant_arb_fc = FloatField(null=True)
     plant_arb_gcv = FloatField(null=True)
+    # added after igi api integration on 20012025 at 05:11pm
+    plant_arb_im = FloatField(null=True)
+
     plant_adb_im = FloatField(null=True)
     plant_adb_vm = FloatField(null=True)
     plant_adb_ash = FloatField(null=True)
@@ -3224,6 +3496,11 @@ class minesamplequalityanalysis(Document):
     mine_thirdparty_arb_gcv = FloatField(null=True)
     # mine_thirdparty_gcv_grade = StringField(null=True)
     analysed_grade = StringField(null=True)
+    quality_sample_id = StringField(null=True)
+    igi_lab_code = StringField(null=True)
+    lab_relative_humidity = StringField(null=True)
+    lab_temperature = StringField(null=True)
+    
     created_at = DateTimeField(default=datetime.datetime.utcnow())
 
     meta = {"db_alias": "gmrDB-alias", "collection": "minesamplequalityanalysis"}
@@ -3253,6 +3530,9 @@ class minesamplequalityanalysis(Document):
             "plant_arb_ash": self.plant_arb_ash,
             "plant_arb_fc": self.plant_arb_fc,
             "plant_arb_gcv": self.plant_arb_gcv,
+            
+            "plant_arb_im": self.plant_arb_im,
+
             "plant_adb_im": self.plant_adb_im,
             "plant_adb_vm": self.plant_adb_vm,
             "plant_adb_ash": self.plant_adb_ash,
@@ -3270,6 +3550,7 @@ class minesamplequalityanalysis(Document):
             "mine_thirdparty_arb_ash": self.mine_thirdparty_arb_ash,
             "mine_thirdparty_arb_gcv": self.mine_thirdparty_arb_gcv,
             # "mine_thirdparty_gcv_grade": self.mine_thirdparty_gcv_grade,
+            "quality_sample_id": self.quality_sample_id,
             "analysed_grade": self.analysed_grade,
             "created_at": self.created_at,
         }
@@ -3417,3 +3698,20 @@ class Aop(Document):
             "gcv_crushing": self.gcv_crushing,
             "qty_saving": self.qty_saving,
         }
+
+
+class AopData(Document):
+   type = StringField(null=True)
+   reports = ListField(DictField())
+   totals = DictField()
+   created_at = DateTimeField(default=datetime.datetime.utcnow())
+
+   meta = {"db_alias": "gmrDB-alias", "collection": "AopData"}
+
+   def payload(self):
+       return {
+           "type": self.type,
+           "reports": self.reports,
+           "totals": self.totals,
+           "created_at": self.created_at,
+       } 

@@ -551,27 +551,44 @@ def logistic_report_table(data, consumerList):
 
         per_data = ""
         per_data += "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
+        per_data += (
+                "<thead style='background-color: #fabf8f; color: #000000; height: 20px'>"
+            )
+        per_data += "<tr style='height: 30px;'>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Month</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Mine Name</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO No</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Grade</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO Qty</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Challan LR / Qty</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>C.C. LR / Qty</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Qty</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>% of Supply</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Days</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Asking Rate</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Do Start date</th>"
+        per_data += "<th class='logic_table_th' style='font-size: 12px;'>Do End date</th></tr></thead><tbody style='border: 1px solid gray;'>"
         for source_type, entries in sorted_data.items():
             # per_data += f"<span style='font-size: 10px; font-weight: 600'>{source_type}</span>"
-            per_data += f"<tr><td class='logic_table_th' style='font-size: 15px;' colspan='12'><span style='font-size: 10px; font-weight: 600'>{source_type}</span></td></tr>"
+            per_data += f"<tr><td class='logic_table_th' style='font-size: 18px;' colspan='12'><span style='font-size: 18px; font-weight: 600'>{source_type}</span></td></tr>"
             # per_data += "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
-            per_data += (
-                "<thead style='background-color: #3a62ff; color: #ffffff; height: 20px'>"
-            )
-            per_data += "<tr style='height: 30px;'>"
-            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Month</th>"
-            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Mine Name</th>"
-            per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO No</th>"
-            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Grade</th>"
-            per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO Qty</th>"
-            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Challan LR / Qty</th>"
-            per_data += "<th class='logic_table_th' style='font-size: 12px;'>C.C. LR / Qty</th>"
-            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Qty</th>"
-            per_data += "<th class='logic_table_th' style='font-size: 12px;'>% of Supply</th>"
-            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Days</th>"
-            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Asking Rate</th>"
-            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Do Start date</th>"
-            per_data += "<th class='logic_table_th' style='font-size: 12px;'>Do End date</th></tr></thead><tbody style='border: 1px solid gray;'>"
+            # per_data += (
+            #     "<thead style='background-color: #fabf8f; color: #000000; height: 20px'>"
+            # )
+            # per_data += "<tr style='height: 30px;'>"
+            # per_data += "<th class='logic_table_th' style='font-size: 12px;'>Month</th>"
+            # per_data += "<th class='logic_table_th' style='font-size: 12px;'>Mine Name</th>"
+            # per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO No</th>"
+            # per_data += "<th class='logic_table_th' style='font-size: 12px;'>Grade</th>"
+            # per_data += "<th class='logic_table_th' style='font-size: 12px;'>DO Qty</th>"
+            # per_data += "<th class='logic_table_th' style='font-size: 12px;'>Challan LR / Qty</th>"
+            # per_data += "<th class='logic_table_th' style='font-size: 12px;'>C.C. LR / Qty</th>"
+            # per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Qty</th>"
+            # per_data += "<th class='logic_table_th' style='font-size: 12px;'>% of Supply</th>"
+            # per_data += "<th class='logic_table_th' style='font-size: 12px;'>Balance Days</th>"
+            # per_data += "<th class='logic_table_th' style='font-size: 12px;'>Asking Rate</th>"
+            # per_data += "<th class='logic_table_th' style='font-size: 12px;'>Do Start date</th>"
+            # per_data += "<th class='logic_table_th' style='font-size: 12px;'>Do End date</th></tr></thead><tbody style='border: 1px solid gray;'>"
             total_do_qty = 0
             total_challan_lr_qty = 0
             total_cc_lr_qty = 0
@@ -606,7 +623,7 @@ def logistic_report_table(data, consumerList):
                 else:    
                     per_data += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'>0</span></td>"
                 per_data += "</tr>"
-            per_data += "<tr style='background-color: #3a62ff; color: #ffffff;'>"
+            per_data += "<tr style='background-color: #b8cce4; color: #000000;'>"
             per_data += "<td class='logic_table_td' style='text-align: center; font-size: 14px;' colspan='4'><strong>Total</strong></td>"
             per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(total_do_qty, 2)}</strong></td>"
             per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(total_challan_lr_qty, 2)}</strong></td>"
@@ -622,14 +639,14 @@ def logistic_report_table(data, consumerList):
             final_total_challan_lr_qty += total_challan_lr_qty
             final_total_cc_lr_qty += total_cc_lr_qty
             final_total_balance_qty += total_balance_qty
-        per_data += "<tr style='background-color: #3a62ff; color: #ffffff;'>"
+        per_data += "<tr style='background-color: #b8cce4; color: #000000;'>"
         per_data += "<td class='logic_table_td' style='text-align: center; font-size: 14px;' colspan='4'><strong>Grand Total</strong></td>"
         per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(final_total_do_qty, 2)}</strong></td>"
-        per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 14px;'><strong>{round(final_total_challan_lr_qty, 2)}</strong></td>"
-        per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 14px;'><strong>{round(final_total_cc_lr_qty, 2)}</strong></td>"
-        per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 14px;'><strong>{round(final_total_balance_qty, 2)}</strong></td>"
-        per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 14px;'><strong>{round(final_total_cc_lr_qty/final_total_do_qty, 2)}%</strong></td>"
-        per_data += f"<td class='logic_table_td' style='text-align: center;font-size: 14px;' colspan='4'><strong></strong></td>"
+        per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(final_total_challan_lr_qty, 2)}</strong></td>"
+        per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(final_total_cc_lr_qty, 2)}</strong></td>"
+        per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(final_total_balance_qty, 2)}</strong></td>"
+        per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{round(final_total_cc_lr_qty/final_total_do_qty, 2)}%</strong></td>"
+        per_data += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;' colspan='4'><strong></strong></td>"
         per_data += "</tr>"
         per_data += "</tbody></table>"
 
@@ -752,12 +769,12 @@ def bar_graph_gcv_wise(rrNo_values, aopList, month_date):
                 line_x = [rrNo.index(aop['source_name']) for aop in aopList if aop['source_name'] in rrNo]
                 line_y = [int(aop['aop_target']) for aop in aopList if aop['source_name'] in rrNo]
 
-                # console_logger.debug(set(indexes)-set(line_x))
+                line_z = [aop['source_name'] for aop in aopList]
+
                 for _not_present_index in list(set(indexes)-set(line_x)):
                     line_x.append(_not_present_index)
                     line_y.append(0)
                 
-                # line_x, line_y, values =  bubbleSort(line_x, line_y, values)
                 sorted_indices = sorted(range(len(line_x)), key=lambda k: line_x[k])
                 line_x = [line_x[i] for i in sorted_indices]
                 line_y = [line_y[i] for i in sorted_indices]
@@ -864,58 +881,12 @@ def profit_loss_gmr_data(data):
 
 def profit_loss_final_data(yearly_final_data, yearly_rail_final_data):
     try:
-        # if yearly_final_data:
-
-        #     # Extract year and net quantity
-        #     year = list(yearly_final_data.keys())[0]
-        #     net_qty = list(yearly_final_data.values())[0]
-
-        #     # Create gain-loss bar graph
-        #     plt.figure(figsize=(6, 6))
-        #     # bars = plt.bar(['Road mode'], [net_qty], color='green' if net_qty >= 0 else 'red')
-        #     bars = plt.bar(['Road mode'], [net_qty], color='red')
-        #     # plt.title('Yearly Gain-Loss Bar Graph')
-        #     # plt.xlabel('Year')
-        #     # plt.ylabel('Net Quantity')
-        #     # Add text labels at the bottom of each bar
-        #     title_font = {'size':'18', 'color':'#000', 'weight':'bold', 'verticalalignment':'bottom'}
-        #     for bar in bars:
-        #         height = bar.get_height()
-        #         plt.text(bar.get_x() + bar.get_width() / 2.0, -abs(height), f"{height:.2f}", ha='center', va='bottom', **title_font)
-
-        #     plt.title('')
-        #     plt.grid(axis='y', linestyle='--', alpha=0.7)
-        #     plt.tight_layout()
-        #     plt.ylabel('Gain/Loss (MT)', fontsize=15)
-        #     pop_a = mpatches.Patch(color='red', label='Road Mode') 
-        #     lgd = plt.legend(handles=[pop_a], facecolor='white', framealpha=1, loc='upper center', bbox_to_anchor=(0.5, 1.10), fancybox=True, shadow=True, ncol=3)  
-        #     # plt.show()
-        #     file = "reports_img"
-        #     store_file = os.path.join(os.getcwd(),"static_server", "gmr_ai", file)
-        #     os.umask(0)
-        #     os.makedirs(store_file, exist_ok=True, mode=0o777)
-        #     image_total_file = f"yearly_loss_gain_road_mode_{random_string}.png"
-        #     plt.savefig(f"{store_file}/{image_total_file}", bbox_extra_artists=(lgd,), bbox_inches='tight')
-        #     image_total_file_name = f"{store_file}/{image_total_file}"
-        #     plt.close()
-
-        #     # Show plot
-        #     # plt.show()
-        #     encoded_bar_chart_profit_loss = encoded_data(image_total_file_name)
-        #     return encoded_bar_chart_profit_loss
-        # else:
-        #     return None
-        # console_logger.debug(yearly_final_data)
-        # console_logger.debug(yearly_rail_final_data)
         if yearly_final_data and yearly_rail_final_data:
             # Extract net quantities
             net_qty_road = list(yearly_final_data.values())[0]
             net_qty_rail = list(yearly_rail_final_data.values())[0]
 
             # Compute net transit Gain/Loss
-            # console_logger.debug(net_qty_road)
-            # console_logger.debug(net_qty_rail)
-
             if net_qty_road < net_qty_rail:
                 net_transit_gain_loss = net_qty_rail+net_qty_road
             else:
@@ -928,7 +899,7 @@ def profit_loss_final_data(yearly_final_data, yearly_rail_final_data):
             modes = ['Road mode', 'Rail mode', 'Net Gain/Loss']
             quantities = [net_qty_road, net_qty_rail, net_transit_gain_loss]
             # colors = ['red' if qty < 0 else 'green' for qty in quantities]
-            colors = ['#3a62ff']
+            colors = ['#3a62ff', '#ffb1c1', '#3a62ff'] # Colors for Road and Rail
 
             bars = plt.bar(modes, quantities, color=colors)
             
@@ -943,10 +914,11 @@ def profit_loss_final_data(yearly_final_data, yearly_rail_final_data):
             plt.gca().set_axisbelow(True)  # Ensure grid lines are drawn below the bars
             plt.tight_layout()
             plt.ylabel('Gain/Loss (MT)', fontsize=15)
-            road_patch = mpatches.Patch(color='#3a62ff', label='Road/Rail Mode')
+            road_patch = mpatches.Patch(color='#3a62ff', label='Road')
+            rail_patch = mpatches.Patch(color='#ffb1c1', label='Rail')
             # rail_patch = mpatches.Patch(color='green', label='Rail Mode' if net_qty_rail >= 0 else 'Loss')
-            rail_patch = mpatches.Patch(color='#3a62ff', label='Rail Mode' if net_qty_rail >= 0 else 'Loss')
-            lgd = plt.legend(handles=[road_patch, rail_patch], facecolor='white', framealpha=1, loc='upper center', 
+            net_gain_patch = mpatches.Patch(color='#3a62ff', label='Net Gain/Loss' if net_qty_rail >= 0 else 'Loss')
+            lgd = plt.legend(handles=[road_patch, rail_patch, net_gain_patch], facecolor='white', framealpha=1, loc='upper center', 
                                 bbox_to_anchor=(0.5, 1.10), fancybox=True, shadow=True, ncol=3)
             plt.show()
             file = "reports_img"
@@ -962,7 +934,6 @@ def profit_loss_final_data(yearly_final_data, yearly_rail_final_data):
             return encoded_bar_chart_profit_loss
         else:
             return None
-
     except Exception as e:
         console_logger.debug(e)
 
@@ -970,32 +941,56 @@ def profit_loss_final_data(yearly_final_data, yearly_rail_final_data):
 def transit_loss_gain_road_mode_month(total_monthly_final_net_qty):
     try:
         if total_monthly_final_net_qty:
-            # Extract months and net quantities
-            months = list(total_monthly_final_net_qty.keys())
-            net_qty = list(total_monthly_final_net_qty.values())
 
-            # Create gain-loss bar graph
-            plt.figure(figsize=(10, 6))
-            # bars = plt.bar(months, net_qty, color=['green' if x >= 0 else 'red' for x in net_qty])
-            bars = plt.bar(months, net_qty, color="#3a62ff")
-            plt.title('')
-            plt.xlabel('Months', fontsize=15)
-            plt.ylabel('Gain/Loss (MT)', fontsize=15)
-            plt.xticks(rotation=45)
-            # plt.grid(axis='y', linestyle='--', alpha=0.7)
-            plt.grid(color='gray', axis='y', linestyle=':', linewidth=0.5, zorder=0)
-            plt.gca().set_axisbelow(True)  # Ensure grid lines are drawn below the bars
+            labels = total_monthly_final_net_qty.get("data").get("labels")
+            datasets = total_monthly_final_net_qty.get("data").get("datasets")
+
+            x = np.arange(len(labels))  # Label locations
+            width = 0.4  # Bar width
+            colors = ['#3a62ff', '#ffb1c1'] # Colors for Road and Rail
+
+            fig, ax = plt.subplots(figsize=(12, 6))
+
+            for i, dataset in enumerate(datasets):
+                bars = ax.bar(x + i * width - width / 2, dataset['data'], width, label=dataset['label'], color=colors[i])
+                for bar in bars:
+                    height = bar.get_height()
+                    ax.text(bar.get_x() + bar.get_width()/2, height, f'{height:.2f}', ha='center', rotation=90, fontsize=10)
+
+            ax.set_xlabel('Months')
+            ax.set_ylabel('Values')
+            # ax.set_title('Road and Rail Data Over Time')
+            ax.set_xticks(x)
+            ax.set_xticklabels(labels, rotation=45)
+            ax.legend()
+            plt.gca().set_axisbelow(True)
             plt.tight_layout()
-            pop_a = mpatches.Patch(color="#3a62ff", label='Months') 
-            lgd = plt.legend(handles=[pop_a], facecolor='white', framealpha=1, loc='upper center', bbox_to_anchor=(0.5, 1.10), fancybox=True, shadow=True, ncol=3)  
-            title_font = {'size':'16', 'color':'#000', 'weight':'bold', 'verticalalignment':'bottom'}
-            for bar in bars:
-                height = bar.get_height()
-                # plt.text(bar.get_x() + bar.get_width() / 2.0, -abs(height), f"{height:.2f}", ha='center', va='bottom', **title_font)
-                plt.text(bar.get_x() + bar.get_width() / 2.0, height if height >= 0 else -abs(height), 
-                            f"{height:.2f}", ha='center', va='bottom' if height >= 0 else 'top', **title_font)
+            pop_a = mpatches.Patch(color="#3a62ff", label='Road') 
+            pop_b = mpatches.Patch(color="#ffb1c1", label='Rail') 
+            lgd = plt.legend(handles=[pop_a, pop_b], facecolor='white', framealpha=1, loc='upper right', bbox_to_anchor=(0.5, 1.10), fancybox=True, shadow=True, ncol=3)
+
+            # # Create gain-loss bar graph
+            # plt.figure(figsize=(10, 6))
+            # # bars = plt.bar(months, net_qty, color=['green' if x >= 0 else 'red' for x in net_qty])
+            # bars = plt.bar(months, net_qty, color="#3a62ff")
+            # plt.title('')
+            # plt.xlabel('Months', fontsize=15)
+            # plt.ylabel('Gain/Loss (MT)', fontsize=15)
+            # plt.xticks(rotation=45)
+            # # plt.grid(axis='y', linestyle='--', alpha=0.7)
+            # plt.grid(color='gray', axis='y', linestyle=':', linewidth=0.5, zorder=0)
+            # plt.gca().set_axisbelow(True)  # Ensure grid lines are drawn below the bars
+            # plt.tight_layout()
+            # pop_a = mpatches.Patch(color="#3a62ff", label='Months') 
+            # lgd = plt.legend(handles=[pop_a], facecolor='white', framealpha=1, loc='upper center', bbox_to_anchor=(0.5, 1.10), fancybox=True, shadow=True, ncol=3)  
+            # title_font = {'size':'12', 'color':'#000', 'weight':'bold', 'verticalalignment':'bottom'}
+            # for bar in bars:
+            #     height = bar.get_height()
+            #     # plt.text(bar.get_x() + bar.get_width() / 2.0, -abs(height), f"{height:.2f}", ha='center', va='bottom', **title_font)
+            #     plt.text(bar.get_x() + bar.get_width() / 2.0, height if height >= 0 else -abs(height), 
+            #                 # f"{height:.2f}", ha='center', va='bottom' if height >= 0 else 'top', **title_font)
+            #                 f"{height:.2f}", horizontalalignment='center', rotation=90 if height >= 0 else 'top', **title_font)
             # plt.show()
-            
             file = "reports_img"
             store_file = os.path.join(os.getcwd(),"static_server", "gmr_ai", file)
             os.umask(0)
@@ -1004,21 +999,24 @@ def transit_loss_gain_road_mode_month(total_monthly_final_net_qty):
             plt.savefig(f"{store_file}/{image_total_file}", bbox_extra_artists=(lgd,), bbox_inches='tight')
             image_total_file_name = f"{store_file}/{image_total_file}"
             plt.close()
-
             encoded_transit_loss_gain_road = encoded_data(image_total_file_name)
             return encoded_transit_loss_gain_road
         else:
             return None
 
     except Exception as e:
-        console_logger.debug(e)
+        console_logger.debug("----- Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
 
 
 def rake_quota_data(fetchRakeQuota):
     try:
-        # console_logger.debug(fetchRakeQuota)
         single_html = "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
-        single_html += "<thead style='background-color: #3a62ff; color: #ffffff; height: 20px'>"
+        single_html += "<thead style='background-color: #fabf8f; color: #000000; height: 20px'>"
         single_html += "<tr style='height: 30px;'>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Month</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Source Type</th>"
@@ -1067,7 +1065,7 @@ def rake_quota_data(fetchRakeQuota):
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('remarks')}</span></td>"
             single_html += "</tr>"
 
-        single_html += "<tr style='background-color: #3a62ff; color: #ffffff;'>"
+        single_html += "<tr style='background-color: #b8cce4; color: #000000;'>"
         single_html += "<td class='logic_table_td' style='text-align: center; font-size: 14px;' colspan='2'><strong>Total</strong></td>"
         # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rakes_previous_month_quota_received')}</strong></td>"
         # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRakeQuota.get('rake_total').get('sum_rake_planned_for_the_month')}</strong></td>"
@@ -1102,7 +1100,7 @@ def rcr_rake_quota_data(fetchRcrRakeQuota):
     try:
         # console_logger.debug(fetchRcrRakeQuota)
         single_html = "<table class='logistic_report_data' style='width: 100%; text-align: center; border-spacing: 0px; border: 1px solid lightgray;'>"
-        single_html += "<thead style='background-color: #3a62ff; color: #ffffff; height: 20px'>"
+        single_html += "<thead style='background-color: #fabf8f; color: #000000; height: 20px'>"
         single_html += "<tr style='height: 30px;'>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Month</th>"
         single_html += "<th class='logic_table_th' style='font-size: 12px;'>Source Type</th>"
@@ -1166,7 +1164,7 @@ def rcr_rake_quota_data(fetchRcrRakeQuota):
             single_html += f"<td class='logic_table_td' style='text-align: center;'><span style='font-size: 12px; font-weight: 600;'> {single_rake_quota.get('remarks')}</span></td>"
             single_html += "</tr>"
 
-        single_html += "<tr style='background-color: #3a62ff; color: #ffffff;'>"
+        single_html += "<tr style='background-color: #b8cce4; color: #000000;'>"
         single_html += "<td class='logic_table_td' style='text-align: center; font-size: 14px;' colspan='2'><strong>Total</strong></td>"
         # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_rakes_previous_month_quota_received')}</strong></td>"
         # single_html += f"<td class='logic_table_td' style='text-align: center; font-size: 14px;'><strong>{fetchRcrRakeQuota.get('rake_total').get('sum_rake_planned_for_the_month')}</strong></td>"
@@ -1295,7 +1293,6 @@ def wclGraphData(wclLinkagegraph):
         # converted_data = [f"{label[:4]}-{label[4:]}" for label in labels]
         # str_labels = [datetime.strptime(item, '%Y-%m').strftime('%b') for item in converted_data]
         data = wclLinkagegraph["datasets"][0]["data"]
-
         # str_labels = [str(label) for label in labels]
 
         # Optional: Sort data for better visualization
@@ -1316,7 +1313,7 @@ def wclGraphData(wclLinkagegraph):
                         xytext=(0, -20),  # 5 points vertical offset
                         textcoords="offset points",
                         ha='center', va='bottom',
-                        fontsize=20, color='white')
+                        fontsize=15, color='white')
             
             # Add a dot at y=100 on every bar (even if the height is below 100)
             dot_x = bar.get_x() + bar.get_width() / 2
@@ -1370,10 +1367,15 @@ def wclGraphData(wclLinkagegraph):
         encoded_bar_chart_profit_loss = encoded_data(image_total_file_name)
         return encoded_bar_chart_profit_loss
     except Exception as e:
-        console_logger.debug(e)
+        console_logger.debug("----- Gate Vehicle Count Error -----",e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+        console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+        return e
 
 
-def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_final, dayWiseVehicleInCount, dayWiseGrnReceive, dayWiseGwelReceive, dayWiseOutVehicelCount, total_monthly_final_net_qty, yearly_final_data, aopList, fetchRailData, yearly_rail_final_data, fetchRakeQuota, fetchRcrRakeQuota, seclLinkagegraph, wclLinkagegraph, consumerList):
+def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_final, dayWiseVehicleInCount, dayWiseGrnReceive, dayWiseGwelReceive, dayWiseOutVehicelCount, total_monthly_final_net_qty, yearly_final_data, aopList, fetchRailData, yearly_rail_final_data, fetchRakeQuota, fetchRcrRakeQuota, seclLinkagegraph, wclLinkagegraph, consumerList, cumulative_card_data):
 
     try:
         # supplierResult = supplier_collection.find({}, {"_id": 0})
@@ -1415,7 +1417,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
         #     per_rail_data = f"<b>No data found for {month_date}</b>"
 
         per_rail_data = ""
-
+        
         bar_gcv_data = bar_graph_gcv_wise(rrNo_values, aopList, month_date)
 
         profit_loss_gmr = profit_loss_gmr_data(clubbed_data)
@@ -1486,7 +1488,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
             <div style="display: flex; justify-content:space-between; width:100vw; gap:10px;">
                 <div style="width:49%;">
                     <table style="border-spacing: 0px; border: 1px solid lightgray;width:100% ">
-                        <thead style="background-color: #3a62ff; color: #ffffff; height: 20px;">
+                        <thead style="background-color: #fabf8f; color: #000000; height: 20px;">
                             <tr style="height: 30px;text-align:center">
                                 <th>Insights</th>
                             </tr>
@@ -1511,9 +1513,9 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
                             <tr style="height: 30px">
                                 <td style=" display: flex;justify-content:space-between;padding: 5px;font-size: 14px;">
                                     <span style="font-weight: 500;">
-                                                Today's Transit loss:
+                                                Cumulative Coal Lifted (MTD):
                                             </span>
-                                    <b style="color: #3a62ff;"> {round(dayWiseGrnReceive.get("data") - dayWiseGwelReceive.get("data"), 2)} </b>
+                                    <b style="color: #3a62ff;"> {cumulative_card_data.get("cumulative_coal_lifted")}</b>
                                 </td>
                             </tr>
                         </tbody>
@@ -1521,7 +1523,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
                 </div>
                 <div style="width:49%;float:right;">
                     <table style="border-spacing: 0px;border: 1px solid lightgray;width:100%">
-                        <thead style="background-color: #3a62ff; color: #ffffff; height: 20px;">
+                        <thead style="background-color: #fabf8f; color: #000000; height: 20px;">
                             <tr style="height: 30px;text-align:center">
                                 <th>Counter</th>
                             </tr>
@@ -1559,6 +1561,14 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
                                     <b style="color: #3a62ff;"> {dayWiseGwelReceive.get("data")}</b>
                                 </td>
                             </tr>
+                            <tr style="height: 30px">
+                                <td style=" display: flex;justify-content:space-between;padding: 5px;font-size: 14px;">
+                                    <span style="font-weight: 500;">
+                                                Today's Transit loss:
+                                            </span>
+                                    <b style="color: #3a62ff;"> {round(dayWiseGrnReceive.get("data") - dayWiseGwelReceive.get("data"), 2)}</b>
+                                </td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
@@ -1566,7 +1576,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
 
             <div class="footertable" style="width:100%; margin-top:20px;">
                 <div class="title" style="width: 100%; display: flex; flex-direction:row; gap: 10px; height:50px ; align-items:center">
-                    <p style="color: #3a62ff; font-size: 16px; margin: 5px; font-weight: 600;">
+                    <p style="color: #000000; font-size: 16px; margin: 5px; font-weight: 600;">
                         Rail Rake Quota Report for {datetime.strptime(month_date,'%Y-%m-%d').strftime('%B %Y')}
                     </p>
                 </div>
@@ -1575,7 +1585,7 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
 
             <div class="footertable" style="width:100%; margin-top:20px;">
                 <div class="title" style="width: 100%; display: flex; flex-direction:row; gap: 10px; height:50px ; align-items:center">
-                    <p style="color: #3a62ff; font-size: 16px; margin: 5px; font-weight: 600;">
+                    <p style="color: #000000; font-size: 16px; margin: 5px; font-weight: 600;">
                         RCR Rake Quota Report for {datetime.strptime(month_date,'%Y-%m-%d').strftime('%B %Y')}
                     </p>
                 </div>
@@ -1584,8 +1594,8 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
                 
             <div class="footertable" style="width:100%; margin-top:20px;">
                 <div class="title" style="width: 100%; display: flex; flex-direction:row; gap: 10px; height:50px ; align-items:center">
-                    <p style="color: #3a62ff; font-size: 16px; margin: 5px; font-weight: 600;">
-                        Daily Road Coal Logistic Report for {datetime.strptime(month_date,'%Y-%m-%d').strftime('%d %B %Y')}
+                    <p style="color: #000000; font-size: 16px; margin: 5px; font-weight: 600;">
+                        Road Coal Logistic Report
                     </p>
                 </div>
                 {per_data}
@@ -1594,43 +1604,43 @@ def generate_report(data, rrNo_values, month_date, clubbed_data, clubbed_data_fi
             <br>
 
             <div class="body" style="margin-top:20px;">
-                <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;">
+                <div style="color: #000000; font-size: 16px; margin: 5px auto; font-weight: 600;">
                     Annually - SECL Linkage Materialisation (FY {f"{datetime.today().year if datetime.today().month >= 4 else datetime.today().year - 1}-{(datetime.today().year + 1) if datetime.today().month >= 4 else datetime.today().year}"})
                     {secl_linkage_bar_data}
                 </div>
             </div>
 
             <div class="body" style="margin-top:20px;">
-                <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;">
+                <div style="color: #000000; font-size: 16px; margin: 5px auto; font-weight: 600;">
                     Annually - WCL Linkage Materialisation (FY {f"{datetime.today().year if datetime.today().month >= 4 else datetime.today().year - 1}-{(datetime.today().year + 1) if datetime.today().month >= 4 else datetime.today().year}"})
                     {wecl_linkage_bar_data}
                 </div>
             </div>
 
             <div class="body" style="margin-top:20px;">
-                <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;">
-                    Monthly - Mine v/s Average GWEL GCV v/s AOP Target 
+                <div style="color: #000000; font-size: 16px; margin: 5px auto; font-weight: 600;">
+                    Monthly - Mine wise Average GWEL GCV v/s AOP Target 
                     {gcv_bar_data}
                 </div>
             </div>
 
             <div class="body" style="margin-top:20px; height: 500px;">
-                <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;">
-                    Monthly - Mine v/s Transit Loss/Gain
+                <div style="color: #000000; font-size: 16px; margin: 5px auto; font-weight: 600;">
+                    Monthly - Mine wise GWEL Transit Loss/Gain
                     {profit_loss_gmr}
                 </div>
             </div>
 
             <div class="body" style="margin-top:20px;">
-                <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;">
-                    Monthly - Month v/s Transit Loss/Gain
+                <div style="color: #000000; font-size: 16px; margin: 5px auto; font-weight: 600;">
+                    Monthly - Month wise Transit Loss/Gain
                     {transist_data_month}
                 </div>
             </div>
 
             <div class="body" style="margin-top:20px;">
-                <div style="color: #3a62ff; font-size: 16px; margin: 5px auto; font-weight: 600;">
-                    Annually - Road & Rail Mode v/s Transit Loss/Gain
+                <div style="color: #000000; font-size: 16px; margin: 5px auto; font-weight: 600;">
+                    Annually - Road & Rail Mode v/s GWEL Transit Loss/Gain
                     {profit_loss_final}
                 </div>
             </div>

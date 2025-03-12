@@ -656,10 +656,10 @@ class DataExecutions:
                 #         data &= Q(sample_desc__icontains=search_text)
 
                 if search_text:
-                    if search_text.isdigit():
-                        data &= Q(sample_details_id__icontains=search_text) | Q(rrNo__icontains=search_text)
-                    else:
-                        data &= Q(sample_desc__icontains=search_text) | Q(ulr_no__icontains=search_text)
+                    # if search_text.isdigit():
+                    #     data &= Q(sample_details_id__icontains=search_text) | Q(rrNo__icontains=search_text)
+                    # else:
+                    data &= Q(ulr__icontains=search_text) | Q(certificate_no__icontains=search_text)
 
                 # console_logger.debug(data)
 
@@ -678,7 +678,6 @@ class DataExecutions:
                 )   
                 if any(logs):
                     for log in logs:
-                        console_logger.debug(log)
                         # result["labels"] = list(log.payload().keys())
                         result["labels"] = [
                             "srno",
@@ -3971,9 +3970,15 @@ class DataExecutions:
 
                 try:
                     fetchGrnData = Grn.objects.get(do_no=rr_no)
-                    payload["is_grn_booked"] = True
+                    if fetchGrnData.rejected:
+                        payload["grn_rejected"] = True
+                        payload["is_grn_booked"] = False
+                    else:
+                        payload["is_grn_booked"] = False
+                        payload["grn_rejected"] = False
                 except DoesNotExist as e:
                     payload["is_grn_booked"] = False
+                    payload["grn_rejected"] = False
 
                 if payload:
                     return payload
@@ -3993,5 +3998,26 @@ class DataExecutions:
             console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
             return e
     
+
+    def getLastthirtydaysfromtodaydate(self):
+        try:
+            # Get the current date and convert it to ISO 8601 format
+            current_date = date.today()
+
+            # Calculate the date 30 days before the current date and convert it to ISO 8601 format
+            days_before = (date.today() - timedelta(days=30))
+
+            # Calculate the date 30 days after the current date and convert it to ISO 8601 format
+            days_after = (date.today() + timedelta(days=30))
+
+            return current_date, days_before, days_after
+        except Exception as e:
+            console_logger.debug(e)
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            console_logger.debug(exc_type, fname, exc_tb.tb_lineno)
+            console_logger.debug("Error {} on line {} ".format(e, sys.exc_info()[-1].tb_lineno))
+            return e
+
 
 DataExecutionsHandler = DataExecutions()

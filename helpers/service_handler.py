@@ -110,7 +110,6 @@ def global_coal_analysis(                                  # contains graph, tab
 
             date=Month
             format_data = "%Y-%m-%d"
-
             start_date = f'{date}-01'
             startd_date=datetime.datetime.strptime(start_date,format_data)
             end_date = startd_date + relativedelta( day=31)
@@ -140,13 +139,12 @@ def global_coal_analysis(                                  # contains graph, tab
             }
 
         elif type == "Year":
-
-            date=Year
-            end_date =f'{date}-12-31 23:59:59'
-            start_date = f'{date}-01-01 00:00:00'
+            date=Year.split("-")
+            end_date =f'{date[1]}-03-31 23:59:59'
+            start_date = f'{date[0]}-04-01 00:00:00'
             format_data = "%Y-%m-%d %H:%M:%S"
-            endd_date=datetime.datetime.strptime(end_date,format_data)
-            startd_date=datetime.datetime.strptime(start_date,format_data)
+            endd_date = datetime.datetime.strptime(end_date, format_data)
+            startd_date = datetime.datetime.strptime(start_date, format_data)
 
             basePipeline[0]["$match"]["created_date"]["$lte"] = (endd_date)
             basePipeline[0]["$match"]["created_date"]["$gte"] = (startd_date)

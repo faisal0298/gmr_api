@@ -82,6 +82,8 @@ class BackgroundTaskHandler:
         trigger: str = "cron",
         **kwargs
     ):
+        # APScheduler has a grace period during which jobs are allowed to run. If for some reason the scheduler is busy and/or the load of the host is too high, APScheduler might fail to start the job in time. In this cases, the job will be discarded if it could not be started during the grace time.
+        # If the scheduler failed to schedule the job in time, you can use misfire_grace_time=None to tell APScheduler to schedule the job as soon as it can instead of discarding it.
         self.scheduler.add_job(
             func=func,
             replace_existing=True,
@@ -91,6 +93,7 @@ class BackgroundTaskHandler:
             id=task_name,
             timezone="utc",
             executor="threadpool",
+            misfire_grace_time=None, # added by vipin on 30/12/2024 12:49
             **kwargs
         )
         return {"detail": "success"}
